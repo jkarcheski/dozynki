@@ -26,32 +26,47 @@
 <main id="main">
   <section class="col">
     <div class="card">
-      <div class="card-head">
-        <h2 id="obj-title">—</h2>
-        <div class="seg" id="lc-mode">
-          <button data-mode="flux" class="on" title="f">Diff flux</button>
-          <button data-mode="mag">Diff mag</button>
-          <button data-mode="sci">LSST sci mag</button>
-        </div>
-      </div>
+      <div class="card-head"><h2 id="obj-title">—</h2><span id="cut-meta" class="muted"></span></div>
       <div id="obj-links" class="links"></div>
-      <div id="lc" class="plot"></div>
-      <div class="hint">Click a point to see its cutouts. Open symbols are forced photometry.</div>
-    </div>
-    <div class="card">
-      <div class="card-head"><h2>Cutouts</h2><span id="cut-meta" class="muted"></span></div>
       <div id="cutouts" class="cutouts"></div>
       <div id="point-detail" class="detail"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Light curve</h2>
+        <div class="seg" id="lc-mode">
+          <button data-mode="sci" class="on" title="f">LSST sci mag</button>
+          <button data-mode="flux">Diff flux</button>
+          <button data-mode="mag">Diff mag</button>
+        </div>
+      </div>
+      <div id="lc" class="plot"></div>
+      <div class="hint">Click a point to see its cutouts. Open symbols are forced photometry.</div>
     </div>
   </section>
 
   <section class="col">
     <div class="card">
-      <div class="card-head"><h2>Field (Legacy Survey DR10)</h2><span class="muted">click a galaxy to set host</span></div>
+      <div class="card-head">
+        <h2>Field (Legacy Survey DR10)</h2>
+        <span class="zoom">
+          <button id="zoom-in" class="small" title="Zoom in (scroll on image)">+</button>
+          <span id="fov" class="muted"></span>
+          <button id="zoom-out" class="small" title="Zoom out (scroll on image)">−</button>
+        </span>
+      </div>
       <div class="field-wrap"><div id="field"></div><div id="field-legend" class="legend"></div></div>
+      <div class="hint">Click a galaxy to set the host. Scroll on the image to zoom.</div>
     </div>
     <div class="card">
-      <div class="card-head"><h2>Independent crossmatch</h2><button id="skybot" class="small">Check SkyBoT</button></div>
+      <div class="card-head">
+        <h2>Independent crossmatch</h2>
+        <span class="zoom">
+          <input id="xm-radius" type="number" min="1" max="300" step="1" title="Search radius (arcsec)">″
+          <button id="xm-search" class="small">Search</button>
+          <button id="skybot" class="small">Check SkyBoT</button>
+        </span>
+      </div>
       <div id="xmatch"></div>
     </div>
     <div class="card" id="opinions-card">

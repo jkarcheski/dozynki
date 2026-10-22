@@ -1,13 +1,15 @@
 // DOZYNKI labeling UI. Plain JS, no build step.
 
 const BAND_COLORS = { u: "#7b3fc4", g: "#2a9d4b", r: "#d1352b", i: "#e08a1e", z: "#8a5a2b", y: "#555" };
-const LS_PIXSCALE = 0.262;      // arcsec / pixel of the Legacy Survey cutout
-const LS_SIZE = 256;            // cutout size in pixels
+const LS_SIZE = 256;            // cutout size in pixels (pixscale follows the zoom level)
 const FIELD_PX = 320;           // displayed size
+const FOV_LEVELS = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360]; // field width, arcsec
+const DEFAULT_FOV = 30;
 
 let CFG = null;
 let cur = null;                 // current /api/object payload
-let lcMode = "flux";
+let lcMode = "sci";
+let fieldFov = DEFAULT_FOV;
 let selectedPoint = null;
 let form = blankForm();
 const skipped = [];
@@ -57,6 +59,12 @@ async function init() {
   $("#next").onclick = next;
   $("#hostless").onclick = () => setHost({ hostless: true });
   $("#skybot").onclick = runSkybot;
+  $("#xm-radius").value = CFG.xmatch_radius;
+  $("#xm-search").onclick = searchXmatch;
+  $("#xm-radius").onkeydown = (e) => { if (e.key === "Enter") { e.stopPropagation(); searchXmatch(); } };
+  $("#zoom-in").onclick = () => zoom(-1);
+  $("#zoom-out").onclick = () => zoom(1);
+  $("#field").addEventListener("wheel", (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
   $("#notes").oninput = (e) => (form.notes = e.target.value);
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
   document.addEventListener("keydown", onKey);
@@ -110,6 +118,7 @@ function renderForm() {
 function onKey(e) {
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") {
     if (e.key === "Enter" && e.target.id === "notes") commit();
+    if (e.key === "Enter" && e.target.id === "xm-radius") e.preventDefault();
     return;
   }
   const c = CFG.classes.find((c) => c.hotkey === e.key);
@@ -118,7 +127,9 @@ function onKey(e) {
   if (e.key === "s") return skip();
   if (e.key === "n") return next();
   if (e.key === "h") return setHost({ hostless: true });
-  if (e.key === "f") return setLcMode({ flux: "mag", mag: "sci", sci: "flux" }[lcMode]);
+  if (e.key === "f") return setLcMode({ sci: "flux", flux: "mag", mag: "sci" }[lcMode]);
+  if (e.key === "+" || e.key === "=") return zoom(-1);
+  if (e.key === "-") return zoom(1);
 }
 
 // ---------- queue ----------
@@ -195,6 +206,8 @@ async function loadObject(oid) {
   ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend"].forEach((s) => ($(s).innerHTML = ""));
   form = blankForm();
   selectedPoint = null;
+  fieldFov = DEFAULT_FOV;
+  $("#xm-radius").value = CFG.xmatch_radius;
   renderForm();
   try {
     cur = await api(`/api/object/${oid}`);
@@ -219,6 +232,7 @@ async function loadObject(oid) {
     `<a target="_blank" href="https://www.legacysurvey.org/viewer?ra=${ev.ra}&dec=${ev.dec}&layer=ls-dr10&zoom=16&mark=${ev.ra},${ev.dec}">LS viewer</a>`,
     `<span class="muted">${fmt(ev.ra, 5)}, ${fmt(ev.dec, 5)} · queued via ${esc(cur.queue.source)}</span>`,
   ].join("");
+  if (ev.xmatch?.radius_arcsec) $("#xm-radius").value = ev.xmatch.radius_arcsec;
   renderPhase();
   renderLightcurve(ev);
   renderField(ev);
@@ -340,13 +354,25 @@ async function selectPoint(p) {
 // ---------- field + crossmatch ----------
 
 function toPx(d_east, d_north) {
-  const scale = FIELD_PX / LS_SIZE / LS_PIXSCALE; // display px per arcsec
+  const scale = FIELD_PX / fieldFov; // display px per arcsec
   return [FIELD_PX / 2 - d_east * scale, FIELD_PX / 2 - d_north * scale, scale];
+}
+
+function zoom(step) {
+  const i = FOV_LEVELS.indexOf(fieldFov);
+  const j = Math.min(FOV_LEVELS.length - 1, Math.max(0, (i < 0 ? FOV_LEVELS.indexOf(DEFAULT_FOV) : i) + step));
+  if (FOV_LEVELS[j] === fieldFov) return;
+  fieldFov = FOV_LEVELS[j];
+  if (cur) renderField(cur.evidence);
 }
 
 function renderField(ev) {
   const xm = ev.xmatch || {};
-  const url = `https://www.legacysurvey.org/viewer/cutout.jpg?ra=${ev.ra}&dec=${ev.dec}&layer=ls-dr10&pixscale=${LS_PIXSCALE}&size=${LS_SIZE}`;
+  const pixscale = (fieldFov / LS_SIZE).toFixed(4);
+  const url = `https://www.legacysurvey.org/viewer/cutout.jpg?ra=${ev.ra}&dec=${ev.dec}&layer=ls-dr10&pixscale=${pixscale}&size=${LS_SIZE}`;
+  $("#fov").textContent = `${fieldFov}″`;
+  $("#zoom-in").disabled = fieldFov === FOV_LEVELS[0];
+  $("#zoom-out").disabled = fieldFov === FOV_LEVELS[FOV_LEVELS.length - 1];
   const chosen = form.host && form.host.ls_id;
   let svg = "";
   const scale = toPx(0, 0)[2];
@@ -367,8 +393,11 @@ function renderField(ev) {
     svg += `<path d="M${x - 6} ${y}h12M${x} ${y - 6}v12" stroke="${c}" stroke-width="1.5"><title>Gaia G=${fmt(g.Gmag)} plxSNR=${fmt(g.plx_snr, 1)} pmSNR=${fmt(g.pm_snr, 1)}</title></path>`;
   }
   const c = FIELD_PX / 2;
+  if (xm.radius_arcsec && xm.radius_arcsec * scale < FIELD_PX * 0.7) {
+    svg += `<circle cx="${c}" cy="${c}" r="${xm.radius_arcsec * scale}" fill="none" stroke="#fff" stroke-opacity=".35" stroke-dasharray="2 4"><title>crossmatch radius ${xm.radius_arcsec}″</title></circle>`;
+  }
   svg += `<circle cx="${c}" cy="${c}" r="9" fill="none" stroke="#0f0" stroke-width="1.5" stroke-dasharray="3 2"/>`;
-  svg += `<text x="6" y="14" fill="#fff" font-size="11">N↑ E←  ${fmt(LS_SIZE * LS_PIXSCALE, 0)}″</text>`;
+  svg += `<text x="6" y="14" fill="#fff" font-size="11">N↑ E←  ${fieldFov}″</text>`;
   $("#field").innerHTML = `<img src="${url}" alt="Legacy Survey cutout"><svg viewBox="0 0 ${FIELD_PX} ${FIELD_PX}">${svg}</svg>`;
   $("#field").querySelectorAll(".src").forEach((el) => (el.onclick = () => {
     const s = (xm.legacy_survey || []).find((q) => String(q.ls_id) === el.dataset.ls);
@@ -406,7 +435,7 @@ function renderXmatch(ev) {
     ...(sso.ztf_ssnamenr || []).map((s) => `<span class="pill warn">ZTF ssnamenr ${esc(s)}</span>`),
   ];
   let html = `<div style="font-size:12px">
-    <span class="pill">b = ${fmt(ctx.gal_b, 1)}°</span><span class="pill ${Math.abs(ctx.ecl_lat) < 10 ? "warn" : ""}">ecl. lat = ${fmt(ctx.ecl_lat, 1)}°</span>
+    <span class="pill">radius ${fmt(xm.radius_arcsec, 0)}″</span><span class="pill">b =${fmt(ctx.gal_b, 1)}°</span><span class="pill ${Math.abs(ctx.ecl_lat) < 10 ? "warn" : ""}">ecl. lat = ${fmt(ctx.ecl_lat, 1)}°</span>
     ${ssoBits.join("") || `<span class="pill">no pipeline SSO association</span>`}
     ${ev.ztf_object_id ? `<span class="pill">ANTARES ZTF assoc: ${esc(ev.ztf_object_id)}</span>` : ""}
   </div>`;
@@ -446,6 +475,25 @@ function renderSkybot(sb) {
       : `SkyBoT ${k} epoch: no known SSO within 60″`);
   }
   return parts.join("<br>");
+}
+
+async function searchXmatch() {
+  if (!cur) return;
+  const radius = +$("#xm-radius").value;
+  if (!(radius > 0)) return;
+  $("#xm-search").disabled = true;
+  $("#xmatch").innerHTML = `<div class="muted">searching ${radius}″…</div>`;
+  try {
+    cur.evidence.xmatch = await api(`/api/xmatch/${cur.evidence.object_id}?radius=${radius}`, { method: "POST" });
+    // zoom out far enough to show the whole search area
+    if (2 * radius > fieldFov) fieldFov = FOV_LEVELS.find((f) => f >= 2 * radius) || FOV_LEVELS[FOV_LEVELS.length - 1];
+    renderXmatch(cur.evidence);
+    renderField(cur.evidence);
+  } catch (e) {
+    $("#xmatch").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    $("#xm-search").disabled = false;
+  }
 }
 
 async function runSkybot() {

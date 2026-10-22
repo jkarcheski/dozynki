@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
-DATA_DIR = ROOT / "data"
+DATA_DIR = Path(os.environ.get("DOZYNKI_DATA_DIR") or ROOT / "data")
 EXPORT_DIR = ROOT / "exports"
 DB_PATH = DATA_DIR / "dozynki.sqlite"
 DATA_DIR.mkdir(exist_ok=True)
@@ -21,4 +21,5 @@ DATALAB_QUERY = "https://datalab.noirlab.edu/query/query"
 DATALAB_ANON_TOKEN = "anonymous.0.0.anon_access"
 
 HTTP_TIMEOUT = 60
-XMATCH_RADIUS_ARCSEC = 30.0
+XMATCH_RADIUS_ARCSEC = 10.0      # default; the UI can re-search wider per object
+XMATCH_MAX_RADIUS_ARCSEC = 300.0

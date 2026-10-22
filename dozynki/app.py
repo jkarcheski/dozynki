@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from . import __version__, assemble, db, export, sources
 from .brokers import antares
-from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER
+from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .labels import CLASS_BY_KEY, CLASSES, CONFIDENCE, FLAGS, TRANSIENT_SUBCLASSES
 
 STATIC = Path(__file__).parent / "static"
@@ -35,6 +35,7 @@ def get_config():
         "labeler": LABELER,
         "babamul_enabled": BABAMUL_ENABLED,
         "sources": list(sources.SOURCES),
+        "xmatch_radius": XMATCH_RADIUS_ARCSEC,
         "version": __version__,
     }
 
@@ -167,6 +168,16 @@ def post_label(body: Label):
 def skip(object_id: str):
     db.set_status(object_id, "skipped")
     return {"ok": True}
+
+
+@app.post("/api/xmatch/{object_id}")
+def xmatch(object_id: str, radius: float = XMATCH_RADIUS_ARCSEC):
+    if not db.get_queue_item(object_id):
+        raise HTTPException(404, "not in queue")
+    if not 0 < radius <= XMATCH_MAX_RADIUS_ARCSEC:
+        raise HTTPException(400, f"radius must be in (0, {XMATCH_MAX_RADIUS_ARCSEC}] arcsec")
+    assemble.load(object_id)
+    return assemble.rerun_xmatch(object_id, radius)["data"]
 
 
 @app.post("/api/skybot/{object_id}")

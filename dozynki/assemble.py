@@ -71,6 +71,11 @@ def _gather(object_id):
     return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot")}
 
 
+def rerun_xmatch(object_id, radius):
+    ant = db.cache_get(object_id, "antares")["data"]
+    return _cached(object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"], radius), refresh=True)
+
+
 def skybot(object_id, refresh=False):
     ant = db.cache_get(object_id, "antares")["data"]
     mjds = [p["mjd"] for p in ant["points"] if p["kind"] == "detection"]

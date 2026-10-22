@@ -200,8 +200,8 @@ def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC):
     jobs = {
         "legacy_survey": (legacy_survey, (ra, dec, radius)),
         "gaia": (vizier, ("gaia", ra, dec, radius)),
-        "ps1": (vizier, ("ps1", ra, dec, min(radius, 10))),
-        "milliquas": (vizier, ("milliquas", ra, dec, min(radius, 5))),
+        "ps1": (vizier, ("ps1", ra, dec, radius)),
+        "milliquas": (vizier, ("milliquas", ra, dec, radius)),
         "simbad": (simbad, (ra, dec, radius)),
         "ned": (ned, (ra, dec, radius)),
     }
