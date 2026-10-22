@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from . import __version__, assemble, db, export, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
-from .labels import CLASS_BY_KEY, CLASSES, CONFIDENCE, FLAGS, TRANSIENT_SUBCLASSES
+from .labels import CLASS_BY_KEY, CLASSES, CONFIDENCE, FLAGS, TRANSIENT_SUBCLASSES, WATCH_FLAG
 
 STATIC = Path(__file__).parent / "static"
 PREFETCH = 3
@@ -137,7 +137,10 @@ def post_label(body: Label):
         raise HTTPException(400, f"unknown class {body.klass}")
     if not db.get_queue_item(body.object_id):
         raise HTTPException(404, "not in queue")
-    if _has_blind_label(body.object_id):
+    previous = db.labels_for(body.object_id)
+    if previous and WATCH_FLAG in json.loads(previous[-1]["flags"] or "[]"):
+        phase = "followup"  # second look at a watched object, possibly with new data
+    elif _has_blind_label(body.object_id):
         phase = "revealed"
     else:
         phase = "blind" if state["blind"] else "unblinded"
@@ -160,8 +163,29 @@ def post_label(body: Label):
             "app_version": __version__,
         }
     )
-    db.set_status(body.object_id, "labeled")
+    db.set_status(body.object_id, "watch" if WATCH_FLAG in body.flags else "labeled")
     return {"id": label_id, "phase": phase}
+
+
+@app.post("/api/watch/recheck")
+def watch_recheck():
+    """Re-poll ANTARES for watched objects; any with new alerts go back to the queue."""
+    updated, unchanged, errors = [], 0, {}
+    for item in db.query("SELECT * FROM queue WHERE status = 'watch'"):
+        oid = item["object_id"]
+        try:
+            old = db.cache_get(oid, "antares")
+            n_old = (old["data"].get("num_alerts") or len(old["data"]["points"])) if old else 0
+            n_new = antares.locus_num_alerts(item["antares_locus"])
+            if n_new > n_old:
+                assemble.refresh_brokers(oid)
+                db.set_status(oid, "pending")
+                updated.append({"object_id": oid, "new_alerts": n_new - n_old})
+            else:
+                unchanged += 1
+        except Exception as e:
+            errors[oid] = f"{type(e).__name__}: {e}"
+    return {"requeued": updated, "unchanged": unchanged, "errors": errors}
 
 
 @app.post("/api/skip/{object_id}")

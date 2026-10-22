@@ -53,6 +53,7 @@ async function init() {
   buildLabelBar();
   $("#fill").onclick = fillQueue;
   $("#add-ids").onclick = addIds;
+  $("#watch-recheck").onclick = recheckWatchlist;
   $("#export").onclick = doExport;
   $("#commit").onclick = commit;
   $("#skip").onclick = skip;
@@ -83,12 +84,17 @@ function buildLabelBar() {
   $("#subclasses").querySelectorAll("button").forEach(
     (b) => (b.onclick = () => { form.subclass = form.subclass === b.dataset.k ? null : b.dataset.k; renderForm(); })
   );
-  $("#flags").innerHTML = CFG.flags.map((f) => `<button data-k="${f.key}">${esc(f.label)}</button>`).join("");
-  $("#flags").querySelectorAll("button").forEach(
-    (b) => (b.onclick = () => { form.flags.has(b.dataset.k) ? form.flags.delete(b.dataset.k) : form.flags.add(b.dataset.k); renderForm(); })
-  );
+  $("#flags").innerHTML = CFG.flags
+    .map((f) => `<button data-k="${f.key}">${esc(f.label)}${f.hotkey ? `<kbd>${f.hotkey}</kbd>` : ""}</button>`)
+    .join("");
+  $("#flags").querySelectorAll("button").forEach((b) => (b.onclick = () => toggleFlag(b.dataset.k)));
   $("#confidence").innerHTML = CFG.confidence.map((c) => `<button data-k="${c}">${c}</button>`).join("");
   $("#confidence").querySelectorAll("button").forEach((b) => (b.onclick = () => { form.confidence = b.dataset.k; renderForm(); }));
+}
+
+function toggleFlag(k) {
+  form.flags.has(k) ? form.flags.delete(k) : form.flags.add(k);
+  renderForm();
 }
 
 function setClass(k) {
@@ -100,7 +106,7 @@ function setClass(k) {
 function setHost(h) {
   form.host = h;
   renderForm();
-  if (cur) renderField(cur.evidence);
+  if (cur) { renderField(cur.evidence); renderXmatch(cur.evidence); }
 }
 
 function renderForm() {
@@ -123,6 +129,8 @@ function onKey(e) {
   }
   const c = CFG.classes.find((c) => c.hotkey === e.key);
   if (c) return setClass(c.key);
+  const f = CFG.flags.find((f) => f.hotkey === e.key);
+  if (f) return toggleFlag(f.key);
   if (e.key === "Enter") return commit();
   if (e.key === "s") return skip();
   if (e.key === "n") return next();
@@ -139,9 +147,9 @@ async function refreshStats() {
   const q = s.queue;
   const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
   $("#stats").innerHTML =
-    `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
+    `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · watching <b>${q.watch || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
     (classes ? ` &nbsp;|&nbsp; ${classes}` : "") +
-    (s.revised_after_reveal ? ` &nbsp;|&nbsp; revised after reveal <b>${s.revised_after_reveal}</b>` : "");
+    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
 }
 
 async function fillQueue() {
@@ -166,6 +174,22 @@ async function addIds() {
   const r = await api("/api/queue/add", { method: "POST", body: { object_ids: ids } });
   toast(`Added ${r.added}` + (r.not_in_antares.length ? `; not found in ANTARES: ${r.not_in_antares.join(", ")}` : ""), 5000);
   refreshStats();
+}
+
+async function recheckWatchlist() {
+  $("#watch-recheck").disabled = true;
+  toast("Rechecking watched objects…", 10000);
+  try {
+    const r = await api("/api/watch/recheck", { method: "POST" });
+    const errs = Object.keys(r.errors).length;
+    toast(`${r.requeued.length} watched object(s) have new alerts and are back in the queue; ${r.unchanged} unchanged` + (errs ? `; ${errs} failed` : ""), 6000);
+    refreshStats();
+    if (!cur && r.requeued.length) next();
+  } catch (e) {
+    toast("Recheck failed: " + e.message, 5000);
+  } finally {
+    $("#watch-recheck").disabled = false;
+  }
 }
 
 async function doExport() {
@@ -246,6 +270,14 @@ async function loadObject(oid) {
 function renderPhase() {
   const el = $("#phase");
   const hasBlind = cur.labels.some((l) => l.phase === "blind");
+  const last = cur.labels[cur.labels.length - 1];
+  if (last && JSON.parse(last.flags || "[]").includes("watch")) {
+    const prev = JSON.parse(last.snapshot || "{}");
+    el.textContent = `FOLLOW-UP of watched object (last labeled with ${(prev.n_lsst_det ?? 0) + (prev.n_ztf_det ?? 0)} detections) — untoggle "watch" to finish`;
+    el.className = "phase followup";
+    $("#commit").textContent = "Commit follow-up";
+    return;
+  }
   if (!CFG.blind) { el.textContent = "unblinded labeling"; el.className = "phase"; }
   else if (!hasBlind) { el.textContent = "BLIND pass — broker opinions hidden"; el.className = "phase blind"; }
   else { el.textContent = "revealed — commit again to revise"; el.className = "phase revealed"; }
@@ -278,8 +310,7 @@ function renderLightcurve(ev) {
       } else if (lcMode === "mag") {
         y = kind === "upper_limit" ? p.lim_mag : p.mag; e = kind === "upper_limit" ? null : p.mag_err;
       } else {
-        if (survey !== "lsst") continue;
-        y = p.sci_mag;
+        y = p.sci_mag; // ZTF: approximate ref + diff, only when the ref source is the object
       }
       if (y === null || y === undefined) continue;
       xs.push(p.mjd); ys.push(y); err.push(e); data.push(p);
@@ -290,7 +321,7 @@ function renderLightcurve(ev) {
       x: xs, y: ys, customdata: data.map((p) => p.alert_id || ""),
       error_y: kind === "upper_limit" ? undefined : { array: err, visible: true, thickness: 1, width: 0, color },
       mode: "markers", type: "scatter",
-      name: `${survey.toUpperCase()} ${band}${kind === "forced" ? " (forced)" : kind === "upper_limit" ? " (lim)" : ""}`,
+      name: `${survey.toUpperCase()} ${band}${kind === "forced" ? " (forced)" : kind === "upper_limit" ? " (lim)" : ""}${lcMode === "sci" && survey === "ztf" ? " (ref+diff)" : ""}`,
       marker: {
         color, size: kind === "upper_limit" ? 7 : 8,
         symbol: kind === "upper_limit" ? "triangle-down-open" : open ? `${symbol}-open` : symbol,
@@ -308,7 +339,7 @@ function renderLightcurve(ev) {
     font: { color: ink, size: 11 },
     xaxis: { title: "MJD", gridcolor: line, zeroline: false },
     yaxis: {
-      title: { flux: "difference flux (nJy)", mag: "difference mag (AB)", sci: "LSST science mag (total)" }[lcMode],
+      title: { flux: "difference flux (nJy)", mag: "difference mag (AB)", sci: "total mag (LSST sci; ZTF ref+diff)" }[lcMode],
       autorange: lcMode === "flux" ? true : "reversed", gridcolor: line, zerolinecolor: ink, zeroline: lcMode === "flux",
     },
     legend: { orientation: "h", y: -0.18 },
@@ -387,6 +418,15 @@ function renderField(ev) {
         <title>LS ${s.type} r=${fmt(s.mag_r)} zphot=${fmt(s.z_phot_median)} dDLR=${fmt(s.d_dlr)}</title></ellipse>`;
     }
   }
+  (xm.host_candidates || []).forEach((h, i) => {
+    const [x, y] = toPx(h.d_east, h.d_north);
+    svg += `<text class="rank" x="${x + 7}" y="${y - 7}">${i + 1}</text>`;
+  });
+  const chosenSrc = (xm.legacy_survey || []).find((q) => String(q.ls_id) === String(chosen));
+  if (chosenSrc) {
+    const [x, y] = toPx(chosenSrc.d_east, chosenSrc.d_north);
+    svg += `<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#ffd200" stroke-width="2.5"/>`;
+  }
   for (const g of xm.gaia || []) {
     const [x, y] = toPx(g.d_east, g.d_north);
     const c = g.likely_star ? "#ff4" : "#bb8";
@@ -398,17 +438,49 @@ function renderField(ev) {
   }
   svg += `<circle cx="${c}" cy="${c}" r="9" fill="none" stroke="#0f0" stroke-width="1.5" stroke-dasharray="3 2"/>`;
   svg += `<text x="6" y="14" fill="#fff" font-size="11">N↑ E←  ${fieldFov}″</text>`;
+  svg += `<circle id="hover-ring" r="12" fill="none" stroke="#fff" stroke-width="1.5" visibility="hidden" pointer-events="none"/>`;
   $("#field").innerHTML = `<img src="${url}" alt="Legacy Survey cutout"><svg viewBox="0 0 ${FIELD_PX} ${FIELD_PX}">${svg}</svg>`;
-  $("#field").querySelectorAll(".src").forEach((el) => (el.onclick = () => {
-    const s = (xm.legacy_survey || []).find((q) => String(q.ls_id) === el.dataset.ls);
-    if (s) setHost(hostFrom(s));
-  }));
+  attachHostPicker(xm);
   $("#field-legend").innerHTML = `
     <div><i style="border-color:#0f0"></i>alert position</div>
     <div><i style="border-color:#f6a"></i>LS galaxy (half-light ellipse)</div>
     <div><i style="border-color:#6cf"></i>LS point source</div>
     <div><i style="border-color:#ff4;border-radius:0"></i>Gaia (bright = sig. plx/pm)</div>
     <div><i style="border-color:#ffd200;background:rgba(255,210,0,.3)"></i>your host</div>`;
+}
+
+const PICK_RADIUS_PX = 30;
+
+// Click/hover anywhere on the field picks the nearest Legacy Survey source,
+// so tiny ellipses don't have to be hit exactly.
+function attachHostPicker(xm) {
+  const svgEl = $("#field svg");
+  const ring = $("#hover-ring");
+  const sources = (xm.legacy_survey || []).map((s) => ({ s, px: toPx(s.d_east, s.d_north) }));
+  const nearest = (e) => {
+    const r = svgEl.getBoundingClientRect();
+    const mx = ((e.clientX - r.left) / r.width) * FIELD_PX, my = ((e.clientY - r.top) / r.height) * FIELD_PX;
+    let best = null, bestD = PICK_RADIUS_PX;
+    for (const o of sources) {
+      const d = Math.hypot(o.px[0] - mx, o.px[1] - my);
+      if (d < bestD) { best = o; bestD = d; }
+    }
+    return best;
+  };
+  svgEl.onmousemove = (e) => {
+    const o = nearest(e);
+    if (!o) { ring.setAttribute("visibility", "hidden"); $("#field-hover").innerHTML = "&nbsp;"; return; }
+    ring.setAttribute("cx", o.px[0]); ring.setAttribute("cy", o.px[1]); ring.setAttribute("visibility", "visible");
+    const s = o.s, rank = (xm.host_candidates || []).findIndex((h) => String(h.ls_id) === String(s.ls_id));
+    $("#field-hover").innerHTML = `${rank >= 0 ? `<b>#${rank + 1}</b> ` : ""}LS <b>${esc(s.type)}</b> · sep ${fmt(s.sep, 1)}″ · dDLR ${fmt(s.d_dlr)} · r ${fmt(s.mag_r)} · z_phot ${fmt(s.z_phot_median)}${s.z_spec ? ` · z_spec ${fmt(s.z_spec, 4)}` : ""} — click to set host`;
+  };
+  svgEl.onmouseleave = () => { ring.setAttribute("visibility", "hidden"); $("#field-hover").innerHTML = "&nbsp;"; };
+  svgEl.onclick = (e) => {
+    const o = nearest(e);
+    if (!o) return;
+    const same = form.host && String(form.host.ls_id) === String(o.s.ls_id);
+    setHost(same ? null : hostFrom(o.s)); // clicking the chosen host again clears it
+  };
 }
 
 function hostFrom(s) {
@@ -451,6 +523,20 @@ function renderXmatch(ev) {
     ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
     ["star?", (r) => (r.likely_star ? `<span class="pill warn">yes</span>` : "")],
   ]);
+  html += `<h3>ZTF objects (ALeRCE position search, ≤30″)</h3>`;
+  if (xm.ztf === undefined) {
+    html += `<div class="muted" style="font-size:12px">not searched for this object yet — click Search above</div>`;
+  } else {
+    const antZ = ev.ztf_object_id;
+    const near = (xm.ztf || []).filter((o) => o.sep <= 2);
+    if (near.length && !near.some((o) => o.oid === antZ)) html += `<span class="pill warn">ZTF object within 2″ that ANTARES did not associate</span>`;
+    if (antZ && xm.ztf && !xm.ztf.some((o) => o.oid === antZ)) html += `<span class="pill warn">ANTARES's ZTF assoc ${esc(antZ)} not found within radius</span>`;
+    html += table(xm.ztf, [
+      ["sep″", "sep", 1], ["oid", (r) => `<a target="_blank" href="https://alerce.online/object/${esc(r.oid)}">${esc(r.oid)}</a>`],
+      ["ndet", "ndet", 0], ["ndethist", "ndethist", 0], ["first", "firstmjd", 1], ["last", "lastmjd", 1],
+      ["", (r) => (r.oid === antZ ? `<span class="pill">ANTARES assoc</span>` : "")],
+    ]);
+  }
   html += `<h3>Milliquas</h3>` + table(xm.milliquas, [["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]]);
   html += `<h3>SIMBAD</h3>` + table(xm.simbad, [["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]]);
   html += `<h3>NED</h3>` + table(xm.ned, [["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]]);

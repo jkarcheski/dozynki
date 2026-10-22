@@ -89,6 +89,10 @@ def get_locus(locus_id):
     }
 
 
+def locus_num_alerts(locus_id):
+    return _get(f"{ANTARES_API}/loci/{locus_id}")["data"]["attributes"]["properties"].get("num_alerts") or 0
+
+
 def _all_alerts(locus_id):
     url = f"{ANTARES_API}/loci/{locus_id}/alerts"
     params = {"page[limit]": 100}

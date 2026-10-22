@@ -170,6 +170,19 @@ def skybot(ra, dec, mjd, radius):
     return sorted(rows, key=lambda r: r["sep"])
 
 
+def ztf_objects(ra, dec, radius):
+    """ZTF objects by position (ALeRCE cone search), independent of ANTARES's association.
+
+    ALeRCE's class/probability columns are dropped so nothing here is a classifier opinion.
+    """
+    from alerce.core import Alerce
+
+    res = Alerce().query_objects(survey="ztf", ra=ra, dec=dec, radius=radius, page_size=50, format="json")
+    keep = ["oid", "meanra", "meandec", "ndet", "ndethist", "firstmjd", "lastmjd"]
+    rows = [{k: _clean(r.get(k)) for k in keep} for r in res.get("items", [])]
+    return _with_offsets(rows, ra, dec, "meanra", "meandec")
+
+
 def context(ra, dec):
     c = SkyCoord(ra, dec, unit="deg")
     return {
@@ -204,6 +217,7 @@ def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC):
         "milliquas": (vizier, ("milliquas", ra, dec, radius)),
         "simbad": (simbad, (ra, dec, radius)),
         "ned": (ned, (ra, dec, radius)),
+        "ztf": (ztf_objects, (ra, dec, min(radius, 30))),
     }
     out = {"ra": ra, "dec": dec, "radius_arcsec": radius, "context": context(ra, dec), "errors": {}}
     _run_jobs(jobs, out)

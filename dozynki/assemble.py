@@ -93,10 +93,39 @@ def prefetch(object_ids):
     threading.Thread(target=work, daemon=True).start()
 
 
+ZTF_NR_MAX_ARCSEC = 1.5  # reference source must be this close for ref + diff to mean "total flux"
+
+
+def _with_ztf_total_mag(p):
+    """Approximate ZTF total (science) mag as reference flux + signed difference flux.
+
+    Only when the nearest reference-image source is the object itself
+    (distnr small); otherwise the reference flux belongs to something else.
+    """
+    if p.get("survey") != "ztf" or p.get("kind") != "detection" or p.get("sci_mag") is not None:
+        return p
+    magnr, distnr, diff = p.get("magnr"), p.get("distnr"), p.get("diff_flux")
+    if magnr is None or diff is None or distnr is None or not 0 <= distnr <= ZTF_NR_MAX_ARCSEC:
+        return p
+    total = antares._mag_to_flux(magnr) + diff
+    p["sci_mag"] = antares._flux_to_mag(total)
+    p["sci_mag_approx"] = True
+    return p
+
+
+def refresh_brokers(object_id):
+    """Re-fetch broker data (not the crossmatch) after new alerts arrive."""
+    item = db.get_queue_item(object_id)
+    ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh=True)["data"]
+    _cached(object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh=True)
+    _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
+    return ant
+
+
 def evidence(object_id, raw):
     ant = raw["antares"]["data"]
     bab = (raw["babamul"] or {}).get("data") or {}
-    points = [{k: v for k, v in p.items() if k not in OPINION_POINT_FIELDS} for p in ant["points"]]
+    points = [_with_ztf_total_mag({k: v for k, v in p.items() if k not in OPINION_POINT_FIELDS}) for p in ant["points"]]
     points += bab.get("forced_phot") or []
     lsst_ss = sorted({p["ss_object_id"] for p in points if p.get("ss_object_id")})
     ztf_ss = sorted({p["ss_name"] for p in points if p.get("ss_name")})

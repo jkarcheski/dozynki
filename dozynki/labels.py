@@ -22,7 +22,12 @@ TRANSIENT_SUBCLASSES = [
     {"key": "fast", "label": "Fast / other"},
 ]
 
+# "watch" also parks the object on the watchlist (queue status 'watch') so it
+# comes back for a follow-up label once new alerts arrive.
+WATCH_FLAG = "watch"
+
 FLAGS = [
+    {"key": WATCH_FLAG, "label": "Watch for more data", "hotkey": "w"},
     {"key": "bad_subtraction", "label": "Bad subtraction"},
     {"key": "dipole", "label": "Dipole"},
     {"key": "near_bright_star", "label": "Near bright star"},

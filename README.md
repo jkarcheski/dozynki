@@ -32,8 +32,18 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 
-Keys: `1`–`6`, `0` class · `Enter` commit · `n` next · `s` skip · `h` hostless · `f` cycle light-curve mode.
-Click a galaxy in the field image or host table to record the host.
+Keys: `1`–`6`, `0` class · `w` watch · `Enter` commit · `n` next · `s` skip · `h` hostless · `f` cycle light-curve mode · `+`/`-` zoom.
+Click anywhere near a source in the field image (the nearest one is picked) or a row of the host table to record the host.
+
+**ZTF.** ZTF detections and upper limits come from the ANTARES locus when ANTARES
+has associated a ZTF object. The crossmatch panel also searches for ZTF objects by
+position through ALeRCE and warns when that disagrees with ANTARES. In the science-mag
+view, ZTF points are approximate totals (reference flux + signed difference flux), shown only
+when the nearest reference source is within 1.5″.
+
+**Watchlist.** The "Watch for more data" flag parks an object (queue status `watch`).
+"Recheck watchlist" re-polls ANTARES; objects with new alerts return to the queue, and
+the next label is stored with phase `followup`. Un-toggle the flag to finish with it.
 
 Label taxonomy, flags and hotkeys live in `dozynki/labels.py`.
 
