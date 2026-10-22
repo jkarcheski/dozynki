@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+requests
+pandas
+pyarrow
+numpy
+astropy
+astroquery
+python-dotenv
+alerce>=2.3
+babamul

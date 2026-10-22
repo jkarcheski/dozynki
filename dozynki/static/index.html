@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI vetter</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand">DOZYNKI <span class="muted">alert vetter</span></div>
+  <div id="stats" class="stats"></div>
+  <div class="controls">
+    <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
+    <span class="group">
+      <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
+      <input id="fill-min" type="number" value="1" min="1" title="Minimum number of alerts per object">
+      <button id="fill">Sample random LSST</button>
+    </span>
+    <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
+    <button id="export">Export</button>
+  </div>
+</header>
+
+<main id="main">
+  <section class="col">
+    <div class="card">
+      <div class="card-head">
+        <h2 id="obj-title">—</h2>
+        <div class="seg" id="lc-mode">
+          <button data-mode="flux" class="on" title="f">Diff flux</button>
+          <button data-mode="mag">Diff mag</button>
+          <button data-mode="sci">LSST sci mag</button>
+        </div>
+      </div>
+      <div id="obj-links" class="links"></div>
+      <div id="lc" class="plot"></div>
+      <div class="hint">Click a point to see its cutouts. Open symbols are forced photometry.</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Cutouts</h2><span id="cut-meta" class="muted"></span></div>
+      <div id="cutouts" class="cutouts"></div>
+      <div id="point-detail" class="detail"></div>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="card">
+      <div class="card-head"><h2>Field (Legacy Survey DR10)</h2><span class="muted">click a galaxy to set host</span></div>
+      <div class="field-wrap"><div id="field"></div><div id="field-legend" class="legend"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Independent crossmatch</h2><button id="skybot" class="small">Check SkyBoT</button></div>
+      <div id="xmatch"></div>
+    </div>
+    <div class="card" id="opinions-card">
+      <div class="card-head"><h2>Broker opinions</h2><span id="op-state" class="muted"></span></div>
+      <div id="opinions"></div>
+    </div>
+  </section>
+</main>
+
+<footer id="labelbar">
+  <div class="row" id="classes"></div>
+  <div class="row" id="subclasses"></div>
+  <div class="row">
+    <div id="flags" class="chips"></div>
+  </div>
+  <div class="row">
+    <div class="seg" id="confidence"></div>
+    <span id="host-display" class="host"></span>
+    <button id="hostless" class="small" title="h">Hostless</button>
+    <input id="notes" placeholder="notes" autocomplete="off">
+    <button id="commit" class="primary" title="Enter">Commit</button>
+    <button id="skip" title="s">Skip</button>
+    <button id="next" title="n">Next →</button>
+    <span id="phase" class="phase"></span>
+  </div>
+</footer>
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

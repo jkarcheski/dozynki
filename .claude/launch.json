@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dozynki",
+      "runtimeExecutable": "/home/jenna-karcheski/DOZYNKI/.venv/bin/python",
+      "runtimeArgs": ["-m", "dozynki"],
+      "port": 8765
+    }
+  ]
+}
