@@ -68,6 +68,36 @@ the next label is stored with phase `followup`. Un-toggle the flag to finish wit
 
 Label taxonomy, flags and hotkeys live in `dozynki/labels.py`.
 
+## Rejection filters
+
+The `filtering` branch adds cuts that *throw objects away* and scores them against
+your labels. Rules live in `dozynki/rejection.py`. Each one reads only cached
+payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered JSON list:
+
+```json
+[{"rule": "gaia_star", "max_sep": 1.5}, {"rule": "min_nights", "n": 2}, {"rule": "lsst_reliability", "min_rel": 0.3}]
+```
+
+```bash
+.venv/bin/python -m dozynki.evaluate --list-rules
+.venv/bin/python -m dozynki.evaluate                       # default pipeline
+.venv/bin/python -m dozynki.evaluate --pipeline cuts.json --target real
+```
+
+- **Truth** is each object's first blind label (`--truth final` for the latest label of any phase).
+  Rules marked `broker` read reliability or ALeRCE output, which revealed labels may have seen.
+- **Population** is the uniform random sample only (`--all-sources` to include everything),
+  so the rates estimate the LSST stream within the recorded sampling filters. `unsure` is excluded.
+- **Metrics** (Wilson 95% intervals): completeness (target kept / target), purity (target
+  kept / kept), false-positive rate (non-target kept / non-target), bogus leak (bogus kept /
+  bogus), against a no-filter baseline. The target is `transient` by default, or `real`.
+- **Per step**: rejections by class with the step alone, rejections no other step makes,
+  and the pipeline's metrics with that step left out.
+
+Every step's decision is stored in the `rejections` table under the pipeline's version
+hash, and each run writes `exports/rejection/<timestamp>/` (`report.txt`, `metrics.json`,
+`decisions.csv` with the features behind each decision).
+
 ## Export
 
 The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/`:

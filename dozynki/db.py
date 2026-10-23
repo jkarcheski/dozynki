@@ -44,6 +44,19 @@ CREATE TABLE IF NOT EXISTS labels (
     app_version  TEXT
 );
 CREATE INDEX IF NOT EXISTS labels_object ON labels(object_id);
+CREATE TABLE IF NOT EXISTS rejection_pipelines (
+    version     TEXT PRIMARY KEY,      -- hash of the resolved pipeline (rejection.py)
+    config      TEXT NOT NULL,         -- JSON list of {"rule", **params}
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rejections (
+    object_id   TEXT NOT NULL,
+    version     TEXT NOT NULL,
+    step        TEXT NOT NULL,         -- rule name with params, e.g. gaia_star[max_sep=1.0]
+    decision    INTEGER,               -- 1 reject, 0 keep, NULL not enough data (kept)
+    evaluated_at TEXT NOT NULL,
+    PRIMARY KEY (object_id, version, step)
+);
 """
 
 
@@ -151,6 +164,20 @@ def add_label(row):
 
 def labels_for(object_id):
     return query("SELECT * FROM labels WHERE object_id = ? ORDER BY id", (object_id,))
+
+
+def save_pipeline(version, config):
+    execute("INSERT OR IGNORE INTO rejection_pipelines (version, config, created_at) VALUES (?, ?, ?)",
+            (version, json.dumps(config), now()))
+
+
+def save_rejections(object_id, version, decisions):
+    with _lock:
+        _conn.executemany(
+            "INSERT OR REPLACE INTO rejections (object_id, version, step, decision, evaluated_at) VALUES (?, ?, ?, ?, ?)",
+            [(object_id, version, step, None if d is None else int(d), now()) for step, d in decisions.items()],
+        )
+        _conn.commit()
 
 
 def stats():
