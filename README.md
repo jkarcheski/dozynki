@@ -51,7 +51,7 @@ relative to the mean LSST position, colored by time, with the rms scatter and a 
 motion estimate. A stationary source clusters at the center; a mover makes a time-ordered
 line. Objects cached before positions were stored get them backfilled into a separate cache.
 
-**Aladin Lite.** The field card has an Aladin tab (DESI Legacy DR10, Pan-STARRS, DSS2,
+**Aladin Lite.** An Aladin panel sits beside the LS DR10 cutout (default Pan-STARRS; also DESI Legacy DR10, DSS2,
 unWISE, 2MASS, GALEX) with the LS DR10 and Gaia crossmatches overlaid; clicking an LS
 source there also sets the host. Needs a WebGL2-capable browser.
 

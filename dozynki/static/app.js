@@ -66,7 +66,6 @@ async function init() {
   $("#zoom-in").onclick = () => zoom(-1);
   $("#zoom-out").onclick = () => zoom(1);
   $("#field").addEventListener("wheel", (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
-  document.querySelectorAll("#field-tabs button").forEach((b) => (b.onclick = () => setFieldTab(b.dataset.tab)));
   $("#aladin-survey").onchange = (e) => aladin && setAladinSurvey(e.target.value);
   $("#notes").oninput = (e) => (form.notes = e.target.value);
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
@@ -119,7 +118,7 @@ function toggleAlt(k) {
 function setHost(h) {
   form.host = h;
   renderForm();
-  if (cur) { renderField(cur.evidence); renderXmatch(cur.evidence); if (fieldTab === "aladin") updateAladin(cur.evidence); }
+  if (cur) { renderField(cur.evidence); renderXmatch(cur.evidence); updateAladin(cur.evidence); }
 }
 
 function renderForm() {
@@ -282,7 +281,7 @@ async function loadObject(oid) {
   renderLightcurve(ev);
   renderField(ev);
   renderAstrometry(ev);
-  if (fieldTab === "aladin") updateAladin(ev);
+  updateAladin(ev);
   renderXmatch(ev);
   renderOpinions();
   renderForm();
@@ -449,6 +448,7 @@ function zoom(step) {
   if (FOV_LEVELS[j] === fieldFov) return;
   fieldFov = FOV_LEVELS[j];
   if (cur) renderField(cur.evidence);
+  if (aladin) aladin.setFoV(fieldFov / 3600);
 }
 
 function renderField(ev) {
@@ -584,18 +584,7 @@ function astrometrySummary(off, nRef) {
 // ---------- Aladin Lite (loaded on first use) ----------
 
 const ALADIN_JS = "https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js";
-let fieldTab = "ls";
 let aladin = null, aladinReady = null, aladinCats = [];
-
-function setFieldTab(tab) {
-  fieldTab = tab;
-  document.querySelectorAll("#field-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
-  $("#field").style.display = tab === "ls" ? "" : "none";
-  $("#ls-zoom").style.display = tab === "ls" ? "" : "none";
-  $("#aladin").style.display = tab === "aladin" ? "" : "none";
-  $("#aladin-survey").style.display = tab === "aladin" ? "" : "none";
-  if (tab === "aladin" && cur) updateAladin(cur.evidence);
-}
 
 function loadAladin() {
   // the npm build is an ES module (default export = the "A" API object)
@@ -623,11 +612,12 @@ function setAladinSurvey(id) {
 async function updateAladin(ev) {
   try { await loadAladin(); } catch (e) {
     $("#aladin").innerHTML = `<div class="err" style="padding:12px">Aladin Lite could not start: ${esc(e.message || e)}.
-      It needs WebGL2 (current Chrome / Firefox / Safari). The LS DR10 tab still works.</div>`;
+      It needs WebGL2 (current Chrome / Firefox / Safari). The LS DR10 panel still works.</div>`;
     return;
   }
   if (cur?.evidence !== ev) return;
   aladin.gotoRaDec(ev.ra, ev.dec);
+  aladin.setFoV(fieldFov / 3600);
   if (aladin.removeLayers) aladin.removeLayers(); // clears overlays (catalogs), not the image layer
   aladinCats = [];
   const xm = ev.xmatch || {};

@@ -24,7 +24,7 @@ button:hover { border-color: var(--muted); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 button.small { padding: 2px 8px; font-size: 12px; }
 button:disabled { opacity: .45; cursor: default; }
-main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
+main { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
 @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
 .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
@@ -43,9 +43,12 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: u
 .detail { font-size: 12px; margin-top: 8px; color: var(--muted); }
 .detail b { color: var(--ink); }
 .field-wrap { display: flex; gap: 10px; flex-wrap: wrap; }
-#field { position: relative; width: 320px; height: 320px; background: #000; border-radius: 4px; }
-#field img { width: 320px; height: 320px; display: block; }
-#aladin { width: 320px; height: 320px; border-radius: 4px; overflow: hidden; }
+.panel-head { font-size: 12px; font-weight: 600; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; height: 24px; }
+.field-wrap .panel { flex: 1 1 240px; max-width: 400px; min-width: 0; }
+.legend-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+#field { position: relative; width: 100%; aspect-ratio: 1; background: #000; border-radius: 4px; }
+#field img { width: 100%; height: 100%; display: block; }
+#aladin { width: 100%; aspect-ratio: 1; border-radius: 4px; overflow: hidden; }
 #aladin-survey { padding: 2px 6px; font-size: 12px; }
 .astro-wrap { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 #astro { width: 340px; height: 280px; }

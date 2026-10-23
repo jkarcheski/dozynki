@@ -49,31 +49,35 @@
   <section class="col">
     <div class="card">
       <div class="card-head">
-        <div class="seg" id="field-tabs">
-          <button data-tab="ls" class="on" title="Legacy Survey DR10 cutout with crossmatch overlay and host picking">LS DR10</button>
-          <button data-tab="aladin" title="Aladin Lite: pan/zoom, switch surveys">Aladin</button>
-        </div>
-        <select id="aladin-survey" style="display:none" title="Aladin image survey">
-          <option value="P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10</option>
-          <option value="P/PanSTARRS/DR1/color-z-zg-g">Pan-STARRS DR1</option>
-          <option value="P/DSS2/color">DSS2</option>
-          <option value="P/unWISE/color-W2-W1W2-W1">unWISE</option>
-          <option value="P/2MASS/color">2MASS</option>
-          <option value="P/GALEXGR6_7/color">GALEX</option>
-        </select>
-        <span class="zoom" id="ls-zoom">
-          <button id="zoom-in" class="small" title="Zoom in (scroll on image)">+</button>
+        <h2>Field</h2>
+        <span class="zoom">
+          <button id="zoom-in" class="small" title="Zoom both panels in (+)">+</button>
           <span id="fov" class="muted"></span>
-          <button id="zoom-out" class="small" title="Zoom out (scroll on image)">−</button>
+          <button id="zoom-out" class="small" title="Zoom both panels out (-)">−</button>
         </span>
       </div>
       <div class="field-wrap">
-        <div id="field"></div>
-        <div id="aladin" style="display:none"></div>
-        <div id="field-legend" class="legend"></div>
+        <div class="panel">
+          <div class="panel-head">Legacy Survey DR10 <span class="muted">· click to pick host</span></div>
+          <div id="field"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">Aladin
+            <select id="aladin-survey" title="Aladin image survey">
+              <option value="P/PanSTARRS/DR1/color-z-zg-g" selected>Pan-STARRS DR1</option>
+              <option value="P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10</option>
+              <option value="P/DSS2/color">DSS2</option>
+              <option value="P/unWISE/color-W2-W1W2-W1">unWISE</option>
+              <option value="P/2MASS/color">2MASS</option>
+              <option value="P/GALEXGR6_7/color">GALEX</option>
+            </select>
+          </div>
+          <div id="aladin"></div>
+        </div>
       </div>
+      <div id="field-legend" class="legend legend-row"></div>
       <div id="field-hover" class="detail">&nbsp;</div>
-      <div class="hint">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on the image to zoom.</div>
+      <div class="hint">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on either image to zoom it.</div>
     </div>
     <div class="card">
       <div class="card-head"><h2>Detection offsets</h2><span id="astro-meta" class="muted"></span></div>
