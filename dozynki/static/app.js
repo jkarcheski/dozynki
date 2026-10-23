@@ -66,6 +66,8 @@ async function init() {
   $("#zoom-in").onclick = () => zoom(-1);
   $("#zoom-out").onclick = () => zoom(1);
   $("#field").addEventListener("wheel", (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+  document.querySelectorAll("#field-tabs button").forEach((b) => (b.onclick = () => setFieldTab(b.dataset.tab)));
+  $("#aladin-survey").onchange = (e) => aladin && setAladinSurvey(e.target.value);
   $("#notes").oninput = (e) => (form.notes = e.target.value);
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
   document.addEventListener("keydown", onKey);
@@ -117,7 +119,7 @@ function toggleAlt(k) {
 function setHost(h) {
   form.host = h;
   renderForm();
-  if (cur) { renderField(cur.evidence); renderXmatch(cur.evidence); }
+  if (cur) { renderField(cur.evidence); renderXmatch(cur.evidence); if (fieldTab === "aladin") updateAladin(cur.evidence); }
 }
 
 function renderForm() {
@@ -245,7 +247,7 @@ async function skip() {
 async function loadObject(oid) {
   $("#obj-title").textContent = `LSST ${oid}`;
   $("#lc").innerHTML = `<div class="loading">Fetching ANTARES, ALeRCE, Babamul and crossmatches…</div>`;
-  ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend"].forEach((s) => ($(s).innerHTML = ""));
+  ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"].forEach((s) => ($(s).innerHTML = ""));
   form = blankForm();
   selectedPoint = null;
   fieldFov = DEFAULT_FOV;
@@ -279,6 +281,8 @@ async function loadObject(oid) {
   renderPhase();
   renderLightcurve(ev);
   renderField(ev);
+  renderAstrometry(ev);
+  if (fieldTab === "aladin") updateAladin(ev);
   renderXmatch(ev);
   renderOpinions();
   renderForm();
@@ -497,6 +501,152 @@ function renderField(ev) {
     <div><i style="border-color:#6cf"></i>LS point source</div>
     <div><i style="border-color:#ff4;border-radius:0"></i>Gaia (bright = sig. plx/pm)</div>
     <div><i style="border-color:#ffd200;background:rgba(255,210,0,.3)"></i>your host</div>`;
+}
+
+// ---------- detection offsets (ANTARES-style polar plot) ----------
+
+function renderAstrometry(ev) {
+  const dets = ev.points.filter((p) => p.kind === "detection" && p.ra !== undefined && p.ra !== null);
+  if (!dets.length) { $("#astro").innerHTML = `<div class="muted" style="font-size:12px">no per-detection positions</div>`; return; }
+  // reference = mean LSST position (LSST astrometry is the sharper of the two)
+  const ref = dets.some((p) => p.survey === "lsst") ? dets.filter((p) => p.survey === "lsst") : dets;
+  const ra0 = ref.reduce((s, p) => s + p.ra, 0) / ref.length, dec0 = ref.reduce((s, p) => s + p.dec, 0) / ref.length;
+  const cosd = Math.cos((dec0 * Math.PI) / 180);
+  const off = dets.map((p) => {
+    const e = (p.ra - ra0) * cosd * 3600, n = (p.dec - dec0) * 3600;
+    return { p, e, n, r: Math.hypot(e, n), theta: (Math.atan2(e, n) * 180) / Math.PI }; // PA, north through east
+  });
+  const rmax = Math.max(1, ...off.map((o) => o.r)) * 1.15;
+  const tmin = Math.min(...dets.map((p) => p.mjd)), tmax = Math.max(...dets.map((p) => p.mjd));
+  const css = getComputedStyle(document.documentElement);
+  const ink = css.getPropertyValue("--ink"), line = css.getPropertyValue("--line");
+  const traces = ["lsst", "ztf"].map((s) => {
+    const o = off.filter((x) => x.p.survey === s);
+    return {
+      type: "scatterpolar", mode: "markers", name: s.toUpperCase(),
+      r: o.map((x) => x.r), theta: o.map((x) => x.theta), customdata: o.map((x) => x.p.alert_id),
+      text: o.map((x) => `MJD ${x.p.mjd.toFixed(4)} · ${x.p.band} · ${x.r.toFixed(2)}″`),
+      hovertemplate: "%{text}<extra></extra>",
+      marker: {
+        size: 8, symbol: s === "lsst" ? "circle" : "square",
+        color: o.map((x) => x.p.mjd), cmin: tmin, cmax: tmax === tmin ? tmin + 1 : tmax, colorscale: "Viridis",
+        showscale: s === "lsst", colorbar: { title: { text: "MJD", side: "right" }, thickness: 8, len: 0.8, tickformat: ".1f", x: 1.12 },
+      },
+    };
+  }).filter((t) => t.r.length);
+  Plotly.newPlot("astro", traces, {
+    margin: { l: 30, r: 70, t: 24, b: 24 }, showlegend: false,
+    paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 10 },
+    polar: {
+      bgcolor: "rgba(0,0,0,0)",
+      radialaxis: { range: [0, rmax], angle: 90, ticksuffix: "″", gridcolor: line, linecolor: line, dtick: rmax > 3 ? undefined : 0.5 },
+      // north up, east left (sky view): PA increases counterclockwise from the top
+      angularaxis: { rotation: 90, direction: "counterclockwise", tickvals: [0, 90, 180, 270], ticktext: ["DEC+", "RA+", "DEC−", "RA−"], gridcolor: line, linecolor: line },
+    },
+  }, { displaylogo: false, displayModeBar: false, responsive: true });
+  $("#astro").on("plotly_click", (d) => {
+    const p = cur.evidence.points.find((q) => q.alert_id === d.points[0].customdata);
+    if (p) selectPoint(p);
+  });
+  $("#astro-meta").textContent = `${dets.length} detections, relative to mean ${ref === dets ? "" : "LSST "}position`;
+  $("#astro-summary").innerHTML = astrometrySummary(off, ref.length);
+}
+
+function astrometrySummary(off, nRef) {
+  const lsst = off.filter((o) => o.p.survey === "lsst");
+  const rms = lsst.length > 1 ? Math.sqrt(lsst.reduce((s, o) => s + o.r * o.r, 0) / lsst.length) : null;
+  const errs = lsst.map((o) => o.p.pos_err_arcsec).filter((e) => e);
+  const medErr = errs.length ? errs.sort((a, b) => a - b)[Math.floor(errs.length / 2)] : null;
+  let html = `max offset <b>${fmt(Math.max(...off.map((o) => o.r)), 2)}″</b>`;
+  if (rms !== null) html += `<br>LSST rms scatter <b>${fmt(rms, 2)}″</b>` + (medErr ? ` <span class="muted">(median pos. err ${fmt(medErr, 3)}″)</span>` : "");
+  // apparent motion: straight-line fit of offset vs time within the same night
+  const last = Math.max(...off.map((o) => o.p.mjd));
+  const night = off.filter((o) => last - o.p.mjd < 0.5);
+  if (night.length >= 2) {
+    const fit = (key) => {
+      const tm = night.reduce((s, o) => s + o.p.mjd, 0) / night.length, ym = night.reduce((s, o) => s + o[key], 0) / night.length;
+      const sxx = night.reduce((s, o) => s + (o.p.mjd - tm) ** 2, 0);
+      return sxx > 0 ? night.reduce((s, o) => s + (o.p.mjd - tm) * (o[key] - ym), 0) / sxx : 0;
+    };
+    const span_h = (Math.max(...night.map((o) => o.p.mjd)) - Math.min(...night.map((o) => o.p.mjd))) * 24;
+    if (span_h > 0.05) {
+      const rate = Math.hypot(fit("e"), fit("n")) / 24; // arcsec / hour
+      const moving = rate * span_h > 3 * (medErr || 0.05) && rate > 0.5;
+      html += `<br>same-night motion <b>${fmt(rate, 2)}″/hr</b> over ${fmt(span_h, 2)} h` +
+        (moving ? ` <span class="pill warn">consistent with a mover</span>` : "");
+    }
+  }
+  html += `<div class="muted" style="margin-top:6px">A real stationary source clusters near the center; an asteroid
+    shows a line of points ordered in time (color). Click a point to see its cutouts.</div>`;
+  return html;
+}
+
+// ---------- Aladin Lite (loaded on first use) ----------
+
+const ALADIN_JS = "https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js";
+let fieldTab = "ls";
+let aladin = null, aladinReady = null, aladinCats = [];
+
+function setFieldTab(tab) {
+  fieldTab = tab;
+  document.querySelectorAll("#field-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  $("#field").style.display = tab === "ls" ? "" : "none";
+  $("#ls-zoom").style.display = tab === "ls" ? "" : "none";
+  $("#aladin").style.display = tab === "aladin" ? "" : "none";
+  $("#aladin-survey").style.display = tab === "aladin" ? "" : "none";
+  if (tab === "aladin" && cur) updateAladin(cur.evidence);
+}
+
+function loadAladin() {
+  // the npm build is an ES module (default export = the "A" API object)
+  aladinReady ||= import(ALADIN_JS).then(async (mod) => {
+    window.A = mod.default;
+    await A.init;
+    aladin = A.aladin("#aladin", {
+      survey: $("#aladin-survey").value, fov: DEFAULT_FOV / 3600, showReticle: true,
+      showCooGrid: false, showProjectionControl: false, showFullscreenControl: true, showLayersControl: true,
+    });
+    aladin.on("objectClicked", (obj) => {
+      const id = obj && obj.data && obj.data.ls_id;
+      const s = id && (cur?.evidence.xmatch?.legacy_survey || []).find((q) => String(q.ls_id) === id);
+      if (s) setHost(hostFrom(s));
+    });
+    return aladin;
+  });
+  return aladinReady;
+}
+
+function setAladinSurvey(id) {
+  (aladin.setBaseImageLayer || aladin.setImageSurvey).call(aladin, id);
+}
+
+async function updateAladin(ev) {
+  try { await loadAladin(); } catch (e) {
+    $("#aladin").innerHTML = `<div class="err" style="padding:12px">Aladin Lite could not start: ${esc(e.message || e)}.
+      It needs WebGL2 (current Chrome / Firefox / Safari). The LS DR10 tab still works.</div>`;
+    return;
+  }
+  if (cur?.evidence !== ev) return;
+  aladin.gotoRaDec(ev.ra, ev.dec);
+  if (aladin.removeLayers) aladin.removeLayers(); // clears overlays (catalogs), not the image layer
+  aladinCats = [];
+  const xm = ev.xmatch || {};
+  const chosen = form.host && String(form.host.ls_id);
+  const mk = (name, color, shape, items) => {
+    if (!items.length) return;
+    const cat = A.catalog({ name, color, shape, sourceSize: 14, onClick: "showPopup" });
+    aladin.addCatalog(cat);
+    cat.addSources(items);
+    aladinCats.push(cat);
+  };
+  const ls = xm.legacy_survey || [];
+  mk("LS DR10 galaxies", "#ff66aa", "circle", ls.filter((s) => s.type !== "PSF" && String(s.ls_id) !== chosen)
+    .map((s) => A.source(s.ra, s.dec, { name: `LS ${s.type}`, r: fmt(s.mag_r), z_phot: fmt(s.z_phot_median), dDLR: fmt(s.d_dlr), ls_id: String(s.ls_id) })));
+  mk("LS DR10 point sources", "#66ccff", "circle", ls.filter((s) => s.type === "PSF" && String(s.ls_id) !== chosen)
+    .map((s) => A.source(s.ra, s.dec, { name: "LS PSF", r: fmt(s.mag_r), ls_id: String(s.ls_id) })));
+  mk("Gaia DR3", "#ffff44", "plus", (xm.gaia || []).map((g) => A.source(g.RA_ICRS, g.DE_ICRS, { name: "Gaia", G: fmt(g.Gmag), plx_snr: fmt(g.plx_snr, 1), pm_snr: fmt(g.pm_snr, 1) })));
+  const host = ls.find((s) => String(s.ls_id) === chosen);
+  if (host) mk("your host", "#ffd200", "square", [A.source(host.ra, host.dec, { name: "host", ls_id: String(host.ls_id) })]);
 }
 
 const PICK_RADIUS_PX = 30;

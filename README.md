@@ -46,6 +46,15 @@ position through ALeRCE and warns when that disagrees with ANTARES. In the scien
 view, ZTF points are approximate totals (reference flux + signed difference flux), shown only
 when the nearest reference source is within 1.5″.
 
+**Detection offsets.** A polar plot (north up, east left) of each detection's position
+relative to the mean LSST position, colored by time, with the rms scatter and a same-night
+motion estimate. A stationary source clusters at the center; a mover makes a time-ordered
+line. Objects cached before positions were stored get them backfilled into a separate cache.
+
+**Aladin Lite.** The field card has an Aladin tab (DESI Legacy DR10, Pan-STARRS, DSS2,
+unWISE, 2MASS, GALEX) with the LS DR10 and Gaia crossmatches overlaid; clicking an LS
+source there also sets the host. Needs a WebGL2-capable browser.
+
 **Watchlist.** The "Watch for more data" flag parks an object (queue status `watch`).
 "Recheck watchlist" re-polls ANTARES; objects with new alerts return to the queue, and
 the next label is stored with phase `followup`. Un-toggle the flag to finish with it.

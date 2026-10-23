@@ -113,6 +113,21 @@ def _mag_to_flux(mag):
     return 10 ** (-0.4 * (mag - LSST_ZP_NJY))
 
 
+def _pos_err(ra_err_deg, dec_err_deg):
+    if ra_err_deg is None or dec_err_deg is None:
+        return None
+    return math.hypot(ra_err_deg, dec_err_deg) * 3600
+
+
+def alert_positions(locus_id):
+    """{alert_id: {ra, dec, pos_err_arcsec}} for detections; backfills objects cached before positions were kept."""
+    out = {}
+    for p in (_normalize(a) for a in _all_alerts(locus_id)):
+        if p and p.get("ra") is not None:
+            out[p["alert_id"]] = {k: p.get(k) for k in ("ra", "dec", "pos_err_arcsec")}
+    return out
+
+
 def _normalize(alert):
     """One light-curve point. Difference fluxes are put on a common nJy scale."""
     p = alert["attributes"]["properties"]
@@ -140,6 +155,9 @@ def _normalize(alert):
             "sci_mag": _flux_to_mag(sci),
             "sci_mag_err": (1.0857 * sci_err / sci) if sci and sci_err and sci > 0 else None,
             "snr": p.get("lsst_diaSource_snr"),
+            "ra": p.get("lsst_diaSource_ra", p.get("ant_ra")),
+            "dec": p.get("lsst_diaSource_dec", p.get("ant_dec")),
+            "pos_err_arcsec": _pos_err(p.get("lsst_diaSource_raErr"), p.get("lsst_diaSource_decErr")),
             "is_negative": bool(p.get("lsst_diaSource_isNegative")) or (flux is not None and flux < 0),
             "pixel_flags": flags,
             "ss_object_id": p.get("lsst_diaSource_ssObjectId") or None,
@@ -165,6 +183,8 @@ def _normalize(alert):
             "lim_mag": p.get("ztf_diffmaglim"),
             "sci_mag": None,
             "is_negative": not positive,
+            "ra": p.get("ztf_ra", p.get("ant_ra")),
+            "dec": p.get("ztf_dec", p.get("ant_dec")),
             "ss_name": p.get("ztf_ssnamenr") if p.get("ztf_ssnamenr") not in (None, "null") else None,
             "ss_dist_arcsec": p.get("ztf_ssdistnr") if (p.get("ztf_ssdistnr") or -1) >= 0 else None,
             "distnr": p.get("ztf_distnr"),

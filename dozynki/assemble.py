@@ -52,6 +52,10 @@ def load(object_id, refresh=False):
     try:
         item = db.get_queue_item(object_id)
         ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh)["data"]
+        if any(p["kind"] == "detection" and "ra" not in p for p in ant["points"]):
+            # cached before per-alert positions were kept: fetch them separately so the
+            # rest of the evidence the object was labeled with stays as it was
+            _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
         with ThreadPoolExecutor(max_workers=3) as pool:
             jobs = [
                 pool.submit(_cached, object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh),
@@ -68,7 +72,7 @@ def load(object_id, refresh=False):
 
 
 def _gather(object_id):
-    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot")}
+    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot", "positions")}
 
 
 def rerun_xmatch(object_id, radius):
@@ -127,7 +131,11 @@ def refresh_brokers(object_id):
 def evidence(object_id, raw):
     ant = raw["antares"]["data"]
     bab = (raw["babamul"] or {}).get("data") or {}
-    points = [_with_ztf_total_mag({k: v for k, v in p.items() if k not in OPINION_POINT_FIELDS}) for p in ant["points"]]
+    positions = (raw.get("positions") or {}).get("data") or {}
+    points = [
+        _with_ztf_total_mag({**positions.get(p.get("alert_id"), {}), **{k: v for k, v in p.items() if k not in OPINION_POINT_FIELDS}})
+        for p in ant["points"]
+    ]
     points += bab.get("forced_phot") or []
     lsst_ss = sorted({p["ss_object_id"] for p in points if p.get("ss_object_id")})
     ztf_ss = sorted({p["ss_name"] for p in points if p.get("ss_name")})
