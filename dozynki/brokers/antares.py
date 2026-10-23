@@ -28,15 +28,13 @@ def _search(es_query, limit):
     )
 
 
-def random_lsst_loci(n, seed, min_alerts=1):
+def random_lsst_loci(n, seed, extra_filters=()):
     """Uniform random sample over ANTARES loci that have an LSST diaObject.
 
     Note the unit is the *object* (locus), not the alert: objects with many
-    alerts are not up-weighted.
+    alerts are not up-weighted. extra_filters are ES clauses (see filters.py).
     """
-    filters = [{"exists": {"field": "properties.survey.lsst.dia_object_id"}}]
-    if min_alerts > 1:
-        filters.append({"range": {"properties.num_alerts": {"gte": min_alerts}}})
+    filters = [{"exists": {"field": "properties.survey.lsst.dia_object_id"}}, *extra_filters]
     es_query = {
         "query": {
             "function_score": {
@@ -48,6 +46,10 @@ def random_lsst_loci(n, seed, min_alerts=1):
     }
     resp = _search(es_query, n)
     return es_query, [_listing_summary(x) for x in resp.get("data", [])]
+
+
+def locus_summary(locus_id):
+    return _listing_summary(_get(f"{ANTARES_API}/loci/{locus_id}")["data"])
 
 
 def locus_for_dia_object(dia_object_id):
@@ -66,6 +68,9 @@ def _listing_summary(x):
         "dec": attr["dec"],
         "dia_object_id": dia_ids[0] if dia_ids else None,
         "num_alerts": attr["properties"].get("num_alerts"),
+        "n_det": attr["properties"].get("num_mag_values"),
+        "first_mjd": attr["properties"].get("oldest_alert_observation_time"),
+        "last_mjd": attr["properties"].get("newest_alert_observation_time"),
     }
 
 
@@ -87,10 +92,6 @@ def get_locus(locus_id):
         "num_alerts": props.get("num_alerts"),
         "points": [p for p in (_normalize(a) for a in alerts) if p],
     }
-
-
-def locus_num_alerts(locus_id):
-    return _get(f"{ANTARES_API}/loci/{locus_id}")["data"]["attributes"]["properties"].get("num_alerts") or 0
 
 
 def _all_alerts(locus_id):

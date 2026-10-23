@@ -15,12 +15,25 @@
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
     <span class="group">
       <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
-      <input id="fill-min" type="number" value="1" min="1" title="Minimum number of alerts per object">
-      <button id="fill">Sample random LSST</button>
+      <button id="fill" title="Random LSST objects from ANTARES that pass the filters below">Sample random LSST</button>
     </span>
     <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>
     <button id="export">Export</button>
+  </div>
+  <div class="filterbar" title="Applied when sampling from ANTARES and when choosing which queued object comes up next">
+    <span class="muted">Only objects with</span>
+    ≥ <input id="f-min-det" type="number" value="1" min="1" title="Detections (LSST + ZTF; upper limits not counted)"> detections
+    <span class="muted">and</span>
+    <select id="f-date-mode">
+      <option value="first">first alert</option>
+      <option value="latest">latest alert</option>
+      <option value="active">alerting</option>
+    </select>
+    <span class="muted">between</span>
+    <input id="f-date-from" type="date"> <span class="muted">and</span> <input id="f-date-to" type="date">
+    <button id="f-clear" class="small">Clear</button>
+    <span id="f-matching" class="muted"></span>
   </div>
 </header>
 

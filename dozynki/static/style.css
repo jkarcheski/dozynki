@@ -12,6 +12,10 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; padding-bottom: 190px; }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 700; letter-spacing: .04em; }
+.filterbar { flex-basis: 100%; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.filterbar input[type=number] { width: 56px; }
+.filterbar input, .filterbar select { padding: 3px 6px; }
+.filterbar.on { color: var(--accent); }
 .muted { color: var(--muted); font-weight: 400; }
 .stats { flex: 1; color: var(--muted); font-size: 13px; }
 .stats b { color: var(--ink); }

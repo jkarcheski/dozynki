@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from . import __version__, assemble, db, export, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
+from .filters import DATE_MODES, Filters
 from .labels import CLASS_BY_KEY, CLASSES, CONFIDENCE, FLAGS, TRANSIENT_SUBCLASSES, WATCH_FLAG
 
 STATIC = Path(__file__).parent / "static"
@@ -35,6 +37,7 @@ def get_config():
         "labeler": LABELER,
         "babamul_enabled": BABAMUL_ENABLED,
         "sources": list(sources.SOURCES),
+        "date_modes": list(DATE_MODES),
         "xmatch_radius": XMATCH_RADIUS_ARCSEC,
         "version": __version__,
     }
@@ -50,17 +53,29 @@ def set_blind(body: BlindToggle):
     return {"blind": state["blind"]}
 
 
-class Fill(BaseModel):
+class FilterParams(BaseModel):
+    min_det: int = 1
+    date_from: str | None = None
+    date_to: str | None = None
+    date_mode: str = "first"
+
+    def build(self):
+        try:
+            return Filters(self.min_det, self.date_from, self.date_to, self.date_mode)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+
+class Fill(FilterParams):
     source: str = "antares_random_lsst"
     n: int = 50
-    min_alerts: int = 1
 
 
 @app.post("/api/queue/fill")
 def fill(body: Fill):
     if body.source not in sources.SOURCES:
         raise HTTPException(400, f"unknown source {body.source}")
-    result = sources.SOURCES[body.source](n=body.n, min_alerts=body.min_alerts)
+    result = sources.SOURCES[body.source](n=body.n, filters=body.build())
     assemble.prefetch([r["object_id"] for r in db.next_pending(PREFETCH)])
     return result
 
@@ -78,18 +93,49 @@ def add_ids(body: AddIds):
         if not loc:
             missing.append(oid)
             continue
-        added += db.add_to_queue(loc["dia_object_id"], loc["locus_id"], loc["ra"], loc["dec"], "manual_list", {})
+        added += db.add_to_queue(loc["dia_object_id"], loc["locus_id"], loc["ra"], loc["dec"], "manual_list", {}, summary=loc)
     return {"added": added, "not_in_antares": missing}
 
 
+def _backfill_summaries():
+    """Fetch the ANTARES locus summary for pending objects queued before filters existed."""
+    missing = db.pending_missing_summary()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for row, summary in zip(missing, pool.map(lambda r: _safe_summary(r["antares_locus"]), missing)):
+            if summary:
+                db.set_summary(row["object_id"], summary)
+
+
+def _safe_summary(locus_id):
+    try:
+        return antares.locus_summary(locus_id)
+    except Exception:
+        return None
+
+
+def _queue_filter(min_det, date_from, date_to, date_mode):
+    filters = FilterParams(min_det=min_det, date_from=date_from, date_to=date_to, date_mode=date_mode).build()
+    if filters.active:
+        _backfill_summaries()
+    return filters.sql()
+
+
+@app.get("/api/queue/matching")
+def queue_matching(min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first"):
+    where, params = _queue_filter(min_det, date_from, date_to, date_mode)
+    return {"n_matching": db.count_pending(where, params), "n_pending": db.count_pending()}
+
+
 @app.get("/api/next")
-def next_object(exclude: str = ""):
+def next_object(exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first"):
     skip = tuple(x for x in exclude.split(",") if x)
-    rows = db.next_pending(PREFETCH + 1, exclude=skip)
+    where, params = _queue_filter(min_det, date_from, date_to, date_mode)
+    rows = db.next_pending(PREFETCH + 1, exclude=skip, where=where, params=params)
+    n_matching = db.count_pending(where, params)
     if not rows:
-        return {"object_id": None}
+        return {"object_id": None, "n_matching": n_matching, "n_pending": db.count_pending()}
     assemble.prefetch([r["object_id"] for r in rows[1:]])
-    return {"object_id": rows[0]["object_id"]}
+    return {"object_id": rows[0]["object_id"], "n_matching": n_matching, "n_pending": db.count_pending()}
 
 
 def _has_blind_label(object_id):
@@ -180,7 +226,9 @@ def watch_recheck():
         try:
             old = db.cache_get(oid, "antares")
             n_old = (old["data"].get("num_alerts") or len(old["data"]["points"])) if old else 0
-            n_new = antares.locus_num_alerts(item["antares_locus"])
+            summary = antares.locus_summary(item["antares_locus"])
+            db.set_summary(oid, summary)
+            n_new = summary["num_alerts"] or 0
             if n_new > n_old:
                 assemble.refresh_brokers(oid)
                 db.set_status(oid, "pending")

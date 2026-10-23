@@ -51,6 +51,7 @@ async function init() {
     if (cur) loadObject(cur.evidence.object_id);
   };
   buildLabelBar();
+  initFilters();
   $("#fill").onclick = fillQueue;
   $("#add-ids").onclick = addIds;
   $("#watch-recheck").onclick = recheckWatchlist;
@@ -137,6 +138,7 @@ function renderForm() {
 }
 
 function onKey(e) {
+  if (e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") {
     if (e.key === "Enter" && e.target.id === "notes") commit();
     if (e.key === "Enter" && e.target.id === "xm-radius") e.preventDefault();
@@ -171,12 +173,60 @@ async function refreshStats() {
     (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
 }
 
+// ---------- filters (shared by sampling and by which queued object comes next) ----------
+
+const FILTER_KEY = "dozynki.filters";
+const FILTER_FIELDS = { min_det: "#f-min-det", date_mode: "#f-date-mode", date_from: "#f-date-from", date_to: "#f-date-to" };
+
+function getFilters() {
+  return {
+    min_det: Math.max(1, +$("#f-min-det").value || 1),
+    date_mode: $("#f-date-mode").value,
+    date_from: $("#f-date-from").value,
+    date_to: $("#f-date-to").value,
+  };
+}
+
+const filterQuery = () => new URLSearchParams(getFilters()).toString();
+const filtersActive = (f = getFilters()) => f.min_det > 1 || f.date_from || f.date_to;
+
+function initFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTER_KEY) || "{}");
+    for (const [k, sel] of Object.entries(FILTER_FIELDS)) if (saved[k] !== undefined) $(sel).value = saved[k];
+  } catch {}
+  for (const sel of Object.values(FILTER_FIELDS)) $(sel).onchange = onFiltersChanged;
+  $("#f-clear").onclick = () => {
+    $("#f-min-det").value = 1; $("#f-date-from").value = ""; $("#f-date-to").value = "";
+    onFiltersChanged();
+  };
+  refreshMatching();
+}
+
+function onFiltersChanged() {
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify(getFilters())); } catch {}
+  refreshMatching();
+}
+
+async function refreshMatching() {
+  $(".filterbar").classList.toggle("on", !!filtersActive());
+  if (!filtersActive()) { $("#f-matching").textContent = ""; return; }
+  $("#f-matching").textContent = "counting…";
+  try {
+    const r = await api("/api/queue/matching?" + filterQuery());
+    $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
+  } catch (e) {
+    $("#f-matching").textContent = e.message;
+  }
+}
+
 async function fillQueue() {
-  const n = +$("#fill-n").value, min_alerts = +$("#fill-min").value;
+  const n = +$("#fill-n").value;
   $("#fill").disabled = true;
   try {
-    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, min_alerts } });
-    toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new`);
+    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters() } });
+    toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : ""), 5000);
+    refreshMatching();
     refreshStats();
     if (!cur) next();
   } catch (e) {
@@ -221,11 +271,15 @@ async function doExport() {
 }
 
 async function next() {
-  const r = await api("/api/next?exclude=" + encodeURIComponent(cur && !cur.labels.length ? [...skipped, cur.evidence.object_id].join(",") : skipped.join(",")));
+  const exclude = cur && !cur.labels.length ? [...skipped, cur.evidence.object_id] : skipped;
+  const r = await api(`/api/next?exclude=${encodeURIComponent(exclude.join(","))}&${filterQuery()}`);
+  if (filtersActive()) $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
   if (!r.object_id) {
     cur = null;
     $("#obj-title").textContent = "Queue empty";
-    $("#lc").innerHTML = `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;
+    $("#lc").innerHTML = r.n_pending && filtersActive()
+      ? `<div class="loading">No pending objects match the filters (${r.n_pending} pending don't). Sample with these filters, or loosen them.</div>`
+      : `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;
     renderForm();
     return;
   }
@@ -243,6 +297,8 @@ async function skip() {
 
 // ---------- object ----------
 
+let loadToken = 0;
+
 async function loadObject(oid) {
   window.scrollTo({ top: 0 }); // each new target starts at the cutouts
   $("#obj-title").textContent = `LSST ${oid}`;
@@ -253,12 +309,18 @@ async function loadObject(oid) {
   fieldFov = DEFAULT_FOV;
   $("#xm-radius").value = CFG.xmatch_radius;
   renderForm();
+  const token = ++loadToken;
+  cur = null; // so Commit stays disabled (and can't hit the previous object) until this one arrives
+  renderForm();
+  let data;
   try {
-    cur = await api(`/api/object/${oid}`);
+    data = await api(`/api/object/${oid}`);
   } catch (e) {
-    $("#lc").innerHTML = `<div class="loading err">Failed to load: ${esc(e.message)}</div>`;
+    if (token === loadToken) $("#lc").innerHTML = `<div class="loading err">Failed to load: ${esc(e.message)}</div>`;
     return;
   }
+  if (token !== loadToken) return; // a newer loadObject started while this one was fetching
+  cur = data;
   const ev = cur.evidence;
   const last = cur.labels[cur.labels.length - 1];
   if (last) {

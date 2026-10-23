@@ -32,6 +32,13 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 
+**Filters.** The bar under the header limits work to objects with at least N
+detections (LSST + ZTF, upper limits not counted) and/or whose first alert, latest
+alert, or alerting period falls in a date range. The same filters apply to "Sample
+random LSST" (as an ANTARES query, recorded in each object's selection parameters) and
+to which already-queued object comes up next. Note that ANTARES's "latest alert" includes
+ZTF alerts, and its LSST objects currently have first alerts only through mid-July 2026.
+
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
 *star*, or *AGN* that could be a nuclear *transient*. `is_real`/`is_transient` follow the

@@ -61,7 +61,11 @@ _conn = connect()
 _conn.executescript(SCHEMA)
 
 # Columns added after the first release; ALTER keeps existing databases and labels.
-MIGRATIONS = {"labels": {"alt_classes": "TEXT"}}  # JSON list of "could also be" classes
+MIGRATIONS = {
+    "labels": {"alt_classes": "TEXT"},  # JSON list of "could also be" classes
+    # locus summary used by the queue filters (filters.py); NULL until fetched
+    "queue": {"n_det": "INTEGER", "first_mjd": "REAL", "last_mjd": "REAL"},
+}
 for _table, _cols in MIGRATIONS.items():
     _have = {r["name"] for r in _conn.execute(f"PRAGMA table_info({_table})")}
     for _col, _type in _cols.items():
@@ -82,22 +86,38 @@ def query(sql, params=()):
         return [dict(r) for r in _conn.execute(sql, params).fetchall()]
 
 
-def add_to_queue(object_id, antares_locus, ra, dec, source, source_params):
+def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summary=None):
+    summary = summary or {}
     cur = execute(
-        "INSERT OR IGNORE INTO queue (object_id, antares_locus, ra, dec, source, source_params, added_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (str(object_id), antares_locus, ra, dec, source, json.dumps(source_params), now()),
+        "INSERT OR IGNORE INTO queue (object_id, antares_locus, ra, dec, source, source_params, added_at, "
+        "n_det, first_mjd, last_mjd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (str(object_id), antares_locus, ra, dec, source, json.dumps(source_params), now(),
+         summary.get("n_det"), summary.get("first_mjd"), summary.get("last_mjd")),
     )
     return cur.rowcount
 
 
-def next_pending(limit=1, exclude=()):
+def next_pending(limit=1, exclude=(), where="", params=()):
     marks = ",".join("?" * len(exclude))
     extra = f"AND object_id NOT IN ({marks})" if exclude else ""
+    extra += f" AND {where}" if where else ""
     return query(
         f"SELECT * FROM queue WHERE status = 'pending' {extra} ORDER BY added_at, rowid LIMIT ?",
-        (*exclude, limit),
+        (*exclude, *params, limit),
     )
+
+
+def count_pending(where="", params=()):
+    return query(f"SELECT COUNT(*) n FROM queue WHERE status = 'pending'{' AND ' + where if where else ''}", params)[0]["n"]
+
+
+def pending_missing_summary():
+    return query("SELECT object_id, antares_locus FROM queue WHERE status = 'pending' AND n_det IS NULL")
+
+
+def set_summary(object_id, summary):
+    execute("UPDATE queue SET n_det = ?, first_mjd = ?, last_mjd = ? WHERE object_id = ?",
+            (summary.get("n_det"), summary.get("first_mjd"), summary.get("last_mjd"), object_id))
 
 
 def get_queue_item(object_id):
