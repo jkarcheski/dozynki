@@ -121,7 +121,7 @@ def _normalize(alert):
 
     if code == SURVEY_LSST:
         flux, err = p.get("lsst_diaSource_psfFlux"), p.get("lsst_diaSource_psfFluxErr")
-        sci = p.get("lsst_diaSource_scienceFlux")
+        sci, sci_err = p.get("lsst_diaSource_scienceFlux"), p.get("lsst_diaSource_scienceFluxErr")
         flags = sorted(
             k.replace("lsst_diaSource_pixelFlags_", "")
             for k, v in p.items()
@@ -138,6 +138,7 @@ def _normalize(alert):
             "mag_err": (1.0857 * err / flux) if flux and err and flux > 0 else None,
             "lim_mag": _flux_to_mag(5 * err) if err else None,
             "sci_mag": _flux_to_mag(sci),
+            "sci_mag_err": (1.0857 * sci_err / sci) if sci and sci_err and sci > 0 else None,
             "snr": p.get("lsst_diaSource_snr"),
             "is_negative": bool(p.get("lsst_diaSource_isNegative")) or (flux is not None and flux < 0),
             "pixel_flags": flags,

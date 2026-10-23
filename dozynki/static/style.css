@@ -70,6 +70,8 @@ footer .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 #classes button kbd, .chips kbd { font-size: 10px; color: var(--muted); margin-left: 4px; }
 #classes button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 #classes button.on kbd { color: var(--accent-ink); }
+#classes button.alt { border: 2px dashed var(--accent); color: var(--accent); }
+#classes button.alt::after { content: " ?"; font-weight: 700; }
 .chips button, #subclasses button { padding: 2px 9px; font-size: 12px; border-radius: 12px; }
 .chips button.on, #subclasses button.on { background: var(--ink); color: var(--card); }
 #notes { flex: 1; min-width: 160px; }

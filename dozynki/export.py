@@ -48,6 +48,13 @@ def run():
     out_dir.mkdir(parents=True)
 
     labels["is_transient"] = labels["klass"].map(lambda k: CLASS_BY_KEY.get(k, {}).get("transient"))
+    # primary class plus "could also be" classes; any() over them gives the permissive reading
+    # labels made before alt_classes existed have NULL there (NaN in pandas)
+    labels["alt_classes"] = labels["alt_classes"].map(lambda a: a if isinstance(a, str) else "[]")
+    labels["all_classes"] = [[k, *json.loads(a)] for k, a in zip(labels["klass"], labels["alt_classes"])]
+    labels["possibly_real"] = labels["all_classes"].map(lambda ks: any(CLASS_BY_KEY.get(k, {}).get("real") for k in ks))
+    labels["possibly_transient"] = labels["all_classes"].map(lambda ks: any(CLASS_BY_KEY.get(k, {}).get("transient") for k in ks))
+    labels["all_classes"] = labels["all_classes"].map(json.dumps)
     labels.to_parquet(out_dir / "labels.parquet", index=False)
     labels.to_csv(out_dir / "labels.csv", index=False)
 
@@ -71,9 +78,12 @@ def run():
             "selection_source": q["source"],
             "selection_params": q["source_params"],
             "label": row["klass"],
+            "alt_labels": row["alt_classes"],
             "subclass": row["subclass"],
             "is_real": row["is_real"],
             "is_transient": row["is_transient"],
+            "possibly_real": row["possibly_real"],
+            "possibly_transient": row["possibly_transient"],
             "confidence": row["confidence"],
             "flags": row["flags"],
             "host": row["host"],

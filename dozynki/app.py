@@ -124,6 +124,7 @@ def reveal(object_id: str):
 class Label(BaseModel):
     object_id: str
     klass: str
+    alt_classes: list[str] = []  # "could also be" classes, besides the primary klass
     subclass: str | None = None
     confidence: str | None = None
     flags: list[str] = []
@@ -133,8 +134,10 @@ class Label(BaseModel):
 
 @app.post("/api/label")
 def post_label(body: Label):
-    if body.klass not in CLASS_BY_KEY:
-        raise HTTPException(400, f"unknown class {body.klass}")
+    unknown = [k for k in [body.klass, *body.alt_classes] if k not in CLASS_BY_KEY]
+    if unknown:
+        raise HTTPException(400, f"unknown class {unknown}")
+    alts = sorted(set(body.alt_classes) - {body.klass})
     if not db.get_queue_item(body.object_id):
         raise HTTPException(404, "not in queue")
     previous = db.labels_for(body.object_id)
@@ -151,7 +154,8 @@ def post_label(body: Label):
             "object_id": body.object_id,
             "phase": phase,
             "klass": body.klass,
-            "subclass": body.subclass if body.klass == "transient" else None,
+            "alt_classes": json.dumps(alts),
+            "subclass": body.subclass if "transient" in (body.klass, *alts) else None,
             "is_real": CLASS_BY_KEY[body.klass]["real"],
             "confidence": body.confidence,
             "flags": json.dumps(body.flags),

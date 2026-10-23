@@ -32,7 +32,12 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 
-Keys: `1`–`6`, `0` class · `w` watch · `Enter` commit · `n` next · `s` skip · `h` hostless · `f` cycle light-curve mode · `+`/`-` zoom.
+**Multiple classes.** Click (or press the digit) for the primary class; Shift+click
+(or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
+*star*, or *AGN* that could be a nuclear *transient*. `is_real`/`is_transient` follow the
+primary class; the export adds `alt_labels`, `possibly_real` and `possibly_transient`.
+
+Keys: `1`–`6`, `0` class · Shift+digit alternative class · `w` watch · `Enter` commit · `n` next · `s` skip · `h` hostless · `f` cycle light-curve mode · `+`/`-` zoom.
 Click anywhere near a source in the field image (the nearest one is picked) or a row of the host table to record the host.
 
 **ZTF.** ZTF detections and upper limits come from the ANTARES locus when ANTARES

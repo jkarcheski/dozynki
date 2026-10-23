@@ -109,6 +109,8 @@ def _with_ztf_total_mag(p):
         return p
     total = antares._mag_to_flux(magnr) + diff
     p["sci_mag"] = antares._flux_to_mag(total)
+    err = p.get("diff_flux_err")
+    p["sci_mag_err"] = 1.0857 * err / total if err and total > 0 else None
     p["sci_mag_approx"] = True
     return p
 

@@ -15,7 +15,7 @@ let form = blankForm();
 const skipped = [];
 
 function blankForm() {
-  return { klass: null, subclass: null, flags: new Set(), confidence: "medium", host: null, notes: "" };
+  return { klass: null, alts: new Set(), subclass: null, flags: new Set(), confidence: "medium", host: null, notes: "" };
 }
 
 const $ = (s) => document.querySelector(s);
@@ -77,7 +77,8 @@ function buildLabelBar() {
   $("#classes").innerHTML = CFG.classes
     .map((c) => `<button data-k="${c.key}">${esc(c.label)}<kbd>${c.hotkey}</kbd></button>`)
     .join("");
-  $("#classes").querySelectorAll("button").forEach((b) => (b.onclick = () => setClass(b.dataset.k)));
+  $("#classes").querySelectorAll("button").forEach((b) => (b.onclick = (e) => (e.shiftKey ? toggleAlt(b.dataset.k) : setClass(b.dataset.k))));
+  $("#classes").insertAdjacentHTML("beforeend", `<span class="muted" style="font-size:12px">click = label · shift+click / shift+key = could also be</span>`);
   $("#subclasses").innerHTML =
     `<span class="muted" style="font-size:12px">Transient type (optional):</span>` +
     CFG.transient_subclasses.map((s) => `<button data-k="${s.key}">${esc(s.label)}</button>`).join("");
@@ -97,9 +98,19 @@ function toggleFlag(k) {
   renderForm();
 }
 
+const transientPicked = () => form.klass === "transient" || form.alts.has("transient");
+
 function setClass(k) {
   form.klass = k;
-  if (k !== "transient") form.subclass = null;
+  form.alts.delete(k);
+  if (!transientPicked()) form.subclass = null;
+  renderForm();
+}
+
+function toggleAlt(k) {
+  if (k === form.klass) return;
+  form.alts.has(k) ? form.alts.delete(k) : form.alts.add(k);
+  if (!transientPicked()) form.subclass = null;
   renderForm();
 }
 
@@ -110,8 +121,11 @@ function setHost(h) {
 }
 
 function renderForm() {
-  $("#classes").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.k === form.klass));
-  $("#subclasses").style.display = form.klass === "transient" ? "" : "none";
+  $("#classes").querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.k === form.klass);
+    b.classList.toggle("alt", form.alts.has(b.dataset.k));
+  });
+  $("#subclasses").style.display = transientPicked() ? "" : "none";
   $("#subclasses").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.k === form.subclass));
   $("#flags").querySelectorAll("button").forEach((b) => b.classList.toggle("on", form.flags.has(b.dataset.k)));
   $("#confidence").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.k === form.confidence));
@@ -126,6 +140,10 @@ function onKey(e) {
     if (e.key === "Enter" && e.target.id === "notes") commit();
     if (e.key === "Enter" && e.target.id === "xm-radius") e.preventDefault();
     return;
+  }
+  if (e.shiftKey && e.code.startsWith("Digit")) {
+    const alt = CFG.classes.find((c) => c.hotkey === e.code.slice(5));
+    if (alt) return toggleAlt(alt.key);
   }
   const c = CFG.classes.find((c) => c.hotkey === e.key);
   if (c) return setClass(c.key);
@@ -243,6 +261,7 @@ async function loadObject(oid) {
   const last = cur.labels[cur.labels.length - 1];
   if (last) {
     form.klass = last.klass;
+    form.alts = new Set(JSON.parse(last.alt_classes || "[]"));
     form.subclass = last.subclass;
     form.flags = new Set(JSON.parse(last.flags || "[]"));
     form.confidence = last.confidence || "medium";
@@ -311,6 +330,7 @@ function renderLightcurve(ev) {
         y = kind === "upper_limit" ? p.lim_mag : p.mag; e = kind === "upper_limit" ? null : p.mag_err;
       } else {
         y = p.sci_mag; // ZTF: approximate ref + diff, only when the ref source is the object
+        e = p.sci_mag_err;
       }
       if (y === null || y === undefined) continue;
       xs.push(p.mjd); ys.push(y); err.push(e); data.push(p);
@@ -337,7 +357,7 @@ function renderLightcurve(ev) {
     margin: { l: 55, r: 10, t: 10, b: 40 },
     paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
     font: { color: ink, size: 11 },
-    xaxis: { title: "MJD", gridcolor: line, zeroline: false },
+    xaxis: { range: defaultTimeRange(traces), ...timeAxisFormat(defaultTimeRange(traces)), gridcolor: line, zeroline: false },
     yaxis: {
       title: { flux: "difference flux (nJy)", mag: "difference mag (AB)", sci: "total mag (LSST sci; ZTF ref+diff)" }[lcMode],
       autorange: lcMode === "flux" ? true : "reversed", gridcolor: line, zerolinecolor: ink, zeroline: lcMode === "flux",
@@ -347,11 +367,41 @@ function renderLightcurve(ev) {
   $("#lc").innerHTML = "";
   if (!traces.length) { $("#lc").innerHTML = `<div class="loading">No points in this view.</div>`; return; }
   Plotly.newPlot("lc", traces, layout, { displaylogo: false, responsive: true });
+  // keep the "Range: (date — date)" title and tick precision in step with zooming
+  $("#lc").on("plotly_relayout", (ev) => {
+    if ("xaxis.autorange" in ev) {
+      // double-click reset: back to the default window, not Plotly's tight autorange
+      const r = defaultTimeRange(traces);
+      Plotly.relayout("lc", { "xaxis.range": r, ...timeAxisFormat(r, "xaxis.") });
+    } else if ("xaxis.range[0]" in ev || "xaxis.range" in ev) {
+      Plotly.relayout("lc", timeAxisFormat($("#lc").layout.xaxis.range, "xaxis."));
+    }
+  });
   $("#lc").on("plotly_click", (d) => {
     const id = d.points[0].customdata;
     const p = cur.evidence.points.find((q) => q.alert_id === id);
     if (p) selectPoint(p);
   });
+}
+
+const MIN_TIME_RANGE = 1; // MJD; short light curves are shown in at least a 1-day window, like ANTARES
+
+function defaultTimeRange(traces) {
+  const xs = traces.flatMap((t) => t.x);
+  const lo = Math.min(...xs), hi = Math.max(...xs);
+  const pad = Math.max((hi - lo) * 0.05, (MIN_TIME_RANGE - (hi - lo)) / 2);
+  return [lo - pad, hi + pad];
+}
+
+const mjdToDate = (mjd) => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
+
+function timeAxisFormat([lo, hi], prefix = "") {
+  const decimals = Math.min(3, Math.max(0, Math.ceil(-Math.log10((hi - lo) / 8))));
+  return {
+    [`${prefix}title`]: { text: `Time (MJD) Range: (${mjdToDate(lo)} — ${mjdToDate(hi)})` },
+    [`${prefix}tickformat`]: `,.${decimals}f`,
+    [`${prefix}hoverformat`]: ",.4f",
+  };
 }
 
 async function selectPoint(p) {
@@ -649,7 +699,7 @@ function renderOpinions() {
 async function commit() {
   if (!cur || !form.klass) return;
   const body = {
-    object_id: cur.evidence.object_id, klass: form.klass, subclass: form.subclass,
+    object_id: cur.evidence.object_id, klass: form.klass, alt_classes: [...form.alts], subclass: form.subclass,
     confidence: form.confidence, flags: [...form.flags], host: form.host, notes: form.notes || null,
   };
   try {

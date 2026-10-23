@@ -60,6 +60,15 @@ def connect():
 _conn = connect()
 _conn.executescript(SCHEMA)
 
+# Columns added after the first release; ALTER keeps existing databases and labels.
+MIGRATIONS = {"labels": {"alt_classes": "TEXT"}}  # JSON list of "could also be" classes
+for _table, _cols in MIGRATIONS.items():
+    _have = {r["name"] for r in _conn.execute(f"PRAGMA table_info({_table})")}
+    for _col, _type in _cols.items():
+        if _col not in _have:
+            _conn.execute(f"ALTER TABLE {_table} ADD COLUMN {_col} {_type}")
+_conn.commit()
+
 
 def execute(sql, params=()):
     with _lock:
