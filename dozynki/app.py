@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, assemble, db, export, sources
+from . import __version__, assemble, db, evaluate, export, rejection, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
@@ -24,6 +24,11 @@ state = {"blind": BLIND_DEFAULT}
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/rejection")
+def rejection_page():
+    return FileResponse(STATIC / "rejection.html")
 
 
 @app.get("/api/config")
@@ -272,6 +277,58 @@ def thumbs(alert_id: str):
 @app.get("/api/stats")
 def stats():
     return db.stats()
+
+
+@app.get("/api/rejection/config")
+def rejection_config():
+    return {
+        "rules": [{"name": r.name, "description": r.description, "defaults": r.defaults, "broker": r.broker}
+                  for r in rejection.RULES.values()],
+        "default_pipeline": rejection.resolve(rejection.DEFAULT_PIPELINE),
+        "classes": CLASSES,
+        "transient_subclasses": TRANSIENT_SUBCLASSES,
+    }
+
+
+class Evaluation(BaseModel):
+    pipeline: list[dict]
+    truth: str = "blind"
+    target: list[str] = ["transient"]
+    include_alt: bool = False
+    all_sources: bool = False
+
+
+def _evaluate(body):
+    try:
+        report, df = evaluate.evaluate(body.pipeline, body.truth, body.target, body.include_alt, body.all_sources, save=False)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, str(e))
+    return report, df
+
+
+@app.post("/api/rejection/evaluate")
+def rejection_evaluate(body: Evaluation):
+    """Metrics for a pipeline, plus each scored object's outcome. Nothing is stored."""
+    report, df = _evaluate(body)
+    objects = df[["object_id", "truth", "subclass", "alt_classes", "target", "kept", "rejected_by"]]
+    return {**report, "objects": json.loads(objects.to_json(orient="records"))}
+
+
+class Sweep(Evaluation):
+    step: int
+    param: str
+    values: list[float]
+
+
+@app.post("/api/rejection/sweep")
+def rejection_sweep(body: Sweep):
+    if not 0 <= body.step < len(body.pipeline) or body.param == "rule":
+        raise HTTPException(400, "bad step or param")
+    try:
+        return evaluate.sweep(body.pipeline, body.step, body.param, body.values[:60], truth=body.truth,
+                              target=body.target, include_alt=body.include_alt, all_sources=body.all_sources)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/api/export")

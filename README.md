@@ -84,7 +84,20 @@ payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered
 .venv/bin/python -m dozynki.evaluate --list-rules
 .venv/bin/python -m dozynki.evaluate                       # default pipeline
 .venv/bin/python -m dozynki.evaluate --pipeline cuts.json --target real
+.venv/bin/python -m dozynki.evaluate --target transient:nuclear,agn --include-alt
 ```
+
+**Filter lab.** `http://127.0.0.1:8765/rejection` (or "Filter lab" in the vetter header)
+does the same thing interactively. It compares two pipelines, A and B, side by side.
+- Pick the target from chips: any class or transient subclass, optionally counting
+  "could also be" classes.
+- Toggle rules and edit thresholds; the metrics, the kept-by-class chart, the per-step
+  table and the list of objects A and B disagree on update as you type. Object IDs in that
+  list open in the vetter (`/?object=<id>`).
+- Sweep any threshold of A to plot completeness, purity and false-positive rate against
+  it, then click a point to set it.
+
+The page stores nothing in the database. Your settings are remembered in the browser.
 
 - **Truth** is each object's first blind label (`--truth final` for the latest label of any phase).
   Rules marked `broker` read reliability or ALeRCE output, which revealed labels may have seen.

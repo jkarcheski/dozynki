@@ -101,6 +101,14 @@ RULES = {r.name: r for r in [
          lambda f, max_sep: _within(f["milliquas_sep"], max_sep)),
     Rule("min_nights", "detected on fewer than n distinct nights", {"n": 2},
          lambda f, n: f["n_nights"] < n),
+    Rule("min_detections", "fewer than n detections (LSST + ZTF, no upper limits)", {"n": 2},
+         lambda f, n: f["n_det"] < n),
+    Rule("min_lsst_detections", "fewer than n LSST detections", {"n": 2},
+         lambda f, n: f["n_lsst_det"] < n),
+    Rule("min_span", "first to last detection spans less than days", {"days": 1.0},
+         lambda f, days: None if f["span_days"] is None else f["span_days"] < days),
+    Rule("galactic_plane", "within min_b degrees of the Galactic plane", {"min_b": 10.0},
+         lambda f, min_b: _below(f["abs_gal_b"], min_b)),
     Rule("negative_flux", "more than max_frac of LSST detections are negative difference flux",
          {"max_frac": 0.5}, lambda f, max_frac: None if f["frac_negative"] is None else f["frac_negative"] > max_frac),
     Rule("position_scatter", "LSST detection positions scatter by more than max_rms arcsec",
@@ -164,17 +172,33 @@ def first_rejection(decisions, keys=None):
     return None
 
 
-def run(object_ids, pipeline=DEFAULT_PIPELINE):
-    """Apply a pipeline and store every decision under its version."""
+_features_memo = {}  # object_id -> (newest cache fetched_at, features)
+
+
+def features_for(object_ids):
+    """features() for many objects, recomputed only when an object's cache has changed."""
+    stamps = {r["object_id"]: r["t"] for r in db.query("SELECT object_id, MAX(fetched_at) t FROM cache GROUP BY object_id")}
+    out = {}
+    for oid in object_ids:
+        hit = _features_memo.get(oid)
+        if hit is None or hit[0] != stamps.get(oid):
+            hit = _features_memo[oid] = (stamps.get(oid), features(oid))
+        out[oid] = hit[1]
+    return out
+
+
+def run(object_ids, pipeline=DEFAULT_PIPELINE, save=True):
+    """Apply a pipeline; with save, store every decision under its version."""
     pipeline = resolve(pipeline)
     ver = version(pipeline)
-    db.save_pipeline(ver, pipeline)
+    if save:
+        db.save_pipeline(ver, pipeline)
     results = {}
-    for oid in object_ids:
-        feats = features(oid)
+    for oid, feats in features_for(object_ids).items():
         if feats is None:
             continue
         decisions = apply(feats, pipeline)
-        db.save_rejections(oid, ver, decisions)
+        if save:
+            db.save_rejections(oid, ver, decisions)
         results[oid] = {"features": feats, "decisions": decisions}
     return ver, results

@@ -1,0 +1,33 @@
+/* Filter lab page; colors and controls come from style.css. */
+:root {
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --baseline: #a3a29c;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --baseline: #64635e; }
+}
+body.lab { padding-bottom: 24px; }
+.navlink { color: var(--accent); text-decoration: none; font-size: 13px; }
+.settings .chips button { margin: 1px 0; }
+.settings label { display: inline-flex; gap: 4px; align-items: center; }
+.lab-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px 16px; }
+.lab-main .wide { grid-column: 1 / -1; }
+@media (max-width: 900px) { .lab-main { grid-template-columns: 1fr; } }
+.pipe-title { display: flex; align-items: center; gap: 8px; }
+.pipe-title i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.rule { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 2px 6px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.rule:last-child { border-bottom: 0; }
+.rule.off .name, .rule.off .desc { color: var(--muted); }
+.rule .name { font-weight: 600; font-size: 13px; }
+.rule .desc { grid-column: 2 / -1; font-size: 11px; color: var(--muted); }
+.rule .params { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+.rule .params input { width: 70px; padding: 2px 6px; }
+.tag { font-size: 10px; padding: 0 5px; border-radius: 8px; background: var(--chip); color: var(--muted); margin-left: 4px; font-weight: 500; }
+.chart { height: 320px; }
+.sweep-controls { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+.sweep-controls input { width: 70px; padding: 2px 6px; }
+.sweep-controls select { padding: 3px 6px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td .ci { color: var(--muted); font-size: 11px; }
+td.better { color: var(--ok); }
+td.worse { color: var(--warn); }
+#diff a { color: var(--accent); }
