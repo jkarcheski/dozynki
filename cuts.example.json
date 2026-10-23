@@ -1,0 +1,29 @@
+[
+  {
+    "rule": "sso_association"
+  },
+  {
+    "rule": "gaia_star",
+    "max_sep": 1.0
+  },
+  {
+    "rule": "milliquas_agn",
+    "max_sep": 1.0
+  },
+  {
+    "rule": "negative_flux",
+    "max_frac": 0.5
+  },
+  {
+    "rule": "position_scatter",
+    "max_rms": 0.5
+  },
+  {
+    "rule": "min_nights",
+    "n": 2
+  },
+  {
+    "rule": "lsst_reliability",
+    "min_rel": 0.5
+  }
+]

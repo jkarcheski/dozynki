@@ -26,6 +26,7 @@ Writes exports/rejection/<timestamp>/: report.txt, metrics.json, decisions.csv
 import argparse
 import json
 import math
+import os
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -194,6 +195,8 @@ def main(argv=None):
         for rule in rejection.RULES.values():
             print(f"{rule.name:20} {'broker ' if rule.broker else '       '}{rule.defaults}  {rule.description}")
         return
+    if args.pipeline and not os.path.exists(args.pipeline):
+        ap.error(f"{args.pipeline} not found; copy cuts.example.json (the default pipeline) and edit it")
     pipeline = json.load(open(args.pipeline)) if args.pipeline else rejection.DEFAULT_PIPELINE
     report, df = evaluate(pipeline, args.truth, args.target, args.all_sources)
     text = text_report(report)

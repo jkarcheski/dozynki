@@ -72,7 +72,9 @@ Label taxonomy, flags and hotkeys live in `dozynki/labels.py`.
 
 The `filtering` branch adds cuts that *throw objects away* and scores them against
 your labels. Rules live in `dozynki/rejection.py`. Each one reads only cached
-payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered JSON list:
+payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered JSON list;
+`cuts.example.json` is the default pipeline with every parameter spelled out, so copy it
+(`cp cuts.example.json cuts.json`) and edit:
 
 ```json
 [{"rule": "gaia_star", "max_sep": 1.5}, {"rule": "min_nights", "n": 2}, {"rule": "lsst_reliability", "min_rel": 0.3}]
