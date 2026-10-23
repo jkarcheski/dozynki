@@ -244,6 +244,7 @@ async function skip() {
 // ---------- object ----------
 
 async function loadObject(oid) {
+  window.scrollTo({ top: 0 }); // each new target starts at the cutouts
   $("#obj-title").textContent = `LSST ${oid}`;
   $("#lc").innerHTML = `<div class="loading">Fetching ANTARES, ALeRCE, Babamul and crossmatches…</div>`;
   ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"].forEach((s) => ($(s).innerHTML = ""));
