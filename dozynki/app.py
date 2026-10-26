@@ -1,9 +1,10 @@
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,14 +32,22 @@ async def revalidate_static(request, call_next):
     return response
 
 
+def _page(name):
+    """An HTML page whose /static/ links carry the file's mtime, so an edited
+    app.js or style.css is a new URL that no browser has cached."""
+    html = (STATIC / name).read_text()
+    html = re.sub(r'"/static/([\w.-]+)"', lambda m: f'"/static/{m[1]}?v={int((STATIC / m[1]).stat().st_mtime)}"', html)
+    return HTMLResponse(html)
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return _page("index.html")
 
 
 @app.get("/rejection")
 def rejection_page():
-    return FileResponse(STATIC / "rejection.html")
+    return _page("rejection.html")
 
 
 @app.get("/api/config")
