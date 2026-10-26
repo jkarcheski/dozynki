@@ -58,6 +58,14 @@ relative to the mean LSST position, colored by time, with the rms scatter and a 
 motion estimate. A stationary source clusters at the center; a mover makes a time-ordered
 line. Objects cached before positions were stored get them backfilled into a separate cache.
 
+**Source classes.** Catalog matches are colored by what the catalogs report (not a classifier):
+star, galaxy, AGN/QSO, known SN/transient, unclassified. LS DR10 `type` gives star (PSF) or
+galaxy (EXP/DEV/SER); a confident Gaia (significant parallax/proper motion), Milliquas, SIMBAD or
+NED class within 1″ confirms or overrides it. Dashed outlines and a "?" mark uncertain classes
+(PSF without a Gaia star, REX, Gaia without significant motion, SIMBAD candidates, disagreeing
+catalogs); hover a marker or chip for the reasoning. The crossmatch panel lists everything within
+1″ of the alert first. Colors and SIMBAD/NED type mappings live in `static/app.js`.
+
 **Aladin Lite.** An Aladin panel sits beside the LS DR10 cutout (default Pan-STARRS; also DESI Legacy DR10, DSS2,
 unWISE, 2MASS, GALEX) with the LS DR10 and Gaia crossmatches overlaid; clicking an LS
 source there also sets the host. Needs a WebGL2-capable browser.

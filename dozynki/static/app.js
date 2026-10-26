@@ -516,6 +516,102 @@ function zoom(step) {
   if (aladin) aladin.setFoV(fieldFov / 3600);
 }
 
+// ---------- source classes (what each catalog reports, not a classifier) ----------
+
+const SRC_CLASSES = {
+  star: { color: "#4cc9f0", label: "star" },
+  galaxy: { color: "#ff66aa", label: "galaxy" },
+  agn: { color: "#b07cff", label: "AGN / QSO" },
+  transient: { color: "#ff8c1a", label: "known SN / transient" },
+  other: { color: "#b0b0b0", label: "unclassified" },
+};
+const SAME_SOURCE_ARCSEC = 1.0; // rows from different catalogs this close count as one source
+const CLASS_PRIORITY = ["agn", "star", "galaxy"]; // which confident outside class wins for an LS source
+
+const SIMBAD_AGN = new Set(["QSO", "AGN", "AG", "Sy1", "Sy2", "SyG", "Bla", "BLL", "LIN", "LeQ", "Q"]);
+const SIMBAD_GALAXY = new Set(["G", "GiG", "GiC", "GiP", "BiC", "IG", "PaG", "SBG", "H2G", "EmG", "LSB", "rG", "bCG", "ClG", "GrG", "CGG", "PoG"]);
+const SIMBAD_TRANSIENT = new Set(["SN*", "SN", "No*", "Transient", "ev"]);
+// old-style candidate codes drop the trailing * (e.g. "LP?" = long-period variable candidate)
+const SIMBAD_STAR_CAND = new Set(["LP", "HS", "WD", "BD", "EB", "CV", "RR", "Ce", "RG", "HB", "Pe", "Ae", "Be", "PM", "HV", "Mi", "TT", "Or", "Em", "pA", "WR", "OH", "Y*"]);
+const SIMBAD_CLUSTER = new Set(["GlC", "Gl", "OpC", "Cl*", "*Cl", "As*", "C?*"]);
+
+function simbadClass(otype) {
+  const raw = String(otype || "");
+  const sure = !/\?|_Candidate$/.test(raw);
+  const t = raw.replace(/_Candidate$|\?$/, "");
+  const cls = SIMBAD_TRANSIENT.has(t) ? "transient" : SIMBAD_AGN.has(t) ? "agn" : SIMBAD_GALAXY.has(t) ? "galaxy"
+    : SIMBAD_CLUSTER.has(t) ? "other" : t.endsWith("*") || SIMBAD_STAR_CAND.has(t) ? "star" : "other";
+  return { cls, sure: sure && cls !== "other" };
+}
+
+function nedClass(type) {
+  const t = String(type || "");
+  if (t === "SN" || t === "Nova") return { cls: "transient", sure: true };
+  if (/^(QSO|AGN|Q_Lens|BLLac|Sy)/.test(t)) return { cls: "agn", sure: true };
+  if (/^G/.test(t)) return { cls: "galaxy", sure: true };
+  if (t.endsWith("*")) return { cls: "star", sure: true };
+  return { cls: "other", sure: false }; // IrS, VisS, UvS, RadioS ...: unclassified detections
+}
+
+// {cls, sure, why} for one catalog row, from that catalog alone
+function srcClass(cat, r) {
+  const at = `${fmt(r.sep, 1)}″`;
+  if (cat === "ls") {
+    if (r.type === "PSF") return { cls: "star", sure: false, why: `LS PSF at ${at} (point source: star or QSO)` };
+    if (r.type === "REX") return { cls: "galaxy", sure: false, why: `LS REX at ${at} (barely resolved)` };
+    if (["EXP", "DEV", "SER"].includes(r.type)) return { cls: "galaxy", sure: true, why: `LS ${r.type} at ${at}` };
+    return { cls: "other", sure: false, why: `LS ${r.type} at ${at}` };
+  }
+  if (cat === "gaia") {
+    return r.likely_star
+      ? { cls: "star", sure: true, why: `Gaia at ${at}, plx S/N ${fmt(r.plx_snr, 1)}, pm S/N ${fmt(r.pm_snr, 1)}` }
+      : { cls: "star", sure: false, why: `Gaia at ${at}, no significant plx/pm` };
+  }
+  if (cat === "milliquas") {
+    const sure = /^[QABKN]/.test(r.Type || ""); // R, X, 2 alone are radio/X-ray candidates
+    return { cls: "agn", sure, why: `Milliquas ${r.Type} at ${at}` };
+  }
+  if (cat === "simbad") return { ...simbadClass(r.otype), why: `SIMBAD ${r.otype} at ${at}` };
+  if (cat === "ned") return { ...nedClass(r.type), why: `NED ${r.type} at ${at}` };
+  return { cls: "other", sure: false, why: `${cat} at ${at}` };
+}
+
+function literatureRows(xm) {
+  return ["gaia", "milliquas", "simbad", "ned"].flatMap((cat) => (xm[cat] || []).map((r) => ({ cat, r, c: srcClass(cat, r) })));
+}
+
+const offsetSep = (a, b) => Math.hypot(a.d_east - b.d_east, a.d_north - b.d_north);
+
+// LS shape says star or galaxy; a confident class from another catalog at the
+// same spot (Gaia parallax, Milliquas, SIMBAD/NED type) confirms or overrides it.
+function lsClass(s, xm) {
+  const own = srcClass("ls", s);
+  const near = literatureRows(xm).filter((o) => o.c.sure && CLASS_PRIORITY.includes(o.c.cls) && offsetSep(s, o.r) <= SAME_SOURCE_ARCSEC);
+  if (!near.length) return own;
+  const best = CLASS_PRIORITY.find((k) => near.some((o) => o.c.cls === k));
+  const why = [own.why, ...near.map((o) => o.c.why)].join("; ");
+  if (best === own.cls) return { cls: own.cls, sure: true, why };
+  if (own.sure) return { cls: own.cls, sure: false, why: `${why} (catalogs disagree)` };
+  return { cls: best, sure: true, why };
+}
+
+function classChip(c, detail) {
+  const k = SRC_CLASSES[c.cls];
+  const unsure = !c.sure && c.cls !== "other";
+  return `<span class="cls ${unsure ? "unsure" : ""}" style="--c:${k.color}" title="${esc(c.why)}">${esc(k.label)}${unsure ? "?" : ""}${detail ? ` · ${esc(detail)}` : ""}</span>`;
+}
+
+// every catalog row within SAME_SOURCE_ARCSEC of the alert, so it's clear what sits underneath
+function classSummary(xm) {
+  const rows = [
+    ...(xm.legacy_survey || []).map((s) => ({ sep: s.sep, c: lsClass(s, xm), name: `LS ${s.type}` })),
+    ...literatureRows(xm).map((o) => ({ sep: o.r.sep, c: o.c, name: { gaia: "Gaia", milliquas: "Milliquas", simbad: `SIMBAD ${o.r.otype}`, ned: `NED ${o.r.type}` }[o.cat] })),
+  ].filter((o) => o.sep !== null && o.sep !== undefined && o.sep <= SAME_SOURCE_ARCSEC).sort((a, b) => a.sep - b.sep);
+  const body = rows.map((o) => classChip(o.c, `${o.name} ${fmt(o.sep, 1)}″`)).join("")
+    || `<span class="muted">no catalog source within ${SAME_SOURCE_ARCSEC}″</span>`;
+  return `<h3>At the alert position (≤${SAME_SOURCE_ARCSEC}″)</h3><div>${body}</div>`;
+}
+
 function renderField(ev) {
   const xm = ev.xmatch || {};
   const pixscale = (fieldFov / LS_SIZE).toFixed(4);
@@ -526,16 +622,24 @@ function renderField(ev) {
   const chosen = form.host && form.host.ls_id;
   let svg = "";
   const scale = toPx(0, 0)[2];
+  const dash = (c) => (c.sure ? "" : `stroke-dasharray="3 2"`);
   for (const s of xm.legacy_survey || []) {
     const [x, y] = toPx(s.d_east, s.d_north);
+    const c = lsClass(s, xm), color = SRC_CLASSES[c.cls].color;
+    const title = `<title>${esc(SRC_CLASSES[c.cls].label)}${c.sure ? "" : "?"} r=${fmt(s.mag_r)}: ${esc(c.why)}</title>`;
     if (s.type === "PSF" || !s.a) {
-      svg += `<circle class="src" data-ls="${s.ls_id}" cx="${x}" cy="${y}" r="5" fill="none" stroke="#6cf" stroke-width="1.2"><title>LS ${s.type} r=${fmt(s.mag_r)}</title></circle>`;
+      svg += `<circle class="src" data-ls="${s.ls_id}" cx="${x}" cy="${y}" r="5" fill="none" stroke="${color}" stroke-width="1.4" ${dash(c)}>${title}</circle>`;
     } else {
       const isChosen = String(s.ls_id) === String(chosen);
       svg += `<ellipse class="src" data-ls="${s.ls_id}" cx="${x}" cy="${y}" rx="${Math.max(s.b * scale, 3)}" ry="${Math.max(s.a * scale, 3)}"
-        transform="rotate(${-s.pa_deg} ${x} ${y})" fill="${isChosen ? "rgba(255,210,0,.25)" : "none"}" stroke="${isChosen ? "#ffd200" : "#f6a"}" stroke-width="${isChosen ? 2.5 : 1.3}">
-        <title>LS ${s.type} r=${fmt(s.mag_r)} zphot=${fmt(s.z_phot_median)} dDLR=${fmt(s.d_dlr)}</title></ellipse>`;
+        transform="rotate(${-s.pa_deg} ${x} ${y})" fill="${isChosen ? "rgba(255,210,0,.25)" : "none"}" stroke="${isChosen ? "#ffd200" : color}" stroke-width="${isChosen ? 2.5 : 1.4}" ${isChosen ? "" : dash(c)}>
+        ${title.replace("</title>", ` zphot=${fmt(s.z_phot_median)} dDLR=${fmt(s.d_dlr)}</title>`)}</ellipse>`;
     }
+  }
+  // SIMBAD / NED / Milliquas positions as diamonds; unclassified ones (IrS, VisS ...) stay table-only
+  for (const o of literatureRows(xm).filter((o) => o.cat !== "gaia" && o.c.cls !== "other")) {
+    const [x, y] = toPx(o.r.d_east, o.r.d_north);
+    svg += `<path d="M${x} ${y - 6}l6 6l-6 6l-6 -6z" fill="none" stroke="${SRC_CLASSES[o.c.cls].color}" stroke-width="1.4" ${dash(o.c)}><title>${esc(o.c.why)}</title></path>`;
   }
   (xm.host_candidates || []).forEach((h, i) => {
     const [x, y] = toPx(h.d_east, h.d_north);
@@ -548,8 +652,7 @@ function renderField(ev) {
   }
   for (const g of xm.gaia || []) {
     const [x, y] = toPx(g.d_east, g.d_north);
-    const c = g.likely_star ? "#ff4" : "#bb8";
-    svg += `<path d="M${x - 6} ${y}h12M${x} ${y - 6}v12" stroke="${c}" stroke-width="1.5"><title>Gaia G=${fmt(g.Gmag)} plxSNR=${fmt(g.plx_snr, 1)} pmSNR=${fmt(g.pm_snr, 1)}</title></path>`;
+    svg += `<path d="M${x - 6} ${y}h12M${x} ${y - 6}v12" stroke="${SRC_CLASSES.star.color}" stroke-width="${g.likely_star ? 2 : 1.2}" stroke-opacity="${g.likely_star ? 1 : 0.6}"><title>Gaia G=${fmt(g.Gmag)} plxSNR=${fmt(g.plx_snr, 1)} pmSNR=${fmt(g.pm_snr, 1)}</title></path>`;
   }
   const c = FIELD_PX / 2;
   if (xm.radius_arcsec && xm.radius_arcsec * scale < FIELD_PX * 0.7) {
@@ -562,9 +665,9 @@ function renderField(ev) {
   attachHostPicker(xm);
   $("#field-legend").innerHTML = `
     <div><i style="border-color:#0f0"></i>alert position</div>
-    <div><i style="border-color:#f6a"></i>LS galaxy (half-light ellipse)</div>
-    <div><i style="border-color:#6cf"></i>LS point source</div>
-    <div><i style="border-color:#ff4;border-radius:0"></i>Gaia (bright = sig. plx/pm)</div>
+    ${Object.values(SRC_CLASSES).map((k) => `<div><i style="border-color:${k.color}"></i>${k.label}</div>`).join("")}
+    <div><i style="border-color:var(--muted);border-style:dashed"></i>dashed = uncertain</div>
+    <div>○ LS (ellipse = half-light) · ◇ SIMBAD/NED/Milliquas · + Gaia (bold = sig. plx/pm)</div>
     <div><i style="border-color:#ffd200;background:rgba(255,210,0,.3)"></i>your host</div>`;
 }
 
@@ -694,12 +797,17 @@ async function updateAladin(ev) {
     cat.addSources(items);
     aladinCats.push(cat);
   };
-  const ls = xm.legacy_survey || [];
-  mk("LS DR10 galaxies", "#ff66aa", "circle", ls.filter((s) => s.type !== "PSF" && String(s.ls_id) !== chosen)
-    .map((s) => A.source(s.ra, s.dec, { name: `LS ${s.type}`, r: fmt(s.mag_r), z_phot: fmt(s.z_phot_median), dDLR: fmt(s.d_dlr), ls_id: String(s.ls_id) })));
-  mk("LS DR10 point sources", "#66ccff", "circle", ls.filter((s) => s.type === "PSF" && String(s.ls_id) !== chosen)
-    .map((s) => A.source(s.ra, s.dec, { name: "LS PSF", r: fmt(s.mag_r), ls_id: String(s.ls_id) })));
-  mk("Gaia DR3", "#ffff44", "plus", (xm.gaia || []).map((g) => A.source(g.RA_ICRS, g.DE_ICRS, { name: "Gaia", G: fmt(g.Gmag), plx_snr: fmt(g.plx_snr, 1), pm_snr: fmt(g.pm_snr, 1) })));
+  const ls = (xm.legacy_survey || []).filter((s) => String(s.ls_id) !== chosen).map((s) => ({ s, c: lsClass(s, xm) }));
+  const lit = literatureRows(xm).filter((o) => o.cat !== "gaia" && o.c.cls !== "other");
+  const ra = (r) => r.ra ?? r.RAJ2000, dec = (r) => r.dec ?? r.DEJ2000;
+  for (const [k, cls] of Object.entries(SRC_CLASSES)) {
+    const label = (c) => `${cls.label}${c.sure || k === "other" ? "" : "?"}`;
+    mk(`LS DR10: ${cls.label}`, cls.color, "circle", ls.filter((o) => o.c.cls === k)
+      .map(({ s, c }) => A.source(s.ra, s.dec, { name: `LS ${s.type}`, class: label(c), why: c.why, r: fmt(s.mag_r), z_phot: fmt(s.z_phot_median), dDLR: fmt(s.d_dlr), ls_id: String(s.ls_id) })));
+    mk(`SIMBAD/NED/Milliquas: ${cls.label}`, cls.color, "rhomb", lit.filter((o) => o.c.cls === k && ra(o.r) !== undefined)
+      .map(({ r, c }) => A.source(ra(r), dec(r), { name: c.why, class: label(c) })));
+  }
+  mk("Gaia DR3", SRC_CLASSES.star.color, "plus", (xm.gaia || []).map((g) => A.source(g.RA_ICRS, g.DE_ICRS, { name: "Gaia", G: fmt(g.Gmag), plx_snr: fmt(g.plx_snr, 1), pm_snr: fmt(g.pm_snr, 1) })));
   const host = ls.find((s) => String(s.ls_id) === chosen);
   if (host) mk("your host", "#ffd200", "square", [A.source(host.ra, host.dec, { name: "host", ls_id: String(host.ls_id) })]);
 }
@@ -767,16 +875,17 @@ function renderXmatch(ev) {
     ${ev.ztf_object_id ? `<span class="pill">ANTARES ZTF assoc: ${esc(ev.ztf_object_id)}</span>` : ""}
   </div>`;
   html += `<div id="skybot-out" style="font-size:12px">${renderSkybot(ev.skybot)}</div>`;
+  html += classSummary(xm);
   const chosen = form.host && form.host.ls_id;
+  const clsCol = (cat) => ["class", (r) => classChip(cat === "ls" ? lsClass(r, xm) : srcClass(cat, r))];
   html += `<h3>Host candidates (LS DR10, ranked by d<sub>DLR</sub>)</h3>` +
     table(xm.host_candidates, [
-      ["ls_id", (r) => String(r.ls_id).slice(-7)], ["type", "type"], ["sep″", "sep", 1], ["dDLR", "d_dlr", 2],
+      clsCol("ls"), ["ls_id", (r) => String(r.ls_id).slice(-7)], ["type", "type"], ["sep″", "sep", 1], ["dDLR", "d_dlr", 2],
       ["r", "mag_r", 2], ["z_phot", (r) => `${fmt(r.z_phot_median)} <span class="muted">[${fmt(r.z_phot_l68)}–${fmt(r.z_phot_u68)}]</span>`],
       ["z_spec", "z_spec", 4],
     ], { id: "hosts", rowClass: (r) => "clickable" + (String(r.ls_id) === String(chosen) ? " chosen" : "") });
   html += `<h3>Gaia DR3</h3>` + table(xm.gaia, [
-    ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
-    ["star?", (r) => (r.likely_star ? `<span class="pill warn">yes</span>` : "")],
+    clsCol("gaia"), ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
   ]);
   html += `<h3>ZTF objects (ALeRCE position search, ≤30″)</h3>`;
   if (xm.ztf === undefined) {
@@ -792,9 +901,9 @@ function renderXmatch(ev) {
       ["", (r) => (r.oid === antZ ? `<span class="pill">ANTARES assoc</span>` : "")],
     ]);
   }
-  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]]);
-  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]]);
-  html += `<h3>NED</h3>` + table(xm.ned, [["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]]);
+  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [clsCol("milliquas"), ["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]]);
+  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [clsCol("simbad"), ["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]]);
+  html += `<h3>NED</h3>` + table(xm.ned, [clsCol("ned"), ["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]]);
   html += `<h3>PS1</h3>` + table(xm.ps1, [["sep″", "sep", 1], ["g", "gmag"], ["r", "rmag"], ["i", "imag"], ["z", "zmag"]]);
   const errs = Object.entries(xm.errors || {});
   if (errs.length) html += `<div class="err">${errs.map(([k, v]) => `${k}: ${esc(v)}`).join("<br>")}</div>`;

@@ -74,6 +74,10 @@ tr.chosen td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .err { color: var(--warn); font-size: 12px; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 10px; background: var(--chip); margin: 1px 3px 1px 0; font-size: 12px; }
 .pill.warn { background: color-mix(in srgb, var(--warn) 25%, transparent); }
+.cls { display: inline-block; padding: 0 7px 0 5px; border-radius: 10px; margin: 1px 3px 1px 0; font-size: 12px; border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); }
+.cls::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 4px; vertical-align: 0; }
+.cls.unsure { border-style: dashed; background: transparent; }
+.cls.unsure::before { background: transparent; border: 1.5px solid var(--c); width: 5px; height: 5px; }
 .bar { height: 6px; background: var(--accent); border-radius: 3px; display: inline-block; vertical-align: middle; }
 .hidden-note { color: var(--muted); font-style: italic; }
 footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line); padding: 8px 16px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
