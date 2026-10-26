@@ -21,6 +21,16 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 state = {"blind": BLIND_DEFAULT}
 
 
+@app.middleware("http")
+async def revalidate_static(request, call_next):
+    """Without Cache-Control, browsers heuristically cache app.js/style.css and
+    keep running old code after an edit; no-cache makes them check the ETag."""
+    response = await call_next(request)
+    if request.url.path in ("/", "/rejection") or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")

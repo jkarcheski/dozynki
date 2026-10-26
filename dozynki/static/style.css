@@ -56,10 +56,10 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: u
 #aladin-survey { padding: 2px 6px; font-size: 12px; }
 .triplet-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
 .triplet { flex: 0 1 auto; min-width: 0; }
-.astro-box { flex: 1 1 240px; min-width: 240px; max-width: 320px; }
+.astro-box { flex: 1 1 210px; min-width: 210px; max-width: 250px; }
 .astro-box .panel-head { height: auto; flex-wrap: wrap; }
 .astro-box .panel-head .muted { font-weight: 400; }
-#astro { width: 100%; height: 200px; }
+#astro { width: 100%; height: 160px; }
 #astro-summary { margin-top: 2px; }
 #field svg { position: absolute; inset: 0; }
 #field svg { cursor: crosshair; }

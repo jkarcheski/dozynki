@@ -696,15 +696,15 @@ function renderAstrometry(ev) {
       text: o.map((x) => `MJD ${x.p.mjd.toFixed(4)} · ${x.p.band} · ${x.r.toFixed(2)}″`),
       hovertemplate: "%{text}<extra></extra>",
       marker: {
-        size: 8, symbol: s === "lsst" ? "circle" : "square",
+        size: 6, symbol: s === "lsst" ? "circle" : "square",
         color: o.map((x) => x.p.mjd), cmin: tmin, cmax: tmax === tmin ? tmin + 1 : tmax, colorscale: "Viridis",
-        showscale: s === "lsst", colorbar: { title: { text: "MJD", side: "right" }, thickness: 8, len: 0.8, tickformat: ".1f", x: 1.12 },
+        showscale: s === "lsst", colorbar: { title: { text: "MJD", side: "right" }, thickness: 6, len: 0.9, tickformat: ".1f", x: 1.1 },
       },
     };
   }).filter((t) => t.r.length);
   Plotly.newPlot("astro", traces, {
-    margin: { l: 28, r: 64, t: 18, b: 18 }, showlegend: false,
-    paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 10 },
+    margin: { l: 24, r: 56, t: 14, b: 14 }, showlegend: false,
+    paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 9 },
     polar: {
       bgcolor: "rgba(0,0,0,0)",
       radialaxis: { range: [0, rmax], angle: 90, ticksuffix: "″", gridcolor: line, linecolor: line, dtick: rmax > 3 ? undefined : 0.5 },
