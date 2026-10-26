@@ -703,7 +703,7 @@ function renderAstrometry(ev) {
     };
   }).filter((t) => t.r.length);
   Plotly.newPlot("astro", traces, {
-    margin: { l: 30, r: 70, t: 24, b: 24 }, showlegend: false,
+    margin: { l: 28, r: 64, t: 18, b: 18 }, showlegend: false,
     paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 10 },
     polar: {
       bgcolor: "rgba(0,0,0,0)",
@@ -744,8 +744,6 @@ function astrometrySummary(off, nRef) {
         (moving ? ` <span class="pill warn">consistent with a mover</span>` : "");
     }
   }
-  html += `<div class="muted" style="margin-top:6px">A real stationary source clusters near the center; an asteroid
-    shows a line of points ordered in time (color). Click a point to see its cutouts.</div>`;
   return html;
 }
 
