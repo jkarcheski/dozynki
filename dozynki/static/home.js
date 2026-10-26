@@ -9,8 +9,22 @@ async function api(path) {
   return r.json();
 }
 
+function renderLeaderboard(lb, me) {
+  const top = Math.max(1, ...lb.labelers.map((r) => r.objects));
+  $("#leaderboard").innerHTML =
+    `<tr><th class="num">#</th><th>Labeler</th><th class="num">Objects</th><th></th><th class="num">Blind</th>`
+    + `<th class="num">Last ${lb.days} days</th><th>Last label</th></tr>`
+    + lb.labelers.map((r, i) => `<tr${r.labeler === me ? ' class="me"' : ""}><td class="num">${i + 1}</td>`
+      + `<td>${esc(r.labeler)}</td><td class="num">${r.objects}</td>`
+      + `<td class="lb-bar"><i style="width:${(100 * r.objects / top).toFixed(1)}%"></i></td>`
+      + `<td class="num">${r.blind}</td><td class="num">${r.recent}</td>`
+      + `<td class="muted">${esc((r.last_at || "").slice(0, 10))}</td></tr>`).join("")
+    || `<tr><td class="muted">No labels yet.</td></tr>`;
+}
+
 async function init() {
-  const [cfg, s] = await Promise.all([api("/api/config"), api("/api/stats")]);
+  const [cfg, s, lb] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard")]);
+  renderLeaderboard(lb, cfg.labeler);
   const q = s.queue;
   if (cfg.labeler) $("#labeler").innerHTML = `labeling as <b>${esc(cfg.labeler)}</b>`;
   $("#blind").textContent = cfg.blind ? "blind mode on" : "blind mode off";

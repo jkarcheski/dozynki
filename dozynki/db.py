@@ -3,7 +3,7 @@
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .config import DB_PATH
 
@@ -191,3 +191,15 @@ def stats():
         "HAVING COUNT(DISTINCT klass) > 1)"
     )[0]["n"]
     return {"queue": q, "by_class": {r["klass"]: r["n"] for r in by_class}, "revised_after_reveal": changed}
+
+
+def leaderboard(days=7):
+    """Objects labeled per labeler, overall and in the last `days` days, most first."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+    return query(
+        "SELECT COALESCE(labeler, 'anonymous') labeler, COUNT(DISTINCT object_id) objects, "
+        "COUNT(DISTINCT CASE WHEN phase = 'blind' THEN object_id END) blind, "
+        "COUNT(DISTINCT CASE WHEN created_at >= ? THEN object_id END) recent, MAX(created_at) last_at "
+        "FROM labels GROUP BY COALESCE(labeler, 'anonymous') ORDER BY objects DESC, labeler",
+        (since,),
+    )

@@ -335,6 +335,11 @@ def stats():
     return db.stats()
 
 
+@app.get("/api/leaderboard")
+def leaderboard(days: int = 7):
+    return {"days": days, "labelers": db.leaderboard(days)}
+
+
 @app.get("/api/rejection/config")
 def rejection_config():
     return {
