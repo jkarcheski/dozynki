@@ -1,0 +1,18 @@
+/* Label comparison page; shares rejection.css for the lab layout. */
+.settings select { padding: 3px 6px; max-width: 340px; }
+.settings input[type=number] { width: 60px; }
+.cmp-main { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
+@media (max-width: 1200px) { .cmp-main { grid-template-columns: 1fr; } }
+table.cm { width: auto; }
+.cm th, .cm td { text-align: center; padding: 6px 8px; }
+.cm th.axis { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.cm th .maps { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
+.cm td.c { cursor: pointer; min-width: 58px; font-variant-numeric: tabular-nums; border: 2px solid var(--card); border-radius: 4px; }
+.cm td.c:hover { outline: 2px solid var(--muted); outline-offset: -2px; }
+.cm td.c.agree { box-shadow: inset 0 0 0 2px var(--ink); }
+.cm td.c.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cm td.c .sub { display: block; font-size: 10px; color: var(--muted); }
+.cm td.c.dark .sub { color: inherit; opacity: .8; }
+.cm td.tot { color: var(--muted); font-variant-numeric: tabular-nums; }
+#summary tr.clickable:hover td { background: var(--chip); }
+#cell a { color: var(--accent); }

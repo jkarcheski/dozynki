@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI compare</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <link rel="stylesheet" href="/static/compare.css">
+</head>
+<body class="lab">
+<header>
+  <div class="brand">DOZYNKI <span class="muted">compare labels</span></div>
+  <div id="pop" class="stats"></div>
+  <div class="controls"><a href="/" class="navlink">Vetter →</a> <a href="/rejection" class="navlink">Filter lab →</a></div>
+  <div class="filterbar settings">
+    <span class="muted">Reference (rows)</span> <select id="ref"></select>
+    <button id="swap" class="small" title="Swap reference and compared">⇄</button>
+    <span class="muted">compared (columns)</span> <select id="comp"></select>
+  </div>
+  <div class="filterbar settings">
+    <span class="muted">Classes</span>
+    <span class="seg" id="view"><button data-v="class">all</button><button data-v="real">real vs not</button><button data-v="transient">transient vs not</button></span>
+    <span class="muted">· shade by</span>
+    <span class="seg" id="norm"><button data-v="row">% of row</button><button data-v="col">% of column</button><button data-v="count">count</button></span>
+    <label title="Leave out objects whose ALeRCE top class has a lower probability than this">ALeRCE top p ≥ <input id="min-prob" type="number" min="0" max="1" step="0.05"></label>
+    <label title="Count a match with one of the 'could also be' classes as agreement (second accuracy row)"><input type="checkbox" id="include-alt"> incl. could-also-be</label>
+    <label title="Also compare objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+  </div>
+</header>
+
+<main class="lab-main cmp-main">
+  <section class="card">
+    <div class="card-head"><h2>Confusion matrix</h2><span class="hint">click a cell to list its objects · outlined = counts as agreement</span></div>
+    <div class="tablewrap"><table id="matrix" class="cm"></table></div>
+    <div id="err" class="err"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Agreement</h2><span class="hint">value [95% interval] (k/n)</span></div>
+    <div class="tablewrap"><table id="metrics"></table></div>
+    <h3>Per class</h3>
+    <div class="tablewrap"><table id="per-class"></table></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Every source against the reference</h2><span class="hint">click a row to compare it</span></div>
+    <div class="tablewrap"><table id="summary"></table></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2 id="cell-title">Disagreements</h2><span class="hint">click an ID to open it in the vetter · <button id="show-all-dis" class="small">all disagreements</button></span></div>
+    <div class="tablewrap"><table id="cell"></table></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/static/compare.js"></script>
+</body>
+</html>

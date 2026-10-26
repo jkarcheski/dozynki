@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, assemble, db, evaluate, export, rejection, sources
+from . import __version__, assemble, compare, db, evaluate, export, rejection, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
@@ -27,7 +27,7 @@ async def revalidate_static(request, call_next):
     """Without Cache-Control, browsers heuristically cache app.js/style.css and
     keep running old code after an edit; no-cache makes them check the ETag."""
     response = await call_next(request)
-    if request.url.path in ("/", "/rejection") or request.url.path.startswith("/static/"):
+    if request.url.path in ("/", "/rejection", "/compare") or request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -48,6 +48,11 @@ def index():
 @app.get("/rejection")
 def rejection_page():
     return _page("rejection.html")
+
+
+@app.get("/compare")
+def compare_page():
+    return _page("compare.html")
 
 
 @app.get("/api/config")
@@ -347,6 +352,39 @@ def rejection_sweep(body: Sweep):
         return evaluate.sweep(body.pipeline, body.step, body.param, body.values[:60], truth=body.truth,
                               target=body.target, include_alt=body.include_alt, all_sources=body.all_sources)
     except (ValueError, KeyError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/compare/config")
+def compare_config():
+    return {"sources": compare.sources(), "views": list(compare.VIEWS), "alerce_classes": compare.ALERCE_CLASSES,
+            "classes": CLASSES}
+
+
+class Comparison(BaseModel):
+    ref: str
+    comp: str
+    view: str = "class"
+    min_prob: float = 0.0
+    include_alt: bool = False
+    all_sources: bool = False
+
+
+@app.post("/api/compare")
+def compare_sources(body: Comparison):
+    """Confusion matrix of two label sources. Nothing is stored."""
+    try:
+        return compare.compare(body.ref, body.comp, body.view, body.min_prob, body.include_alt, body.all_sources)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/compare/summary")
+def compare_summary(body: Comparison):
+    try:
+        return compare.summary(body.ref, view=body.view, min_prob=body.min_prob, include_alt=body.include_alt,
+                               all_sources=body.all_sources)
+    except ValueError as e:
         raise HTTPException(400, str(e))
 
 

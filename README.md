@@ -121,6 +121,23 @@ Every step's decision is stored in the `rejections` table under the pipeline's v
 hash, and each run writes `exports/rejection/<timestamp>/` (`report.txt`, `metrics.json`,
 `decisions.csv` with the features behind each decision).
 
+## Comparing labels
+
+`http://127.0.0.1:8765/compare` (or "Compare" in the header) draws a confusion matrix between
+any two label sources: each labeler's first blind or latest labels, and every ALeRCE
+classifier found in the cache (top class). Nothing is stored. Code lives in `dozynki/compare.py`.
+- Each source keeps its own class names (ALeRCE "SN", "VS", …), so the matrix need not be
+  square. Agreement maps both sides onto the DOZYNKI classes with `ALERCE_CLASSES`; outlined
+  cells count as agreement. "unsure" and unmapped classes (e.g. ALeRCE "Stochastic") are left out and counted.
+- View all classes, or collapse to real vs not real, or transient vs not transient.
+- Accuracy (Wilson 95%), Cohen's κ, and per-class recall / precision / F1. The reference is the rows.
+- "ALeRCE top p ≥" drops low-confidence broker calls; "incl. could-also-be" adds an accuracy
+  that also accepts a match with an alternative class.
+- A table scores every source against the reference. Click a matrix cell to list its objects,
+  most confident broker calls first, with links into the vetter.
+- Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
+- Like the filter lab, only the uniform random sample is used unless "non-random objects too" is on.
+
 ## Export
 
 The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/`:
@@ -136,6 +153,7 @@ The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/
 ```
 dozynki/
   app.py            FastAPI endpoints
+  compare.py        confusion matrices between label sources (labelers, ALeRCE)
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions)
   crossmatch.py     independent catalog crossmatch + DLR
