@@ -365,7 +365,7 @@ async function init() {
   await load();
   $("#map").on("plotly_click", (ev) => {
     const id = ev.points[0]?.customdata;
-    if (id) window.open(`/?object=${encodeURIComponent(id)}`, "_blank");
+    if (id) window.open(`/vet?object=${encodeURIComponent(id)}`, "_blank");
   });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 }

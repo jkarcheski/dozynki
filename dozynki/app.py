@@ -2,9 +2,10 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -22,42 +23,68 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 state = {"blind": BLIND_DEFAULT}
 
 
+# (path, page file, tab label); the order is the order of the tabs.
+PAGES = [
+    ("/", "home.html", "Home"),
+    ("/vet", "index.html", "Vetter"),
+    ("/rejection", "rejection.html", "Filter lab"),
+    ("/sky", "sky.html", "Sky map"),
+    ("/compare", "compare.html", "Compare"),
+]
+
+
 @app.middleware("http")
 async def revalidate_static(request, call_next):
     """Without Cache-Control, browsers heuristically cache app.js/style.css and
     keep running old code after an edit; no-cache makes them check the ETag."""
     response = await call_next(request)
-    if request.url.path in ("/", "/rejection", "/compare", "/sky") or request.url.path.startswith("/static/"):
+    if request.url.path in [path for path, _, _ in PAGES] or request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
 
-def _page(name):
+def _nav(active):
+    on = ' class="on" aria-current="page"'
+    tabs = "".join(f'<a href="{path}"{on if path == active else ""}>{label}</a>' for path, _, label in PAGES[1:])
+    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}</nav>'
+
+
+def _page(path):
     """An HTML page whose /static/ links carry the file's mtime, so an edited
-    app.js or style.css is a new URL that no browser has cached."""
-    html = (STATIC / name).read_text()
+    app.js or style.css is a new URL that no browser has cached. <!--nav-->
+    becomes the tab bar shared by every page."""
+    name = next(name for p, name, _ in PAGES if p == path)
+    html = (STATIC / name).read_text().replace("<!--nav-->", _nav(path))
     html = re.sub(r'"/static/([\w.-]+)"', lambda m: f'"/static/{m[1]}?v={int((STATIC / m[1]).stat().st_mtime)}"', html)
     return HTMLResponse(html)
 
 
 @app.get("/")
-def index():
-    return _page("index.html")
+def home(object: str | None = None):
+    # Older links opened objects with /?object=<id>, from when the vetter was the root page.
+    if object:
+        return RedirectResponse(f"/vet?object={quote(object)}")
+    return _page("/")
+
+
+@app.get("/vet")
+def vet_page():
+    return _page("/vet")
 
 
 @app.get("/rejection")
 def rejection_page():
-    return _page("rejection.html")
+    return _page("/rejection")
 
 
 @app.get("/compare")
 def compare_page():
-    return _page("compare.html")
+    return _page("/compare")
 
 
 @app.get("/sky")
 def sky_page():
-    return _page("sky.html")
+    return _page("/sky")
 
 
 @app.get("/api/config")

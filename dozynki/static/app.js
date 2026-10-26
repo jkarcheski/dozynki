@@ -72,7 +72,7 @@ async function init() {
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
   document.addEventListener("keydown", onKey);
   refreshStats();
-  // /?object=<diaObjectId> opens that object (links from the filter lab)
+  // /vet?object=<diaObjectId> opens that object (links from the filter lab)
   const linked = new URLSearchParams(location.search).get("object");
   linked ? loadObject(linked) : next();
 }

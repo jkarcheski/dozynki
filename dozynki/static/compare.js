@@ -190,7 +190,7 @@ function renderCell() {
   const lab = (cls, sub, alt) => esc(cls) + (sub ? ` · ${esc(sub)}` : "") + (alt?.length ? ` <span class="muted">(or ${esc(alt.join(", "))})</span>` : "");
   $("#cell").innerHTML = objs.length
     ? `<tr><th>object</th><th>reference</th><th>compared</th>${hasProbs ? "<th>top probabilities</th>" : ""}</tr>` + objs.map((o) =>
-        `<tr><td><a href="/?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
+        `<tr><td><a href="/vet?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
           <td>${lab(o.row, o.ref_subclass, o.ref_alt)}</td><td>${lab(o.col, null, o.comp_alt)}</td>
           ${hasProbs ? `<td>${topProbs(o.comp_probs || o.ref_probs)}</td>` : ""}</tr>`).join("")
     : `<tr><td class="hint">${selected ? "No objects in this cell." : "The two sources agree on every object."}</td></tr>`;

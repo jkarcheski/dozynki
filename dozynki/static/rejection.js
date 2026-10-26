@@ -280,7 +280,7 @@ function renderDiff() {
     ? `<tr><th>object</th><th>label</th><th>target</th><th>A</th><th>B</th></tr>` + diff.map((o) => {
         const b = bById[o.object_id];
         const lab = o.truth + (o.subclass ? ` · ${o.subclass}` : "") + (o.alt_classes ? ` (or ${o.alt_classes})` : "");
-        return `<tr><td><a href="/?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
+        return `<tr><td><a href="/vet?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
           <td>${esc(lab)}</td><td>${o.target ? "✓" : ""}</td><td>${outcome(o)}</td><td>${outcome(b)}</td></tr>`;
       }).join("")
     : `<tr><td class="hint">A and B keep exactly the same objects.</td></tr>`;

@@ -9,7 +9,7 @@ to build a labeled training set for real/bogus filtering and anomaly detection.
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env    # add Babamul token (optional) and your labeler name
-.venv/bin/python -m dozynki   # http://127.0.0.1:8765
+.venv/bin/python -m dozynki   # http://127.0.0.1:8765 (landing page; vetter at /vet)
 ```
 
 ## How labeling works
@@ -95,13 +95,13 @@ payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered
 .venv/bin/python -m dozynki.evaluate --target transient:nuclear,agn --include-alt
 ```
 
-**Filter lab.** `http://127.0.0.1:8765/rejection` (or "Filter lab" in the vetter header)
+**Filter lab.** `http://127.0.0.1:8765/rejection` (or the "Filter lab" tab)
 does the same thing interactively. It compares two pipelines, A and B, side by side.
 - Pick the target from chips: any class or transient subclass, optionally counting
   "could also be" classes.
 - Toggle rules and edit thresholds; the metrics, the kept-by-class chart, the per-step
   table and the list of objects A and B disagree on update as you type. Object IDs in that
-  list open in the vetter (`/?object=<id>`).
+  list open in the vetter (`/vet?object=<id>`).
 - Sweep any threshold of A to plot completeness, purity and false-positive rate against
   it, then click a point to set it.
 
@@ -123,7 +123,7 @@ hash, and each run writes `exports/rejection/<timestamp>/` (`report.txt`, `metri
 
 ## Comparing labels
 
-`http://127.0.0.1:8765/compare` (or "Compare" in the header) draws a confusion matrix between
+`http://127.0.0.1:8765/compare` (or the "Compare" tab) draws a confusion matrix between
 any two label sources: each labeler's first blind or latest labels, and every ALeRCE
 classifier found in the cache (top class). Nothing is stored. Code lives in `dozynki/compare.py`.
 - Each source keeps its own class names (ALeRCE "SN", "VS", …), so the matrix need not be

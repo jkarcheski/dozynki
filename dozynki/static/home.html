@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <link rel="stylesheet" href="/static/sky.css">
+  <link rel="stylesheet" href="/static/home.css">
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+  <div id="labeler" class="stats"></div>
+</header>
+
+<main class="home">
+  <section class="intro">
+    <h1>LSST alert vetting</h1>
+    <p class="muted">Label a uniform random sample of LSST objects from ANTARES, ALeRCE and Babamul blind first,
+      then see what the brokers say. The labels feed the filter lab, the sky map and the comparisons below.</p>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Progress</h2><span id="blind" class="hint"></span></div>
+    <div id="tiles" class="tiles"></div>
+    <div id="class-bar" class="class-bar"></div>
+    <div id="class-legend" class="legend-row"></div>
+    <div id="err" class="err"></div>
+  </section>
+
+  <section class="pages">
+    <a class="card page" href="/vet">
+      <h2>Vetter</h2>
+      <p>Sample random LSST objects and label them: light curve, cutouts, field, independent crossmatch, then broker opinions after a blind commit.</p>
+      <span id="vet-cta" class="go">Start labeling →</span>
+    </a>
+    <a class="card page" href="/rejection">
+      <h2>Filter lab</h2>
+      <p>Build two rejection pipelines from broker scores and catalog rules, sweep thresholds and score them against your labels.</p>
+      <span class="go">Open →</span>
+    </a>
+    <a class="card page" href="/sky">
+      <h2>Sky map</h2>
+      <p>Labeled classes on the sky in equatorial, Galactic or ecliptic frames, with latitude cuts and the filter lab's pipeline A overlaid.</p>
+      <span class="go">Open →</span>
+    </a>
+    <a class="card page" href="/compare">
+      <h2>Compare</h2>
+      <p>Confusion matrices between labelers, blind and revealed passes, and ALeRCE classifiers, with agreement intervals.</p>
+      <span class="go">Open →</span>
+    </a>
+  </section>
+</main>
+<script src="/static/home.js"></script>
+</body>
+</html>

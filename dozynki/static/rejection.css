@@ -6,7 +6,6 @@
   :root { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --baseline: #64635e; }
 }
 body.lab { padding-bottom: 24px; }
-.navlink { color: var(--accent); text-decoration: none; font-size: 13px; }
 .settings .chips button { margin: 1px 0; }
 .settings label { display: inline-flex; gap: 4px; align-items: center; }
 .lab-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px 16px; }

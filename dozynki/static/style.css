@@ -12,6 +12,13 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; padding-bottom: 190px; }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 700; letter-spacing: .04em; }
+/* Tab bar shared by every page (app.py fills in <!--nav-->). */
+.tabs { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.tabs a { color: var(--muted); text-decoration: none; font-size: 13px; padding: 4px 10px; border-radius: 6px; }
+.tabs a:hover { color: var(--ink); background: var(--chip); }
+.tabs a.on { color: var(--accent); background: var(--chip); font-weight: 600; }
+.tabs a.brand { color: var(--ink); font-size: 14px; margin-right: 8px; padding-left: 0; }
+.tabs a.brand:hover { background: none; }
 .filterbar { flex-basis: 100%; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .filterbar input[type=number] { width: 56px; }
 .filterbar input, .filterbar select { padding: 3px 6px; }
