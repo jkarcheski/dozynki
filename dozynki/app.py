@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, assemble, compare, db, evaluate, export, rejection, sources
+from . import __version__, assemble, compare, db, evaluate, export, rejection, sky, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
@@ -27,7 +27,7 @@ async def revalidate_static(request, call_next):
     """Without Cache-Control, browsers heuristically cache app.js/style.css and
     keep running old code after an edit; no-cache makes them check the ETag."""
     response = await call_next(request)
-    if request.url.path in ("/", "/rejection", "/compare") or request.url.path.startswith("/static/"):
+    if request.url.path in ("/", "/rejection", "/compare", "/sky") or request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -53,6 +53,11 @@ def rejection_page():
 @app.get("/compare")
 def compare_page():
     return _page("compare.html")
+
+
+@app.get("/sky")
+def sky_page():
+    return _page("sky.html")
 
 
 @app.get("/api/config")
@@ -386,6 +391,14 @@ def compare_summary(body: Comparison):
                                all_sources=body.all_sources)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.get("/api/sky")
+def sky_objects(truth: str = "blind", all_sources: bool = False):
+    """Every queued object's position in three frames, with its truth label (None if unlabeled)."""
+    if truth not in ("blind", "final"):
+        raise HTTPException(400, "truth must be blind or final")
+    return {"objects": sky.objects(truth, all_sources), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
 
 
 @app.post("/api/export")
