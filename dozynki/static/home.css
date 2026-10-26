@@ -23,3 +23,16 @@
 #leaderboard tr.me td { font-weight: 600; }
 .lb-bar { width: 40%; }
 .lb-bar i { display: block; height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
+#achievements h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 10px 0 6px; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.badge { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; font-size: 12px; }
+.badge b { font-size: 13px; color: var(--muted); }
+.badge.won b { color: var(--ink); }
+.badge.done { border-color: var(--accent); }
+.badge .what, .badge .prog, .badge > .muted { grid-column: 1 / -1; }
+.badge .what { color: var(--muted); }
+.pips { display: inline-flex; gap: 3px; align-items: center; }
+.pips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--muted); }
+.pips i.on { background: var(--accent); border-color: var(--accent); }
+.prog { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
+.prog i { display: block; height: 100%; background: var(--accent); }

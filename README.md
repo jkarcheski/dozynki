@@ -138,6 +138,19 @@ classifier found in the cache (top class). Nothing is stored. Code lives in `doz
 - Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
 - Like the filter lab, only the uniform random sample is used unless "non-random objects too" is on.
 
+## Achievements
+
+The landing page shows tiered achievements for the current labeler (`DOZYNKI_LABELER`), and the vetter
+announces a new tier when a label earns one. Definitions and tiers live in `dozynki/achievements.py`; nothing
+is stored, every count comes from your latest label of each object (primary class only).
+- Counts: objects vetted, labeled star, labeled bogus, hosts associated.
+- Confirmed finds: your class agrees with a catalog within 1″ — transients with a SIMBAD/NED supernova type or
+  TNS-style name (SN/AT 20xxabc; there is no direct TNS query yet), rare transients typed TDE or nova, AGN in
+  Milliquas/SIMBAD/NED, asteroids with a pipeline SSO association or a SkyBoT match.
+- Nights: UTC nights (by first alert) with at least 20 queued objects, all of them vetted by you.
+- Filtering: a filter lab pipeline changed from its default. The filter lab keeps pipelines in the browser,
+  so this one is per browser.
+
 ## Export
 
 The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/`:

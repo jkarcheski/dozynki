@@ -1016,7 +1016,8 @@ async function commit() {
   };
   try {
     const r = await api("/api/label", { method: "POST", body });
-    toast(`Saved ${r.phase} label: ${form.klass}`);
+    const won = (r.achievements || []).map((a) => `${a.name} (${a.tiers[a.earned - 1]} ${a.what})`);
+    toast(`Saved ${r.phase} label: ${form.klass}` + (won.length ? ` · Achievement: ${won.join(", ")}` : ""), won.length ? 6000 : 2500);
     refreshStats();
     const oid = cur.evidence.object_id;
     if (r.phase === "blind") {

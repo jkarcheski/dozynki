@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, assemble, compare, db, evaluate, export, rejection, sky, sources
+from . import __version__, achievements, assemble, compare, db, evaluate, export, rejection, sky, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
@@ -254,6 +254,7 @@ def post_label(body: Label):
         phase = "revealed"
     else:
         phase = "blind" if state["blind"] else "unblinded"
+    before = achievements.summary(LABELER)
     raw = assemble.load(body.object_id)
     snap = assemble.snapshot(assemble.evidence(body.object_id, raw)) | {"blind_mode": state["blind"]}
     label_id = db.add_label(
@@ -275,7 +276,7 @@ def post_label(body: Label):
         }
     )
     db.set_status(body.object_id, "watch" if WATCH_FLAG in body.flags else "labeled")
-    return {"id": label_id, "phase": phase}
+    return {"id": label_id, "phase": phase, "achievements": achievements.newly_earned(before, achievements.summary(LABELER))}
 
 
 @app.post("/api/watch/recheck")
@@ -338,6 +339,12 @@ def stats():
 @app.get("/api/leaderboard")
 def leaderboard(days: int = 7):
     return {"days": days, "labelers": db.leaderboard(days)}
+
+
+@app.get("/api/achievements")
+def get_achievements(labeler: str | None = None):
+    who = labeler or LABELER
+    return {"labeler": who, "categories": achievements.CATEGORIES, "achievements": achievements.summary(who)}
 
 
 @app.get("/api/rejection/config")
