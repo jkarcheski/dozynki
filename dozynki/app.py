@@ -298,7 +298,10 @@ def post_label(body: Label):
         }
     )
     db.set_status(body.object_id, "watch" if WATCH_FLAG in body.flags else "labeled")
-    return {"id": label_id, "phase": phase, "achievements": achievements.newly_earned(before, achievements.summary(LABELER))}
+    # A transient label on a known SN / TNS name (or a TDE or nova) is a needle in the haystack.
+    found = achievements.needle((raw["xmatch"] or {}).get("data") or {}) if body.klass == "transient" else None
+    return {"id": label_id, "phase": phase, "needle": found,
+            "achievements": achievements.newly_earned(before, achievements.summary(LABELER))}
 
 
 @app.post("/api/watch/recheck")

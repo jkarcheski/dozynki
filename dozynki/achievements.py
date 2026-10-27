@@ -60,6 +60,22 @@ def known_transient(xm):
     return simbad or ned
 
 
+def needle(xm):
+    """The catalog match that makes a transient a find, rare ones first: {kind, name, type} or None."""
+    simbad = [(r.get("main_id"), r.get("otype")) for r in _near(xm.get("simbad"))]
+    ned = [(r.get("name"), r.get("type")) for r in _near(xm.get("ned"))]
+    for name, kind in simbad + ned:
+        if kind in SIMBAD_RARE | NED_RARE:
+            return {"kind": "rare", "name": name, "type": kind}
+    for name, kind in simbad:
+        if TNS_NAME.match(str(name)) or kind in SIMBAD_TRANSIENT:
+            return {"kind": "transient", "name": name, "type": kind}
+    for name, kind in ned:
+        if TNS_NAME.match(str(name)) or kind in ("SN", "Nova"):
+            return {"kind": "transient", "name": name, "type": kind}
+    return None
+
+
 def known_rare(xm):
     return (any(r.get("otype") in SIMBAD_RARE for r in _near(xm.get("simbad")))
             or any(r.get("type") in NED_RARE for r in _near(xm.get("ned"))))

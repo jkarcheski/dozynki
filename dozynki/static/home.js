@@ -82,6 +82,7 @@ async function init() {
   renderLeaderboard(lb, cfg.labeler);
   renderAchievements(ach, rc);
   const q = s.queue;
+  Harvest.field($("#harvest"), q.pending || 0);
   if (cfg.labeler) $("#labeler").innerHTML = `labeling as <b>${esc(cfg.labeler)}</b>`;
   $("#blind").textContent = cfg.blind ? "blind mode on" : "blind mode off";
 
@@ -108,4 +109,7 @@ async function init() {
     `<span style="--c:var(--cls-${r.key})"><i></i>${esc(r.label)} <b>${r.n}</b></span>`).join("");
 }
 
-init().catch((e) => { $("#err").textContent = e.message; });
+init().catch((e) => {
+  $("#err").textContent = e.message;
+  if (!$("#harvest").innerHTML) Harvest.field($("#harvest"));
+});
