@@ -23,6 +23,15 @@
 </header>
 
 <main class="lab-main">
+  <section class="card wide" id="saved-card">
+    <div class="card-head">
+      <h2>Saved filters</h2>
+      <span><button id="wiz-start" class="small primary">Build a filter with questions</button></span>
+    </div>
+    <div id="wizard" hidden></div>
+    <div class="tablewrap"><table id="saved"></table></div>
+  </section>
+
   <section class="card pipe" id="pipe-A"></section>
   <section class="card pipe" id="pipe-B"></section>
 
@@ -30,6 +39,11 @@
     <div class="card-head"><h2>Metrics</h2><span class="hint">value [95% interval] (k/n) · target = what you keep</span></div>
     <div class="tablewrap"><table id="metrics"></table></div>
     <div id="err" class="err"></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Decision tree</h2><span class="hint">each question in pipeline order · bars: target / other · click a box to list its objects</span></div>
+    <div class="trees"><div id="tree-A"></div><div id="tree-B"></div></div>
   </section>
 
   <section class="card wide">

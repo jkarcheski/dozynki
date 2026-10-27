@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS rejections (
     evaluated_at TEXT NOT NULL,
     PRIMARY KEY (object_id, version, step)
 );
+CREATE TABLE IF NOT EXISTS saved_pipelines (
+    name        TEXT PRIMARY KEY,      -- chosen in the filter lab
+    config      TEXT NOT NULL,         -- JSON list of {"rule", **params}, in order
+    note        TEXT,                  -- free text, e.g. the questionnaire's answers
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
 """
 
 
@@ -181,6 +188,27 @@ def labels_for(object_id):
 def save_pipeline(version, config):
     execute("INSERT OR IGNORE INTO rejection_pipelines (version, config, created_at) VALUES (?, ?, ?)",
             (version, json.dumps(config), now()))
+
+
+def saved_pipelines():
+    return [r | {"config": json.loads(r["config"])} for r in query("SELECT * FROM saved_pipelines ORDER BY updated_at DESC")]
+
+
+def get_saved_pipeline(name):
+    rows = query("SELECT config FROM saved_pipelines WHERE name = ?", (name,))
+    return json.loads(rows[0]["config"]) if rows else None
+
+
+def put_saved_pipeline(name, config, note=None):
+    """Create or overwrite by name; overwriting keeps created_at."""
+    t = now()
+    execute("INSERT INTO saved_pipelines (name, config, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET config = excluded.config, note = excluded.note, updated_at = excluded.updated_at",
+            (name, json.dumps(config), note, t, t))
+
+
+def delete_saved_pipeline(name):
+    return execute("DELETE FROM saved_pipelines WHERE name = ?", (name,)).rowcount
 
 
 def save_rejections(object_id, version, decisions):

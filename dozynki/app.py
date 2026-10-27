@@ -400,7 +400,9 @@ def _evaluate(body):
 def rejection_evaluate(body: Evaluation):
     """Metrics for a pipeline, plus each scored object's outcome. Nothing is stored."""
     report, df = _evaluate(body)
-    objects = df[["object_id", "truth", "subclass", "alt_classes", "target", "kept", "rejected_by"]]
+    # step:* columns are each step's own decision (1 reject, 0 keep, null no data), for the decision tree
+    objects = df[["object_id", "truth", "subclass", "alt_classes", "target", "kept", "rejected_by",
+                  *[c for c in df.columns if c.startswith("step:")]]]
     return {**report, "objects": json.loads(objects.to_json(orient="records"))}
 
 
@@ -419,6 +421,38 @@ def rejection_sweep(body: Sweep):
                               target=body.target, include_alt=body.include_alt, all_sources=body.all_sources)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
+
+
+class SavedPipeline(BaseModel):
+    name: str
+    pipeline: list[dict]
+    note: str | None = None
+
+
+@app.get("/api/rejection/saved")
+def saved_pipelines():
+    return db.saved_pipelines()
+
+
+@app.post("/api/rejection/saved")
+def save_pipeline(body: SavedPipeline):
+    """Store a named pipeline (overwrites one of the same name). Only enabled steps, in order."""
+    name = body.name.strip()
+    if not name or len(name) > 80:
+        raise HTTPException(400, "name must be 1-80 characters")
+    try:
+        rejection.resolve(body.pipeline)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, f"bad pipeline: {e}")
+    db.put_saved_pipeline(name, body.pipeline, (body.note or "").strip() or None)
+    return {"ok": True, "name": name}
+
+
+@app.delete("/api/rejection/saved/{name}")
+def delete_saved_pipeline(name: str):
+    if not db.delete_saved_pipeline(name):
+        raise HTTPException(404, "no saved pipeline by that name")
+    return {"ok": True}
 
 
 @app.get("/api/compare/config")

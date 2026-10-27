@@ -233,6 +233,7 @@ def text_report(r):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--pipeline", help='JSON file: [{"rule": "gaia_star", "max_sep": 1.5}, ...]')
+    ap.add_argument("--saved", help="name of a pipeline saved in the filter lab")
     ap.add_argument("--truth", choices=("blind", "final"), default="blind")
     ap.add_argument("--target", default="transient",
                     help="comma list of classes / transient:<subclass>, or real / transient (default transient)")
@@ -248,6 +249,11 @@ def main(argv=None):
     if args.pipeline and not os.path.exists(args.pipeline):
         ap.error(f"{args.pipeline} not found; copy cuts.example.json (the default pipeline) and edit it")
     pipeline = json.load(open(args.pipeline)) if args.pipeline else rejection.DEFAULT_PIPELINE
+    if args.saved:
+        pipeline = db.get_saved_pipeline(args.saved)
+        if pipeline is None:
+            names = ", ".join(p["name"] for p in db.saved_pipelines()) or "none yet"
+            ap.error(f"no saved pipeline {args.saved!r} (saved: {names})")
     try:
         report, df = evaluate(pipeline, args.truth, args.target, args.include_alt, args.all_sources)
     except ValueError as e:

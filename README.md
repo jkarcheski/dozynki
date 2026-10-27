@@ -115,7 +115,19 @@ does the same thing interactively. It compares two pipelines, A and B, side by s
 - Sweep any threshold of A to plot completeness, purity and false-positive rate against
   it, then click a point to set it.
 
-The page stores nothing in the database. Your settings are remembered in the browser.
+- **Build a filter with questions** walks through the rules one plain-language question at a time
+  ("Drop objects sitting on a Gaia star?"), starting with what you want to keep. Each choice shows how many
+  target and other objects it would throw away after your earlier answers, and the decision tree beside it
+  grows as you answer. Questions, choices and their order live in `QUESTIONS` in `static/rejection.js`;
+  a rule without an entry gets a generic yes/no question.
+- **Decision tree** draws A and B as cascades: each object falls to the first question it answers yes to.
+  Bars show target vs other; click a box to list its objects.
+- **Saved filters** are named pipelines stored in the `saved_pipelines` table, so every browser sees them.
+  Save one from a pipeline card or at the end of the questionnaire, then load it into A or B. A pipeline
+  card shows which saved filter it came from and "(edited)" once it differs. On the command line:
+  `.venv/bin/python -m dozynki.evaluate --saved "<name>"`.
+
+Evaluating stores nothing in the database. Your other settings are remembered in the browser.
 
 - **Truth** is each object's first blind label (`--truth final` for the latest label of any phase).
   Rules marked `broker` read reliability or ALeRCE output, which revealed labels may have seen.

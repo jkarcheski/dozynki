@@ -54,7 +54,7 @@ function defaultState() {
   const A = pipelineFrom(CFG.default_pipeline);
   // B starts as A without the multi-night cut, the biggest single trade-off in the default pipeline
   const B = A.map((s) => ({ ...s, params: { ...s.params }, on: s.rule === "min_nights" ? false : s.on }));
-  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, A, B };
+  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, A, B, names: { A: null, B: null } };
 }
 
 function loadState() {
@@ -70,7 +70,7 @@ function loadState() {
           .map((r) => ({ rule: r.name, on: false, params: { ...r.defaults } }));
         saved[k] = [...kept, ...missing];
       }
-      return { ...defaultState(), ...saved };
+      return { ...defaultState(), ...saved, names: { A: null, B: null, ...saved.names } };
     }
   } catch (e) { /* storage blocked or corrupt: start fresh */ }
   return defaultState();
@@ -90,12 +90,13 @@ const requestFor = (which) => ({
 
 // ---------- settings ----------
 
+const targetList = () => [
+  ...CFG.classes.filter((c) => c.real !== null).map((c) => ({ key: c.key, label: c.label })),
+  ...CFG.transient_subclasses.map((s) => ({ key: `transient:${s.key}`, label: `transient · ${s.label}` })),
+];
+
 function renderSettings() {
-  const targets = [
-    ...CFG.classes.filter((c) => c.real !== null).map((c) => ({ key: c.key, label: c.label })),
-    ...CFG.transient_subclasses.map((s) => ({ key: `transient:${s.key}`, label: `transient · ${s.label}` })),
-  ];
-  $("#targets").innerHTML = targets
+  $("#targets").innerHTML = targetList()
     .map((t) => `<button data-k="${t.key}" class="${state.target.includes(t.key) ? "on" : ""}" title="${esc(t.key)}">${esc(t.label)}</button>`)
     .join("");
   $("#targets").querySelectorAll("button").forEach((b) => (b.onclick = () => {
@@ -114,10 +115,18 @@ function renderPipeline(which) {
   const other = which === "A" ? "B" : "A";
   const el = $(`#pipe-${which}`);
   const rules = Object.fromEntries(CFG.rules.map((r) => [r.name, r]));
+  const name = state.names[which];
+  const saved = SAVED.find((s) => s.name === name);
+  const edited = saved && !sameSteps(saved.config, requestFor(which).pipeline);
   el.innerHTML = `
     <div class="card-head">
-      <h2 class="pipe-title"><i style="background:var(--series-${which === "A" ? 1 : 2})"></i>Pipeline ${which}</h2>
-      <span><button class="small" data-act="copy">Copy to ${other}</button> <button class="small" data-act="reset">Reset</button></span>
+      <h2 class="pipe-title"><i style="background:var(--series-${which === "A" ? 1 : 2})"></i>Pipeline ${which}
+        ${saved ? `<span class="muted">· ${esc(name)}${edited ? " (edited)" : ""}</span>` : ""}</h2>
+      <span>
+        <select class="small" data-act="load" aria-label="Load a saved filter into ${which}"><option value="">Load saved…</option>
+          ${SAVED.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join("")}</select>
+        <button class="small" data-act="save">Save…</button>
+        <button class="small" data-act="copy">Copy to ${other}</button> <button class="small" data-act="reset">Reset</button></span>
     </div>
     ${state[which].map((s, i) => `
       <div class="rule ${s.on ? "" : "off"}">
@@ -136,18 +145,39 @@ function renderPipeline(which) {
     const v = Number(inp.value);
     if (inp.value === "" || !Number.isFinite(v)) return;
     state[which][+inp.dataset.i].params[inp.dataset.p] = v;
+    refreshTitle(which);
     changed();
   }));
+  el.querySelector('[data-act=load]').onchange = (e) => e.target.value && loadInto(which, SAVED[+e.target.value]);
+  el.querySelector('[data-act=save]').onclick = async () => {
+    const name = prompt(`Save pipeline ${which} as:`, state.names[which] || "");
+    if (!name?.trim()) return;
+    try {
+      if (!(await savePipeline(name.trim(), requestFor(which).pipeline, saved?.name === name.trim() ? saved.note : null))) return;
+    } catch (e) { return toast("Save failed: " + e.message, 5000); }
+    state.names[which] = name.trim();
+    saveState();
+    renderPipeline(which);
+  };
   el.querySelector('[data-act=copy]').onclick = () => {
     state[other] = JSON.parse(JSON.stringify(state[which]));
+    state.names[other] = state.names[which];
     renderPipeline(other);
     changed();
   };
   el.querySelector('[data-act=reset]').onclick = () => {
     state[which] = pipelineFrom(CFG.default_pipeline);
+    state.names[which] = null;
     renderPipeline(which);
     changed();
   };
+}
+
+// Update only the title's "(edited)" mark, so typing in a threshold box keeps its focus.
+function refreshTitle(which) {
+  const saved = SAVED.find((s) => s.name === state.names[which]);
+  const tag = $(`#pipe-${which} .pipe-title .muted`);
+  if (saved && tag) tag.textContent = `· ${saved.name}${sameSteps(saved.config, requestFor(which).pipeline) ? "" : " (edited)"}`;
 }
 
 // ---------- evaluation ----------
@@ -181,6 +211,7 @@ function renderAll() {
   $("#pop").innerHTML = `<b>${p.scored}</b> scored objects, <b>${p.n_target}</b> target` + (excl ? ` · excluded ${esc(excl)}` : "") +
     (p.n_target < 30 ? ` · <span class="err">few targets: wide intervals</span>` : "");
   renderMetrics();
+  renderTrees();
   renderByClass();
   renderSteps();
   renderDiff();
@@ -379,11 +410,377 @@ function drawSweepMarker() {
   if (lastSweep && $("#sweep").data) Plotly.relayout("sweep", { shapes: markerShape() });
 }
 
+// ---------- questions ----------
+
+// Plain-language wording per rule, for the decision tree (node) and the questionnaire (ask, why, choices).
+// A choice's params null leaves the rule out. Rules missing here get a generic yes/no question.
+const arcsec = (v) => `${v}″`;
+const QUESTIONS = {
+  sso_association: {
+    node: () => "Known solar-system object?",
+    ask: "Drop objects the pipeline already matched to a known asteroid or comet?",
+    why: "Rubin ssObjectId or ZTF ssnamenr on any detection. Movers are real but not transients.",
+    choices: [{ label: "Yes, drop them", params: {} }, { label: "No, keep them", params: null }],
+  },
+  gaia_star: {
+    node: (p) => `Gaia star within ${arcsec(p.max_sep)}?`,
+    ask: "Drop objects sitting on a Gaia star?",
+    why: "A Gaia DR3 source with significant parallax or proper motion. A wider radius drops more variable stars, and more transients near stars.",
+    choices: [{ label: "Yes, within 2″", params: { max_sep: 2 } }, { label: "Yes, within 1″", params: { max_sep: 1 } },
+      { label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "No", params: null }],
+  },
+  milliquas_agn: {
+    node: (p) => `Milliquas AGN/QSO within ${arcsec(p.max_sep)}?`,
+    ask: "Drop objects on a known AGN or quasar?",
+    why: "A Milliquas QSO/AGN nearby. Answer no if AGN flares or nuclear transients are what you want.",
+    choices: [{ label: "Yes, within 2″", params: { max_sep: 2 } }, { label: "Yes, within 1″", params: { max_sep: 1 } },
+      { label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "No", params: null }],
+  },
+  galactic_plane: {
+    node: (p) => `Within ${p.min_b}° of the Galactic plane?`,
+    ask: "Avoid the crowded Galactic plane?",
+    why: "Low |b| fields are full of variable stars and crowding artifacts.",
+    choices: [{ label: "Yes, |b| < 15°", params: { min_b: 15 } }, { label: "Yes, |b| < 10°", params: { min_b: 10 } },
+      { label: "Yes, |b| < 5°", params: { min_b: 5 } }, { label: "No", params: null }],
+  },
+  negative_flux: {
+    node: (p) => `More than ${Math.round(p.max_frac * 100)}% negative detections?`,
+    ask: "Drop objects whose LSST detections are mostly negative difference flux?",
+    why: "Mostly negative flux usually means a subtraction artifact or a source fading below its template.",
+    choices: [{ label: "Yes, over 30%", params: { max_frac: 0.3 } }, { label: "Yes, over 50%", params: { max_frac: 0.5 } },
+      { label: "Yes, over 80%", params: { max_frac: 0.8 } }, { label: "No", params: null }],
+  },
+  position_scatter: {
+    node: (p) => `Positions scatter more than ${arcsec(p.max_rms)}?`,
+    ask: "Drop objects whose detections wander on the sky?",
+    why: "rms of LSST detection positions about their mean. Large scatter means a mover or a bad subtraction.",
+    choices: [{ label: "Yes, over 0.3″", params: { max_rms: 0.3 } }, { label: "Yes, over 0.5″", params: { max_rms: 0.5 } },
+      { label: "Yes, over 1″", params: { max_rms: 1 } }, { label: "No", params: null }],
+  },
+  min_detections: {
+    node: (p) => `Fewer than ${p.n} detections?`,
+    ask: "How many detections (LSST + ZTF) do you need?",
+    why: "Upper limits don't count.",
+    choices: [{ label: "At least 2", params: { n: 2 } }, { label: "At least 3", params: { n: 3 } },
+      { label: "At least 5", params: { n: 5 } }, { label: "Any number", params: null }],
+  },
+  min_lsst_detections: {
+    node: (p) => `Fewer than ${p.n} LSST detections?`,
+    ask: "How many LSST detections do you need?",
+    why: "Like the last question, but ZTF detections don't count.",
+    choices: [{ label: "At least 2", params: { n: 2 } }, { label: "At least 3", params: { n: 3 } },
+      { label: "At least 5", params: { n: 5 } }, { label: "Any number", params: null }],
+  },
+  min_nights: {
+    node: (p) => `Seen on fewer than ${p.n} nights?`,
+    ask: "Must an object be detected on more than one night?",
+    why: "One-night objects are mostly artifacts and asteroids, but young transients start out as one-night objects too.",
+    choices: [{ label: "Yes, 2+ nights", params: { n: 2 } }, { label: "Yes, 3+ nights", params: { n: 3 } }, { label: "No", params: null }],
+  },
+  min_span: {
+    node: (p) => `Detections span less than ${p.days} d?`,
+    ask: "Must the detections span some time?",
+    why: "Days from first to last detection.",
+    choices: [{ label: "At least 1 day", params: { days: 1 } }, { label: "At least 3 days", params: { days: 3 } },
+      { label: "At least 10 days", params: { days: 10 } }, { label: "No", params: null }],
+  },
+  lsst_reliability: {
+    node: (p) => `LSST reliability below ${p.min_rel}?`,
+    ask: "Use Rubin's reliability score?",
+    why: "Broker output: drops objects whose best per-alert reliability is low. Your revealed labels may have seen it.",
+    choices: [{ label: "Yes, need ≥ 0.7", params: { min_rel: 0.7 } }, { label: "Yes, need ≥ 0.5", params: { min_rel: 0.5 } },
+      { label: "Yes, need ≥ 0.3", params: { min_rel: 0.3 } }, { label: "No", params: null }],
+  },
+  alerce_stamp_bogus: {
+    node: (p) => `ALeRCE P(bogus) above ${p.max_p}?`,
+    ask: "Use ALeRCE's stamp classifier?",
+    why: "Broker output: drops objects ALeRCE's LSST stamp classifier calls bogus.",
+    choices: [{ label: "Yes, P(bogus) > 0.3", params: { max_p: 0.3 } }, { label: "Yes, P(bogus) > 0.5", params: { max_p: 0.5 } },
+      { label: "Yes, P(bogus) > 0.8", params: { max_p: 0.8 } }, { label: "No", params: null }],
+  },
+};
+// Questionnaire order, which is also the built pipeline's order: catalog facts, then data quality, then broker scores.
+const QUESTION_ORDER = ["sso_association", "gaia_star", "milliquas_agn", "galactic_plane", "negative_flux", "position_scatter",
+  "min_detections", "min_lsst_detections", "min_nights", "min_span", "lsst_reliability", "alerce_stamp_bogus"];
+
+function questionFor(name) {
+  const rule = CFG.rules.find((r) => r.name === name);
+  return QUESTIONS[name] || {
+    node: (p) => `${name}${Object.keys(p).length ? ` (${Object.entries(p).map(([k, v]) => `${k} ${v}`).join(", ")})` : ""}?`,
+    ask: `Use the ${name} cut?`,
+    why: rule.description,
+    choices: [{ label: "Yes, at the defaults", params: { ...rule.defaults } }, { label: "No", params: null }],
+  };
+}
+
+const nodeText = (step) => questionFor(step.rule).node({ ...CFG.rules.find((r) => r.name === step.rule).defaults, ...step });
+const stepParams = ({ rule, ...params }) => params;
+const sameSteps = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// ---------- decision tree ----------
+
+// The pipeline as a cascade: each object falls to the first question it answers "yes" to.
+// Built from the evaluate response, so counts match the metrics exactly.
+function treeHTML(res, title) {
+  const keys = Object.keys(res.steps);
+  const total = res.objects.length;
+  const steps = res.pipeline;
+  const groups = { kept: res.objects.filter((o) => o.kept) };
+  let reach = res.objects;
+  const rows = keys.map((k, i) => {
+    const rej = reach.filter((o) => o.rejected_by === k);
+    const noData = reach.filter((o) => o[`step:${k}`] === null).length;
+    groups[i] = rej;
+    const row = `
+      <div class="t-edge">${i ? `no · ${reach.length}` : ""}</div>
+      <div class="t-row">
+        <div class="t-node q"><div class="t-q">${esc(nodeText(steps[i]))}${res.steps[k].broker ? '<span class="tag">broker</span>' : ""}</div>
+          ${tBar(reach, total)}${noData ? `<div class="hint">${noData} without data pass</div>` : ""}</div>
+        <div class="t-yes">yes</div>
+        <button class="t-node leaf rej" data-g="${i}" ${rej.length ? "" : "disabled"}><b>${rej.length}</b> rejected${tBar(rej, total)}
+          <div class="hint">${esc(classSummary(rej))}</div></button>
+      </div>`;
+    reach = reach.filter((o) => o.rejected_by !== k);
+    return row;
+  });
+  return { groups, html: `
+    <div class="tree">
+      <div class="t-head">${title}</div>
+      <div class="t-node root"><b>${total}</b> scored objects${tBar(res.objects, total)}</div>
+      ${rows.join("") || '<div class="t-edge"></div><div class="hint">No questions: everything is kept.</div>'}
+      <div class="t-edge">${keys.length ? `no · ${reach.length}` : ""}</div>
+      <button class="t-node leaf kept" data-g="kept"><b>${groups.kept.length}</b> kept${tBar(groups.kept, total)}
+        <div class="hint">${esc(classSummary(groups.kept))}</div></button>
+      <div class="t-list"></div>
+    </div>` };
+}
+
+function tBar(objs, total) {
+  const t = objs.filter((o) => o.target).length, n = objs.length - t;
+  const w = (k) => (total ? (100 * k) / total : 0).toFixed(1);
+  return `<div class="t-bar" title="${t} target · ${n} other"><i class="t" style="width:${w(t)}%"></i><i class="o" style="width:${w(n)}%"></i></div>
+    <div class="t-cap">${t} target · ${n} other</div>`;
+}
+
+function classSummary(objs) {
+  const c = {};
+  for (const o of objs) c[o.truth] = (c[o.truth] || 0) + 1;
+  return Object.entries(c).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(" · ");
+}
+
+function objectList(objs) {
+  const sorted = [...objs].sort((x, y) => (y.target - x.target) || x.truth.localeCompare(y.truth));
+  const shown = sorted.slice(0, 200);
+  return `<table><tr><th>object</th><th>label</th><th>target</th></tr>${shown.map((o) => `<tr>
+    <td><a href="/vet?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
+    <td>${esc(o.truth + (o.subclass ? ` · ${o.subclass}` : "") + (o.alt_classes ? ` (or ${o.alt_classes})` : ""))}</td>
+    <td>${o.target ? "✓" : ""}</td></tr>`).join("")}</table>` +
+    (sorted.length > shown.length ? `<div class="hint">and ${sorted.length - shown.length} more</div>` : "");
+}
+
+function renderTree(el, res, title) {
+  const { html, groups } = treeHTML(res, title);
+  el.innerHTML = html;
+  const list = el.querySelector(".t-list");
+  el.querySelectorAll(".leaf").forEach((b) => (b.onclick = () => {
+    const open = b.classList.contains("open");
+    el.querySelectorAll(".leaf.open").forEach((x) => x.classList.remove("open"));
+    list.innerHTML = open ? "" : objectList(groups[b.dataset.g]);
+    b.classList.toggle("open", !open);
+  }));
+}
+
+function renderTrees() {
+  for (const which of ["A", "B"]) {
+    const name = state.names?.[which];
+    renderTree($(`#tree-${which}`), results[which],
+      `<i style="background:var(--series-${which === "A" ? 1 : 2})"></i>Pipeline ${which}${name ? ` · ${esc(name)}` : ""}`);
+  }
+}
+
+// ---------- saved filters ----------
+
+let SAVED = [];
+
+async function loadSaved() {
+  SAVED = await api("/api/rejection/saved");
+  renderSaved();
+  renderPipeline("A");
+  renderPipeline("B");
+}
+
+function stepChip(step) {
+  const p = stepParams(step);
+  return `<span class="pill" title="${esc(nodeText(step))}">${esc(step.rule)}${Object.keys(p).length ? " " + esc(Object.values(p).join(", ")) : ""}</span>`;
+}
+
+function renderSaved() {
+  $("#saved").innerHTML = SAVED.length
+    ? `<tr><th>name</th><th>questions, in order</th><th>note</th><th>saved</th><th></th></tr>` + SAVED.map((s, i) => `<tr>
+        <td><b>${esc(s.name)}</b></td>
+        <td class="wrap">${s.config.map(stepChip).join("") || '<span class="hint">none: keeps everything</span>'}</td>
+        <td class="wrap hint">${esc(s.note || "")}</td>
+        <td class="hint">${esc(s.updated_at.slice(0, 16).replace("T", " "))}</td>
+        <td><button class="small" data-i="${i}" data-to="A">Load into A</button> <button class="small" data-i="${i}" data-to="B">Load into B</button>
+          <button class="small" data-i="${i}" data-del title="Delete">✕</button></td></tr>`).join("")
+    : `<tr><td class="hint wrap">Nothing saved yet. Save a pipeline from its card, or build one with questions.</td></tr>`;
+  $("#saved").querySelectorAll("button[data-to]").forEach((b) => (b.onclick = () => loadInto(b.dataset.to, SAVED[+b.dataset.i])));
+  $("#saved").querySelectorAll("button[data-del]").forEach((b) => (b.onclick = async () => {
+    const s = SAVED[+b.dataset.i];
+    if (!confirm(`Delete saved filter "${s.name}"?`)) return;
+    try {
+      await fetch(`/api/rejection/saved/${encodeURIComponent(s.name)}`, { method: "DELETE" });
+      for (const k of ["A", "B"]) if (state.names[k] === s.name) state.names[k] = null;
+      saveState();
+      await loadSaved();
+      toast(`Deleted "${s.name}"`);
+    } catch (e) { toast("Delete failed: " + e.message, 5000); }
+  }));
+}
+
+function loadInto(which, saved) {
+  state[which] = pipelineFrom(saved.config);
+  state.names[which] = saved.name;
+  renderPipeline(which);
+  changed();
+  toast(`Loaded "${saved.name}" into ${which}`);
+}
+
+async function savePipeline(name, pipeline, note) {
+  if (SAVED.some((s) => s.name === name) && !confirm(`Overwrite saved filter "${name}"?`)) return false;
+  await api("/api/rejection/saved", { name, pipeline, note });
+  await loadSaved();
+  toast(`Saved "${name}"`);
+  return true;
+}
+
+// ---------- questionnaire ----------
+
+// wiz.at: -1 is the target question; 0.. index into wiz.questions. wiz.answers[i] is a choice index.
+let wiz = null;
+let wizToken = 0;
+
+function startWizard() {
+  const names = CFG.rules.map((r) => r.name);
+  wiz = { at: -1, answers: [], questions: [...QUESTION_ORDER.filter((n) => names.includes(n)), ...names.filter((n) => !QUESTION_ORDER.includes(n))] };
+  $("#wizard").hidden = false;
+  $("#wiz-start").textContent = "Restart questions";
+  renderWizard();
+}
+
+function closeWizard() {
+  wiz = null;
+  $("#wizard").hidden = true;
+  $("#wizard").innerHTML = "";
+  $("#wiz-start").textContent = "Build a filter with questions";
+}
+
+const wizPipeline = (upto = wiz.answers.length) => wiz.answers.slice(0, upto).flatMap((c, i) => {
+  const params = questionFor(wiz.questions[i]).choices[c].params;
+  return params ? [{ rule: wiz.questions[i], ...params }] : [];
+});
+
+const evalReq = (pipeline) => ({ ...requestFor("A"), pipeline });
+
+function wizNote() {
+  return wiz.questions.slice(0, wiz.answers.length)
+    .map((n, i) => ({ n, c: questionFor(n).choices[wiz.answers[i]] }))
+    .filter(({ c }) => c.params).map(({ n, c }) => `${n}: ${c.label.replace(/^Yes, /, "")}`).join("; ");
+}
+
+function renderWizard() {
+  const el = $("#wizard");
+  const token = ++wizToken;
+  const n = wiz.questions.length;
+  const nav = `<div class="wiz-nav hint">
+    ${wiz.at >= 0 ? `<button class="small" data-act="back">← Back</button>` : ""}
+    ${wiz.at >= 0 && wiz.at < n ? `Question ${wiz.at + 1} of ${n}` : wiz.at < 0 ? "First, the goal" : "Done"}
+    <span class="wiz-progress"><i style="width:${(100 * Math.max(0, wiz.at)) / n}%"></i></span>
+    <button class="small" data-act="close">Close</button></div>`;
+  let body;
+  if (wiz.at < 0) {
+    body = `<div class="wiz-ask">What do you want the filter to keep?</div>
+      <p class="hint">Objects labeled with any of these classes count as targets. Every later answer shows how many targets and others it would throw away. This is the same as "Keep" in the header.</p>
+      <div class="chips wiz-targets">${targetList().map((t) => `<button data-k="${t.key}" class="${state.target.includes(t.key) ? "on" : ""}">${esc(t.label)}</button>`).join("")}</div>
+      <p><button class="primary" data-act="next">Next →</button></p>`;
+  } else if (wiz.at < n) {
+    const q = questionFor(wiz.questions[wiz.at]);
+    const rule = CFG.rules.find((r) => r.name === wiz.questions[wiz.at]);
+    body = `<div class="wiz-ask">${esc(q.ask)}${rule.broker ? '<span class="tag">broker</span>' : ""}</div>
+      <p class="hint">${esc(q.why)}</p>
+      <div class="wiz-choices">${q.choices.map((c, i) => `
+        <button class="choice ${wiz.answers[wiz.at] === i ? "on" : ""}" data-c="${i}">
+          <span class="c-label">${esc(c.label)}${sameSteps(c.params, rule.defaults) ? ' <span class="tag">default</span>' : ""}</span>
+          <span class="impact" data-c="${i}">${c.params ? "…" : "keeps everything that got here"}</span></button>`).join("")}</div>`;
+  } else {
+    const pipeline = wizPipeline();
+    body = `<div class="wiz-ask">Your filter asks ${pipeline.length} question${pipeline.length === 1 ? "" : "s"}.</div>
+      <div class="wiz-summary">${pipeline.map(stepChip).join("") || '<span class="hint">none: it keeps everything</span>'}</div>
+      <div class="wiz-save">
+        <label>Name <input id="wiz-name" maxlength="80" placeholder="e.g. strict transients"></label>
+        <label class="grow">Note <input id="wiz-note" value="${esc(wizNote())}"></label>
+      </div>
+      <p><button class="primary" data-act="save" data-to="A">Save and load into A</button>
+        <button data-act="save" data-to="B">Save and load into B</button>
+        <button data-act="save">Just save</button></p>`;
+  }
+  el.innerHTML = `<div class="wiz"><div class="wiz-main">${nav}${body}</div><div class="wiz-tree"><div class="hint">building…</div></div></div>`;
+
+  el.querySelector("[data-act=close]").onclick = closeWizard;
+  el.querySelector("[data-act=back]")?.addEventListener("click", () => { wiz.at--; renderWizard(); });
+  el.querySelector("[data-act=next]")?.addEventListener("click", () => { wiz.at = 0; renderWizard(); });
+  el.querySelectorAll(".wiz-targets button").forEach((b) => (b.onclick = () => {
+    const k = b.dataset.k;
+    const next = state.target.includes(k) ? state.target.filter((x) => x !== k) : [...state.target, k];
+    if (!next.length) return toast("Keep at least one target class");
+    state.target = next;
+    changed(true);
+    b.classList.toggle("on");
+  }));
+  el.querySelectorAll(".choice").forEach((b) => (b.onclick = () => {
+    wiz.answers = [...wiz.answers.slice(0, wiz.at), +b.dataset.c];
+    wiz.at++;
+    renderWizard();
+  }));
+  el.querySelectorAll("[data-act=save]").forEach((b) => (b.onclick = async () => {
+    const name = $("#wiz-name").value.trim();
+    if (!name) return $("#wiz-name").focus(), toast("Give the filter a name");
+    try {
+      if (!(await savePipeline(name, wizPipeline(), $("#wiz-note").value))) return;
+    } catch (e) { return toast("Save failed: " + e.message, 5000); }
+    if (b.dataset.to) loadInto(b.dataset.to, SAVED.find((s) => s.name === name));
+    closeWizard();
+  }));
+
+  // live tree of the answers so far, and what each choice would throw away after them
+  const sofar = wizPipeline(Math.max(0, Math.min(wiz.at, n)));
+  api("/api/rejection/evaluate", evalReq(sofar)).then((base) => {
+    if (token !== wizToken) return;
+    renderTree(el.querySelector(".wiz-tree"), base, "Your filter so far");
+    if (wiz.at < 0 || wiz.at >= n) return;
+    const kept = new Set(base.objects.filter((o) => o.kept).map((o) => o.object_id));
+    questionFor(wiz.questions[wiz.at]).choices.forEach((c, i) => {
+      if (!c.params) return;
+      api("/api/rejection/evaluate", evalReq([...sofar, { rule: wiz.questions[wiz.at], ...c.params }])).then((r) => {
+        if (token !== wizToken) return;
+        const lost = r.objects.filter((o) => !o.kept && kept.has(o.object_id));
+        const t = lost.filter((o) => o.target).length;
+        const span = el.querySelector(`.impact[data-c="${i}"]`);
+        span.innerHTML = `drops <b>${lost.length}</b>: <span class="${t ? "lose" : ""}">${t} target</span> · ${lost.length - t} other`;
+        span.title = classSummary(lost) || "nothing";
+      }).catch((e) => { if (token === wizToken) el.querySelector(`.impact[data-c="${i}"]`).textContent = e.message; });
+    });
+  }).catch((e) => { if (token === wizToken) el.querySelector(".wiz-tree").innerHTML = `<div class="err">${esc(e.message)}</div>`; });
+}
+
 // ---------- setup ----------
 
 async function init() {
   CFG = await api("/api/rejection/config");
   state = loadState();
+  try { SAVED = await api("/api/rejection/saved"); } catch (e) { toast("Couldn't load saved filters: " + e.message, 5000); }
+  renderSaved();
+  $("#wiz-start").onclick = startWizard;
   renderSettings();
   renderPipeline("A");
   renderPipeline("B");
