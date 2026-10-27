@@ -6,9 +6,11 @@ labeler, by that labeler's latest label of it (primary class only).
 
 "Known" and "confirmed" mean a catalog in the independent crossmatch agrees
 within SAME_SOURCE_ARCSEC (as in the vetter's source classes, static/app.js),
-or for asteroids a pipeline SSO association or a SkyBoT match. There is no TNS
-query yet: a SIMBAD/NED name with a TNS designation (SN/AT 20xxabc) or a
-supernova/nova type stands in for it.
+or for asteroids a pipeline SSO association or a SkyBoT match. Transients also
+count when ANTARES matches them to a TNS object (its copy of TNS, cached as kind
+"tns" by check_tns and on each transient label). TNS changes after you label
+something, which two achievements are about: an object reported to TNS only after
+your first transient label of it, and one TNS has since classified.
 
 A night counts once its batches (sources.antares_night) have taken every object
 of the night and you have vetted them all. A night sampled at several detection
@@ -21,8 +23,10 @@ browser, so the server lists them with count None and home.js fills them in.
 import json
 import re
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 from . import db, sources
+from .brokers import antares
 
 SAME_SOURCE_ARCSEC = 1.0
 
@@ -33,14 +37,17 @@ NED_AGN = re.compile(r"^(QSO|AGN|Q_Lens|BLLac|Sy)")
 # Rare transients a catalog has typed: tidal disruption events and novae.
 SIMBAD_RARE = {"TDE", "No*"}
 NED_RARE = {"TDE", "Nova"}
+TNS_RARE = re.compile(r"^(TDE|Nova)", re.I)  # TNS types "TDE", "TDE-H", "TDE-He", "Nova", ...
 
 # (key, category, name, what counts, tiers); a category's order is its order on the page.
 ACHIEVEMENTS = [
     ("vetted", "vetting", "Harvest Moon", "objects vetted", [100, 1000, 5000, 10000]),
     ("stars", "vetting", "Counting Stars", "objects labeled star", [10, 100, 1000, 5000]),
     ("bogus", "vetting", "It Ain't Much, But It's Honest Work", "objects labeled bogus", [10, 100, 1000, 5000]),
-    ("transients", "vetting", "Champagne Supernova", "transients confirmed by a known SN / TNS name", [1, 5, 25, 100]),
-    ("rare", "vetting", "Once in a Lifetime", "transients confirmed as a TDE or nova by SIMBAD or NED", [1, 3, 10]),
+    ("transients", "vetting", "Champagne Supernova", "transients confirmed by TNS or a known SN in SIMBAD / NED", [1, 5, 25, 100]),
+    ("tns_first", "vetting", "I Knew You Were Trouble", "transients you labeled before they were reported to TNS", [1, 5, 25, 100]),
+    ("tns_classified", "vetting", "Told You So", "transients you labeled that TNS has classified", [1, 5, 25, 100]),
+    ("rare", "vetting", "Once in a Lifetime", "transients confirmed as a TDE or nova by TNS, SIMBAD or NED", [1, 3, 10]),
     ("agn", "vetting", "Black Hole Sun", "AGN confirmed by Milliquas, SIMBAD or NED", [1, 10, 50, 250]),
     ("sso", "vetting", "Like a Rolling Stone", "asteroids confirmed by an SSO association or SkyBoT", [1, 10, 50, 250]),
     ("hosts", "vetting", "Our House", "host galaxies associated", [10, 100, 500, 2000]),
@@ -60,13 +67,18 @@ def known_transient(xm):
     return simbad or ned
 
 
-def needle(xm):
+def needle(xm, tns=()):
     """The catalog match that makes a transient a find, rare ones first: {kind, name, type} or None."""
     simbad = [(r.get("main_id"), r.get("otype")) for r in _near(xm.get("simbad"))]
     ned = [(r.get("name"), r.get("type")) for r in _near(xm.get("ned"))]
+    for t in tns:
+        if TNS_RARE.match(t["type"] or ""):
+            return {"kind": "rare", "name": t["name"], "type": t["type"]}
     for name, kind in simbad + ned:
         if kind in SIMBAD_RARE | NED_RARE:
             return {"kind": "rare", "name": name, "type": kind}
+    for t in tns:
+        return {"kind": "transient", "name": t["name"], "type": t["type"] or "TNS"}
     for name, kind in simbad:
         if TNS_NAME.match(str(name)) or kind in SIMBAD_TRANSIENT:
             return {"kind": "transient", "name": name, "type": kind}
@@ -79,6 +91,35 @@ def needle(xm):
 def known_rare(xm):
     return (any(r.get("otype") in SIMBAD_RARE for r in _near(xm.get("simbad")))
             or any(r.get("type") in NED_RARE for r in _near(xm.get("ned"))))
+
+
+def tns_for(object_id, locus_id):
+    """Fetch and cache the object's TNS matches; [] when it has none."""
+    matches = antares.tns_matches(locus_id)
+    db.cache_put(object_id, "tns", matches)
+    return matches
+
+
+def check_tns():
+    """Re-check TNS for every object anyone labeled transient (primary class)."""
+    rows = db.query("SELECT DISTINCT q.object_id, q.antares_locus FROM queue q JOIN labels l USING (object_id) "
+                    "WHERE l.klass = 'transient'")
+    errors = {}
+
+    def one(r):
+        try:
+            return bool(tns_for(r["object_id"], r["antares_locus"]))
+        except Exception as e:
+            errors[r["object_id"]] = f"{type(e).__name__}: {e}"
+            return False
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        matched = sum(pool.map(one, rows))
+    return {"checked": len(rows) - len(errors), "matched": matched, "errors": errors, "checked_at": db.now()}
+
+
+def tns_checked_at():
+    return db.query("SELECT MAX(fetched_at) t FROM cache WHERE kind = 'tns'")[0]["t"]
 
 
 def known_agn(xm):
@@ -131,6 +172,11 @@ def counts(labeler):
     for r in latest:
         by_class[r["klass"]].add(r["object_id"])
     xm = _payloads(by_class["transient"] | by_class["agn"], "xmatch")
+    tns = {o: m for o, m in _payloads(by_class["transient"], "tns").items() if m}
+    # when you first called each object a transient, against when TNS got its report ("YYYY-MM-DD HH:MM:SS" UTC)
+    first_transient = {r["object_id"]: r["t"] for r in db.query(
+        "SELECT object_id, MIN(created_at) t FROM labels WHERE COALESCE(labeler, 'anonymous') = ? AND klass = 'transient' "
+        "GROUP BY object_id", (labeler,))}
     sso_ant, sso_sb = _payloads(by_class["sso"], "antares"), _payloads(by_class["sso"], "skybot")
 
     vetted = {r["object_id"] for r in latest}
@@ -142,8 +188,12 @@ def counts(labeler):
         "vetted": len(latest),
         "stars": len(by_class["star"]),
         "bogus": len(by_class["bogus"]),
-        "transients": sum(known_transient(xm.get(o, {})) for o in by_class["transient"]),
-        "rare": sum(known_rare(xm.get(o, {})) for o in by_class["transient"]),
+        "transients": sum(o in tns or known_transient(xm.get(o, {})) for o in by_class["transient"]),
+        "tns_first": sum(any(t["reported"] and first_transient.get(o, "~") < t["reported"].replace(" ", "T")
+                             for t in tns[o]) for o in by_class["transient"] & tns.keys()),
+        "tns_classified": sum(any(t["type"] for t in tns[o]) for o in by_class["transient"] & tns.keys()),
+        "rare": sum(known_rare(xm.get(o, {})) or any(TNS_RARE.match(t["type"] or "") for t in tns.get(o, []))
+                    for o in by_class["transient"]),
         "agn": sum(known_agn(xm.get(o, {})) for o in by_class["agn"]),
         "sso": sum(known_sso(sso_ant.get(o), sso_sb.get(o)) for o in by_class["sso"]),
         "hosts": sum(bool(r["host"]) and not json.loads(r["host"]).get("hostless") for r in latest),

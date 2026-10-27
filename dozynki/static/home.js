@@ -110,6 +110,7 @@ function renderAchievements(ach, rc) {
   const tiers = ach.achievements.reduce((n, a) => n + a.tiers.length, 0);
   const won = ach.achievements.reduce((n, a) => n + a.earned, 0);
   $("#ach-count").textContent = `${won} of ${tiers} tiers`;
+  $("#tns-at").textContent = ach.tns_checked_at ? `TNS checked ${ach.tns_checked_at.slice(0, 16).replace("T", " ")} UTC` : "TNS not checked yet";
   $("#achievements").innerHTML = ach.categories.map((cat) => `<h3>${esc(cat)}</h3><div class="badges">`
     + ach.achievements.filter((a) => a.category === cat).map((a) => {
       const goal = a.next ?? a.tiers[a.tiers.length - 1];
@@ -120,6 +121,23 @@ function renderAchievements(ach, rc) {
         + `<span class="prog"><i style="width:${Math.min(100, 100 * a.count / goal).toFixed(1)}%"></i></span>`
         + `<span class="muted">${a.count} / ${a.next === null ? "all tiers" : a.next}</span></div>`;
     }).join("") + `</div>`).join("");
+}
+
+async function checkTns(rc) {
+  const btn = $("#tns-check");
+  btn.disabled = true;
+  btn.textContent = "Checking…";
+  try {
+    const r = await post("/api/tns/check", {});
+    const failed = Object.keys(r.errors).length;
+    renderAchievements(await api("/api/achievements"), rc);
+    $("#tns-at").textContent = `${r.matched} of ${r.checked} transients on TNS` + (failed ? `, ${failed} failed` : "");
+  } catch (e) {
+    $("#err").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Check TNS";
+  }
 }
 
 function renderNights(rows) {
@@ -143,6 +161,7 @@ async function init() {
   api("/api/nights").then((n) => renderNights(n.nights)).catch((e) => { $("#err").textContent = e.message; });
   renderLeaderboard(lb, cfg.labeler);
   renderAchievements(ach, rc);
+  $("#tns-check").onclick = () => checkTns(rc);
   const q = s.queue;
   pending = q.pending || 0;
   renderFarm(farm);

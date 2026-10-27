@@ -298,8 +298,14 @@ def post_label(body: Label):
         }
     )
     db.set_status(body.object_id, "watch" if WATCH_FLAG in body.flags else "labeled")
-    # A transient label on a known SN / TNS name (or a TDE or nova) is a needle in the haystack.
-    found = achievements.needle((raw["xmatch"] or {}).get("data") or {}) if body.klass == "transient" else None
+    # A transient label on a known SN / TNS object (or a TDE or nova) is a needle in the haystack.
+    found = None
+    if body.klass == "transient":
+        try:
+            tns = achievements.tns_for(body.object_id, raw["antares"]["data"]["locus_id"])
+        except Exception:
+            tns = []  # the next "Check TNS" picks it up
+        found = achievements.needle((raw["xmatch"] or {}).get("data") or {}, tns)
     return {"id": label_id, "phase": phase, "needle": found,
             "achievements": achievements.newly_earned(before, achievements.summary(LABELER))}
 
@@ -369,7 +375,14 @@ def leaderboard(days: int = 7):
 @app.get("/api/achievements")
 def get_achievements(labeler: str | None = None):
     who = labeler or LABELER
-    return {"labeler": who, "categories": achievements.CATEGORIES, "achievements": achievements.summary(who)}
+    return {"labeler": who, "categories": achievements.CATEGORIES, "achievements": achievements.summary(who),
+            "tns_checked_at": achievements.tns_checked_at()}
+
+
+@app.post("/api/tns/check")
+def tns_check():
+    """Re-check TNS (through ANTARES) for every object labeled transient."""
+    return achievements.check_tns()
 
 
 @app.get("/api/farm")

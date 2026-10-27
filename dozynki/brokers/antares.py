@@ -118,6 +118,29 @@ def get_locus(locus_id):
     }
 
 
+def tns_matches(locus_id):
+    """TNS entries ANTARES has matched to the locus (its copy of TNS public objects).
+
+    reported is when TNS received the discovery report (UTC); type is the TNS
+    classification, empty until someone classifies the object.
+    """
+    data = _get(f"{ANTARES_API}/loci/{locus_id}/catalog-matches").get("data", [])
+    out = []
+    for m in data:
+        if m.get("meta", {}).get("catalog_name") != "tns_public_objects":
+            continue
+        p = m["attributes"].get("properties", {})
+        out.append({
+            "name": f"{p.get('name_prefix') or 'AT'} {p.get('name') or m['attributes'].get('object_name')}",
+            "type": p.get("type") or None,
+            "discovered": p.get("discoverydate"),
+            "reported": p.get("time_received") or p.get("creationdate"),
+            "reporting_group": p.get("reporting_group"),
+            "sep": m["meta"].get("separation"),
+        })
+    return out
+
+
 def _all_alerts(locus_id):
     url = f"{ANTARES_API}/loci/{locus_id}/alerts"
     params = {"page[limit]": 100}

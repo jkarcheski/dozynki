@@ -166,9 +166,14 @@ The landing page shows tiered achievements for the current labeler (`DOZYNKI_LAB
 announces a new tier when a label earns one. Definitions and tiers live in `dozynki/achievements.py`; nothing
 is stored, every count comes from your latest label of each object (primary class only).
 - Counts: objects vetted, labeled star, labeled bogus, hosts associated.
-- Confirmed finds: your class agrees with a catalog within 1″ — transients with a SIMBAD/NED supernova type or
-  TNS-style name (SN/AT 20xxabc; there is no direct TNS query yet), rare transients typed TDE or nova, AGN in
-  Milliquas/SIMBAD/NED, asteroids with a pipeline SSO association or a SkyBoT match.
+- Confirmed finds: your class agrees with a catalog within 1″ — transients on TNS or with a SIMBAD/NED supernova
+  type or TNS-style name, rare transients typed TDE or nova, AGN in Milliquas/SIMBAD/NED, asteroids with a
+  pipeline SSO association or a SkyBoT match.
+- TNS: "I Knew You Were Trouble" counts transients you labeled before TNS received their discovery report, and
+  "Told You So" ones TNS has since classified. TNS comes from ANTARES's copy (`tns_public_objects` catalog
+  matches, so no TNS account is needed), cached per object as kind `tns`. A transient label fetches it for that
+  object; "Check TNS" on the landing page re-checks every object labeled transient, since TNS changes after you
+  label. ANTARES refreshes its copy on its own schedule, so a new report can take a while to show up.
 - Nights: nights sampled to the end with every object vetted by you. A night sampled at several detection
   minimums counts by the lowest one.
 - Filtering: a filter lab pipeline changed from its default. The filter lab keeps pipelines in the browser,
