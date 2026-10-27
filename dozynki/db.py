@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS saved_pipelines (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS purchases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    labeler     TEXT NOT NULL,
+    item        TEXT NOT NULL,         -- farm.ITEMS key
+    price       INTEGER NOT NULL,      -- coins paid then
+    bought_at   TEXT NOT NULL
+);
 """
 
 
@@ -255,3 +262,11 @@ def leaderboard(days=7):
         "FROM labels GROUP BY COALESCE(labeler, 'anonymous') ORDER BY objects DESC, labeler",
         (since,),
     )
+
+
+def add_purchase(labeler, item, price):
+    execute("INSERT INTO purchases (labeler, item, price, bought_at) VALUES (?, ?, ?, ?)", (labeler, item, price, now()))
+
+
+def purchases(labeler):
+    return query("SELECT item, price, bought_at FROM purchases WHERE labeler = ? ORDER BY id", (labeler,))

@@ -1,4 +1,4 @@
-// Landing page: labeling progress from /api/stats and links to the other pages.
+// Landing page: labeling progress from /api/stats, the farm shop, and links to the other pages.
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -7,6 +7,44 @@ async function api(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(`${r.status}: ${(await r.text()).slice(0, 300)}`);
   return r.json();
+}
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || `${r.status}`);
+  return r.json();
+}
+
+// Farm: coins from /api/farm (farm.py), owned items drawn into the wheat field.
+let pending = 0;
+
+function renderFarm(f) {
+  const c = f.coins;
+  const owned = [...f.shop, ...f.unlocks].filter((i) => i.owned).map((i) => i.key);
+  Harvest.field($("#harvest"), pending, owned);
+  $("#coins").innerHTML = `<b>${c.balance}</b> coin${c.balance === 1 ? "" : "s"}`;
+  $("#coin-why").textContent = `Earned ${c.total}: ${c.label} for objects vetted, ${c.host} for hosts chosen, `
+    + `${c.extra} for flags or notes (one per object)${c.spent ? `; spent ${c.spent}` : ""}.`;
+  $("#shop").innerHTML = f.shop.map((i) => `<div class="item${i.owned ? " owned" : ""}">${Harvest.farmIcon(i.key)}`
+    + `<b>${esc(i.name)}</b>`
+    + (i.owned ? `<span class="muted">on your farm</span>`
+      : `<button class="small${c.balance >= i.price ? " primary" : ""}" data-k="${esc(i.key)}"${c.balance < i.price ? " disabled" : ""}>`
+        + `${i.price} coins</button>`) + `</div>`).join("");
+  $("#unlocks").innerHTML = f.unlocks.map((i) => `<div class="item${i.owned ? " owned" : " locked"}" title="${esc(i.what)}">`
+    + `${Harvest.farmIcon(i.key)}<b>${esc(i.name)}</b>`
+    + `<span class="muted">${i.owned ? "on your farm" : `earn ${esc(i.achievement)}`}</span></div>`).join("");
+  Harvest.fitIcons($("#shop"));
+  Harvest.fitIcons($("#unlocks"));
+  $("#shop").querySelectorAll("button[data-k]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try {
+      $("#shop-err").textContent = "";
+      renderFarm(await post("/api/farm/buy", { item: b.dataset.k }));
+    } catch (e) {
+      $("#shop-err").textContent = e.message;
+      b.disabled = false;
+    }
+  }));
 }
 
 function renderLeaderboard(lb, me) {
@@ -76,13 +114,14 @@ function renderNights(rows) {
 }
 
 async function init() {
-  const [cfg, s, lb, ach, rc] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
-    api("/api/achievements"), api("/api/rejection/config")]);
+  const [cfg, s, lb, ach, rc, farm] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
+    api("/api/achievements"), api("/api/rejection/config"), api("/api/farm")]);
   api("/api/nights").then((n) => renderNights(n.nights)).catch((e) => { $("#err").textContent = e.message; });
   renderLeaderboard(lb, cfg.labeler);
   renderAchievements(ach, rc);
   const q = s.queue;
-  Harvest.field($("#harvest"), q.pending || 0);
+  pending = q.pending || 0;
+  renderFarm(farm);
   if (cfg.labeler) $("#labeler").innerHTML = `labeling as <b>${esc(cfg.labeler)}</b>`;
   $("#blind").textContent = cfg.blind ? "blind mode on" : "blind mode off";
 

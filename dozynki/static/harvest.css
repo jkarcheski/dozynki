@@ -2,11 +2,15 @@
 :root {
   --wheat: #d6a03f; --wheat-dark: #a87526; --stem: #bf9447; --hay: #deb052; --hay-line: #a37427;
   --soil: #9b7a4c; --tractor: #c0392b; --tire: #2b2b2e; --sun: #f2c35a; --needle: #9aa3ad;
+  --barn: #b23a2c; --wood: #7a5532; --stone: #a3a29c; --leafy: #5d8a3a; --poppy: #d6362b; --white: #f7f4ec;
+  --hide: #8b5a34; --dark: #2b2b2e; --line-ink: #3a3a3e;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --wheat: #e0b04f; --wheat-dark: #b8862f; --stem: #b08a45; --hay: #d9aa4c; --hay-line: #8f6620;
     --soil: #6b5434; --tractor: #e0574a; --tire: #111113; --sun: #e9b949; --needle: #c4ccd5;
+    --barn: #c9493a; --wood: #9a7048; --stone: #8b8a85; --leafy: #6fa047; --poppy: #ec4b3f; --white: #e8e4da;
+    --hide: #a06a3e; --dark: #0f0f11; --line-ink: #cfcfd4;
   }
 }
 
@@ -104,4 +108,66 @@
   .harvest-field *, .haystack *, .harvest-overlay, .harvest-overlay * { animation: none !important; transition: none !important; }
   .needle .needle-rise { transform: translateY(-62px); }
   .needle .sparkle { opacity: 1; }
+}
+
+/* Farm: shop items and unlocks drawn into the landing field (harvest.js FARM) */
+.harvest-field .farm-item { transform-box: fill-box; transform-origin: 50% 100%; animation: pop .6s .8s both; }
+.farm-item path, .farm-item rect, .farm-item circle, .farm-item ellipse { stroke-linejoin: round; stroke-linecap: round; }
+.farm-item .spar, .farm-item .leg, .farm-item .rope { fill: none; stroke: var(--wood); stroke-width: 2.4; }
+.farm-item .rope { stroke-width: 1; }
+.farm-item .mill { fill: var(--white); stroke: var(--stone); }
+.farm-item .roof { fill: var(--wood); }
+.farm-item .door { fill: var(--wood); }
+.farm-item .sail { fill: var(--white); stroke: var(--wood); stroke-width: .8; opacity: .9; }
+.farm-item .hub { fill: var(--wood); }
+.farm-item .sails { animation: spin 14s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.farm-item .vane { fill: none; stroke: var(--line-ink); stroke-width: 1.6; }
+.farm-item .vane-tail { fill: var(--line-ink); }
+.farm-item .barn { fill: var(--barn); }
+.farm-item .trim { fill: none; stroke: var(--white); stroke-width: 1.6; }
+.farm-item .trim-fill { fill: none; stroke: var(--white); stroke-width: 1.6; }
+.farm-item .nest { fill: var(--wood); }
+.farm-item .bird, .farm-item .goose { fill: var(--white); stroke: var(--stone); stroke-width: .6; }
+.farm-item .bird-wing { fill: var(--dark); }
+.farm-item .neck, .farm-item .goose-neck { fill: none; stroke: var(--white); stroke-width: 2.6; }
+.farm-item .beak { fill: none; stroke: #e07b25; stroke-width: 1.6; }
+.farm-item .foot { stroke: #e07b25; stroke-width: 1.2; }
+.farm-item .rock { fill: var(--stone); stroke: var(--line-ink); stroke-width: .4; }
+.farm-item .stone { fill: var(--stone); }
+.farm-item.well .trim { stroke: var(--line-ink); stroke-width: .7; opacity: .6; }
+.farm-item .bucket { fill: var(--wood); }
+.farm-item .skep { fill: var(--hay); stroke: var(--hay-line); }
+.farm-item.beehives .trim { stroke: var(--hay-line); stroke-width: .8; }
+.farm-item.beehives .door { fill: var(--dark); }
+.farm-item .bees circle { fill: var(--dark); animation: buzz 1.2s ease-in-out infinite alternate; }
+.farm-item .bees circle + circle { animation-delay: -.6s; }
+@keyframes buzz { to { transform: translate(5px, -3px); } }
+.farm-item .cow { fill: var(--white); stroke: var(--line-ink); stroke-width: .6; }
+.farm-item .spot { fill: var(--dark); }
+.farm-item.cow .leg { stroke: var(--white); stroke-width: 3.4; }
+.farm-item .horn, .farm-item .tail { fill: none; stroke: var(--line-ink); stroke-width: 1.2; }
+.farm-item .horse { fill: var(--hide); }
+.farm-item .horse-leg { stroke: var(--hide); stroke-width: 3.4; }
+.farm-item .mane { fill: none; stroke: var(--dark); stroke-width: 2.4; }
+.farm-item .leafy { fill: none; stroke: var(--leafy); stroke-width: 2; }
+.farm-item .leafy.thin { stroke-width: 1.2; }
+.farm-item .leaf { fill: var(--leafy); }
+.farm-item .petals { fill: var(--sun); stroke: var(--wheat-dark); stroke-width: 1; stroke-dasharray: 2 1.6; }
+.farm-item .seeds { fill: #5a3b1c; }
+.farm-item .poppy { fill: var(--poppy); }
+.farm-item .glow { fill: var(--sun); opacity: .25; animation: flicker 2.4s ease-in-out infinite alternate; }
+@keyframes flicker { to { opacity: .45; } }
+.farm-item .lamp { fill: var(--sun); stroke: var(--wood); }
+.farm-item.lantern .trim { stroke: var(--wood); }
+.farm-item.telescope .leg { stroke: var(--line-ink); stroke-width: 1.6; }
+.farm-item .tube { fill: #3b5b8f; }
+.farm-item .tube-end { fill: var(--line-ink); }
+.farm-item .crown { fill: var(--wheat); stroke: var(--wheat-dark); }
+.farm-item.wreath .trim { stroke: var(--wheat-dark); stroke-width: 1; }
+.farm-item .ribbon { fill: none; stroke-width: 2.4; }
+.farm-item .ribbon.red { stroke: var(--poppy); }
+.farm-item .ribbon.white { stroke: var(--white); }
+@media (prefers-reduced-motion: reduce) {
+  .farm-item, .farm-item .sails, .farm-item .bees circle, .farm-item .glow { animation: none !important; }
 }

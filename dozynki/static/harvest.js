@@ -1,4 +1,4 @@
-// Harvest-festival decorations: the wheat field on the landing page, the haystack
+// Harvest-festival decorations: the wheat field on the landing page with the farm built in it, the haystack
 // in the vetter header (pending objects of the latest batch), the harvest played when
 // a batch is sampled, and the needle when a commit lands on a known transient.
 // Plain SVG + CSS (harvest.css); everything lives in this closure so it can sit next
@@ -73,16 +73,101 @@ const Harvest = (() => {
       </g>`;
   }
 
+  // ---------- farm (shop items and unlocks, farm.py) ----------
+
+  // Each item with its base center at the origin; x is its spot in the 1000-wide field, w the
+  // width of front wheat it clears so it shows.
+  const FARM = {
+    windmill: [60, 70, () => `<path class="mill" d="M-12 0 L-7 -78 H7 L12 0 Z"/><path class="roof" d="M-10 -76 L0 -90 L10 -76 Z"/>`
+      + `<rect class="door" x="-4" y="-14" width="8" height="14" rx="4"/>`
+      + `<g transform="translate(0 -82)"><g class="sails">${[0, 90, 180, 270].map((a) =>
+        `<g transform="rotate(${a})"><path class="spar" d="M0 0 V-40"/><rect class="sail" x="1" y="-40" width="9" height="30"/></g>`).join("")}`
+      + `<circle class="hub" r="3"/></g></g>`],
+    weathervane: [135, 30, () => `<path class="spar" d="M0 0 V-96"/><path class="vane" d="M-16 -88 H14 M14 -88 l-6 -4 M14 -88 l-6 4"/>`
+      + `<path class="vane-tail" d="M-16 -88 l-6 -6 v12 Z"/><path class="vane" d="M-6 -78 H6 M0 -84 V-72"/>`],
+    barn: [215, 90, () => `<path class="barn" d="M-38 0 V-46 L-28 -66 L0 -78 L28 -66 L38 -46 V0 Z"/>`
+      + `<path class="trim" d="M-38 -46 L-28 -66 L0 -78 L28 -66 L38 -46"/>`
+      + `<rect class="trim-fill" x="-13" y="-32" width="26" height="32"/><path class="trim" d="M-13 -32 L13 0 M13 -32 L-13 0"/>`
+      + `<rect class="trim-fill" x="-6" y="-60" width="12" height="10"/>`],
+    stork: [290, 40, () => `<path class="spar" d="M0 0 V-90"/><ellipse class="nest" cx="0" cy="-92" rx="16" ry="5"/>`
+      + `<ellipse class="bird" cx="1" cy="-102" rx="10" ry="6"/><path class="bird-wing" d="M-8 -102 Q2 -96 10 -101 Q2 -104 -8 -102 Z"/>`
+      + `<path class="neck" d="M8 -105 Q12 -116 10 -122"/><circle class="bird" cx="10" cy="-123" r="3"/>`
+      + `<path class="beak" d="M12 -123 l9 3"/>`],
+    rocks: [338, 46, () => `<ellipse class="rock" cx="-11" cy="-5" rx="11" ry="7"/><ellipse class="rock" cx="9" cy="-4" rx="9" ry="5"/>`
+      + `<ellipse class="rock" cx="-1" cy="-10" rx="7" ry="6"/>`],
+    well: [388, 44, () => `<path class="spar" d="M-13 -12 V-42 M13 -12 V-42"/><path class="roof" d="M-19 -40 L0 -52 L19 -40 Z"/>`
+      + `<path class="rope" d="M0 -42 V-24"/><rect class="bucket" x="-3" y="-24" width="6" height="6"/>`
+      + `<rect class="stone" x="-16" y="-16" width="32" height="16" rx="2"/><path class="trim" d="M-16 -8 H16 M-6 -16 V-8 M6 -8 V0"/>`],
+    beehives: [440, 52, () => [-12, 12].map((x) => `<g transform="translate(${x} 0)">`
+      + `<path class="skep" d="M-9 0 C-10 -12 -6 -20 0 -20 C6 -20 10 -12 9 0 Z"/>`
+      + `<path class="trim" d="M-9 -5 H9 M-9 -10 H9 M-7 -15 H7"/><circle class="door" cy="-3" r="2"/></g>`).join("")
+      + `<g class="bees"><circle cx="-4" cy="-28" r="1.4"/><circle cx="7" cy="-32" r="1.4"/></g>`],
+    cow: [503, 66, () => `<rect class="cow" x="-24" y="-30" width="40" height="18" rx="7"/>`
+      + `<path class="leg" d="M-18 -14 V0 M-10 -14 V0 M6 -14 V0 M12 -14 V0"/><path class="spot" d="M-14 -28 q6 3 2 9 q-7 0 -6 -9 Z M2 -26 q8 0 6 8 q-8 2 -6 -8 Z"/>`
+      + `<rect class="cow" x="14" y="-36" width="12" height="11" rx="4"/><path class="horn" d="M16 -36 l-2 -4 M24 -36 l2 -4"/>`
+      + `<path class="tail" d="M-24 -26 q-5 6 -3 12"/>`],
+    horse: [578, 66, () => `<rect class="horse" x="-22" y="-34" width="36" height="16" rx="7"/>`
+      + `<path class="horse-leg" d="M-17 -20 V0 M-10 -20 V0 M5 -20 V0 M11 -20 V0"/>`
+      + `<path class="horse" d="M8 -32 L16 -50 L26 -46 L28 -40 L20 -40 L16 -30 Z"/><path class="mane" d="M10 -32 L17 -50"/>`
+      + `<path class="mane" d="M-22 -30 q-8 8 -5 20"/>`],
+    geese: [646, 64, () => [[-20, 0], [0, -2], [20, 1]].map(([x, y], i) => `<g transform="translate(${x} ${y})${i === 1 ? " scale(-1 1)" : ""}">`
+      + `<ellipse class="goose" cx="0" cy="-7" rx="8" ry="5"/><path class="goose-neck" d="M5 -9 Q8 -16 7 -20"/>`
+      + `<circle class="goose" cx="7" cy="-20" r="2.6"/><path class="beak" d="M9 -20 l4 1"/><path class="foot" d="M-1 -2 V0 M2 -2 V0"/></g>`).join("")],
+    sunflowers: [706, 60, () => [[-20, 58], [-6, 70], [8, 62], [20, 74]].map(([x, h]) =>
+      `<g transform="translate(${x} 0)"><path class="leafy" d="M0 0 V${-h}"/><path class="leaf" d="M0 ${-h / 2} q7 -6 9 0 q-6 4 -9 0 Z"/>`
+      + `<circle class="petals" cy="${-h}" r="7"/><circle class="seeds" cy="${-h}" r="3.4"/></g>`).join("")],
+    poppies: [762, 54, () => [[-20, 40], [-10, 50], [0, 36], [10, 54], [20, 44]].map(([x, h]) =>
+      `<g transform="translate(${x} 0)"><path class="leafy thin" d="M0 0 Q2 ${-h / 2} 0 ${-h}"/><circle class="poppy" cy="${-h}" r="4"/>`
+      + `<circle class="seeds" cy="${-h}" r="1.2"/></g>`).join("")],
+    lantern: [800, 30, () => `<path class="spar" d="M0 0 V-80 H14"/><path class="rope" d="M12 -80 V-72"/>`
+      + `<circle class="glow" cx="12" cy="-62" r="12"/><rect class="lamp" x="7" y="-72" width="10" height="16" rx="2"/>`
+      + `<path class="trim" d="M7 -64 H17"/>`],
+    telescope: [838, 40, () => `<path class="leg" d="M0 -30 L-12 0 M0 -30 L12 0 M0 -30 V0"/>`
+      + `<g transform="translate(0 -32) rotate(-38)"><rect class="tube" x="-16" y="-5" width="36" height="10" rx="2"/>`
+      + `<rect class="tube-end" x="18" y="-6" width="5" height="12" rx="1"/></g>`],
+    wreath: [975, 40, () => `<path class="spar" d="M0 0 V-62"/>`
+      + `<path class="crown" d="M-16 -62 C-18 -86 -8 -100 0 -100 C8 -100 18 -86 16 -62 Z"/>`
+      + `<path class="trim" d="M-14 -72 H14 M-10 -86 H10 M0 -100 V-62"/>`
+      + `<path class="ribbon red" d="M-14 -62 q-4 12 -1 22"/><path class="ribbon white" d="M-9 -62 q-2 10 1 18"/>`
+      + `<path class="ribbon red" d="M9 -62 q2 10 -1 18"/><path class="ribbon white" d="M14 -62 q4 12 1 22"/>`],
+  };
+
+  // A small picture of one item for the shop, framed on a strip of ground.
+  function farmIcon(key) {
+    const [, w, draw] = FARM[key];
+    const half = Math.max(30, w / 2 + 6);
+    return `<svg class="farm-icon" viewBox="${-half} -128 ${2 * half} 134" aria-hidden="true">`
+      + `<path class="ground" d="M${-half} 0 H${half} V6 H${-half} Z"/><g class="farm-item ${key}">${draw()}</g></svg>`;
+  }
+
+  // Crop farm icons to what they draw, once they are on the page (short items would sit low in a tall frame).
+  function fitIcons(root) {
+    root.querySelectorAll(".farm-icon").forEach((svg) => {
+      const b = svg.getBBox(), pad = 4, w = Math.max(b.width, b.height) + 2 * pad;
+      svg.setAttribute("viewBox", `${(b.x + b.width / 2 - w / 2).toFixed(1)} ${(b.y + b.height - w + pad).toFixed(1)} ${w.toFixed(1)} ${w.toFixed(1)}`);
+    });
+  }
+
   // ---------- landing page ----------
 
-  function field(el, pending = 0) {
+  function field(el, pending = 0, owned = []) {
     const rand = rng(1913);
     const sway = (x, r) => -(x / 180) - r() * 0.6; // a wave of wind from left to right
+    const items = owned.filter((k) => FARM[k]);
+    const clear = items.map((k) => [FARM[k][0] - FARM[k][1] / 2, FARM[k][0] + FARM[k][1] / 2]);
+    const back = stalks(rand, 0, 1000, 118, 90, 46, 62, sway);
+    // Front stalks are drawn from the same seed whatever is owned; the ones in an item's spot are left out.
+    const front = stalks(rand, 0, pending ? 800 : 1000, 126, pending ? 60 : 75, 58, 82, sway)
+      .split(/(?=<g transform="translate\()/).filter((g) => {
+        const x = +g.match(/translate\(([\d.]+)/)?.[1];
+        return !clear.some(([a, b]) => x >= a && x <= b);
+      }).join("");
     el.innerHTML = `<svg class="harvest-field" viewBox="0 0 1000 130" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
       <circle class="sun" cx="930" cy="34" r="20"/>
       <path class="ground" d="M0 120 Q500 108 1000 120 V130 H0 Z"/>
-      <g class="wheat back">${stalks(rand, 0, 1000, 118, 90, 46, 62, sway)}</g>
-      <g class="wheat">${stalks(rand, 0, pending ? 800 : 1000, 126, pending ? 60 : 75, 58, 82, sway)}</g>
+      <g class="wheat back">${back}</g>
+      <g class="farm">${items.map((k) => `<g transform="translate(${FARM[k][0]} 123)"><g class="farm-item ${k}">${FARM[k][2]()}</g></g>`).join("")}</g>
+      <g class="wheat">${front}</g>
       ${pending ? `<g class="field-stack" transform="translate(905 124) scale(${(0.55 + 0.45 * Math.min(1, pending / 200)).toFixed(2)})">`
         + `<title>${pending} objects waiting in the haystack</title>${haystack()}</g>` : ""}
     </svg>`;
@@ -192,5 +277,5 @@ const Harvest = (() => {
     return overlay(`needle${rare ? " rare" : ""}${calm() ? " still" : ""}`, svg, caption, rare ? 6000 : 4800);
   }
 
-  return { field, mountStack, setStack, reap, needle };
+  return { field, farmIcon, fitIcons, mountStack, setStack, reap, needle };
 })();

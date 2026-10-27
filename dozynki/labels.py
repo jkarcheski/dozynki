@@ -28,8 +28,8 @@ WATCH_FLAG = "watch"
 
 FLAGS = [
     {"key": WATCH_FLAG, "label": "Watch for more data", "hotkey": "w"},
+    {"key": "good_data", "label": "Good data"},
     {"key": "bad_subtraction", "label": "Bad subtraction"},
-    {"key": "dipole", "label": "Dipole"},
     {"key": "near_bright_star", "label": "Near bright star"},
     {"key": "wrong_host", "label": "Broker host wrong"},
     {"key": "wrong_ztf_assoc", "label": "ZTF-LSST assoc. wrong"},

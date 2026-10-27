@@ -36,3 +36,15 @@
 .pips i.on { background: var(--accent); border-color: var(--accent); }
 .prog { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
 .prog i { display: block; height: 100%; background: var(--accent); }
+.coins { font-size: 13px; color: var(--muted); }
+.coins b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.coins b::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 5px; border-radius: 50%;
+  background: var(--sun, #f2c35a); box-shadow: inset 0 0 0 2px var(--wheat-dark, #a87526); vertical-align: -1px; }
+#coin-why { margin: 0 0 10px; }
+.shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.shop .item { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column;
+  align-items: center; gap: 4px; font-size: 12px; text-align: center; }
+.shop .item b { font-size: 13px; }
+.shop .item.owned { border-color: var(--accent); }
+.shop .item.locked .farm-icon { filter: grayscale(1); opacity: .35; }
+.farm-icon { width: 100%; height: 72px; }

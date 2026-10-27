@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, achievements, assemble, compare, db, evaluate, export, rejection, sky, sources
+from . import __version__, achievements, assemble, compare, db, evaluate, export, farm, rejection, sky, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
@@ -370,6 +370,24 @@ def leaderboard(days: int = 7):
 def get_achievements(labeler: str | None = None):
     who = labeler or LABELER
     return {"labeler": who, "categories": achievements.CATEGORIES, "achievements": achievements.summary(who)}
+
+
+@app.get("/api/farm")
+def get_farm():
+    """Coins earned, spent and left, the shop and the achievement unlocks, for the current labeler."""
+    return farm.state(LABELER)
+
+
+class Purchase(BaseModel):
+    item: str
+
+
+@app.post("/api/farm/buy")
+def buy(body: Purchase):
+    try:
+        return farm.buy(LABELER, body.item)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/rejection/config")
