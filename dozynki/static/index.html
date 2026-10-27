@@ -17,6 +17,10 @@
       <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
       <button id="fill" title="Random LSST objects from ANTARES that pass the filters below">Sample random LSST</button>
     </span>
+    <span class="group">
+      <input id="night" type="date" title="Rubin night (dayObs): noon to noon UTC">
+      <button id="pull-night" title="Every LSST object whose first alert came that night, with at least the detections set below (the date range is ignored)">Pull night</button>
+    </span>
     <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>
     <button id="export">Export</button>

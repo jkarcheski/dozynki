@@ -141,6 +141,30 @@ def fill(body: Fill):
     return result
 
 
+class NightPull(FilterParams):
+    night: str
+
+
+@app.post("/api/queue/night")
+def pull_night(body: NightPull):
+    try:
+        result = sources.antares_night(body.night, body.build())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    assemble.prefetch([r["object_id"] for r in db.next_pending(PREFETCH)])
+    return result
+
+
+@app.get("/api/nights")
+def nights():
+    """Each night pull with how many of its objects the current labeler has vetted."""
+    mine = {r["object_id"] for r in db.query(
+        "SELECT DISTINCT object_id FROM labels WHERE COALESCE(labeler, 'anonymous') = ?", (LABELER,))}
+    return {"nights": [{"night": p["night"], "min_det": p["filters"].get("min_det"), "n": len(p["object_ids"]),
+                        "vetted": sum(o in mine for o in p["object_ids"]), "pulled_at": p["pulled_at"]}
+                       for p in db.night_pulls()]}
+
+
 class AddIds(BaseModel):
     object_ids: list[str]
 

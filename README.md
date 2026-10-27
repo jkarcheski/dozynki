@@ -39,6 +39,14 @@ random LSST" (as an ANTARES query, recorded in each object's selection parameter
 to which already-queued object comes up next. Note that ANTARES's "latest alert" includes
 ZTF alerts, and its LSST objects currently have first alerts only through mid-July 2026.
 
+**Night pulls.** "Pull night" queues every LSST object whose first ANTARES alert came on one Rubin
+night (dayObs: noon to noon UTC) with at least the filter bar's detections; the bar's date range is ignored.
+ANTARES has over 10,000 new LSST objects on a typical night, so a pull refuses more than 2,000 matches
+(`NIGHT_CAP` in `sources.py`): raise the detection minimum until it fits. Each pull is recorded in the
+`night_pulls` table, and the header shows how many of an unfinished night's objects you have vetted. Objects
+already queued keep their original source. ANTARES's first alert includes ZTF, so objects with earlier ZTF
+alerts are not part of a later night.
+
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
 *star*, or *AGN* that could be a nuclear *transient*. `is_real`/`is_transient` follow the
@@ -147,7 +155,8 @@ is stored, every count comes from your latest label of each object (primary clas
 - Confirmed finds: your class agrees with a catalog within 1″ — transients with a SIMBAD/NED supernova type or
   TNS-style name (SN/AT 20xxabc; there is no direct TNS query yet), rare transients typed TDE or nova, AGN in
   Milliquas/SIMBAD/NED, asteroids with a pipeline SSO association or a SkyBoT match.
-- Nights: UTC nights (by first alert) with at least 20 queued objects, all of them vetted by you.
+- Nights: night pulls with every object vetted by you. If a night was pulled more than once, the pull
+  with the lowest detection minimum is the one to finish.
 - Filtering: a filter lab pipeline changed from its default. The filter lab keeps pipelines in the browser,
   so this one is per browser.
 
@@ -168,7 +177,8 @@ dozynki/
   app.py            FastAPI endpoints
   compare.py        confusion matrices between label sources (labelers, ALeRCE)
   assemble.py       fetch + cache per object, evidence / opinion split
-  sources.py        queue sources (selection functions)
+  sources.py        queue sources (selection functions): random sample, night pulls
+  achievements.py   achievement definitions and counts
   crossmatch.py     independent catalog crossmatch + DLR
   brokers/          antares.py, alerce.py, babamul_client.py
   db.py             SQLite (data/dozynki.sqlite): queue, cache, labels

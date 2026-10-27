@@ -48,6 +48,28 @@ def random_lsst_loci(n, seed, extra_filters=()):
     return es_query, [_listing_summary(x) for x in resp.get("data", [])]
 
 
+def night_lsst_loci(mjd_lo, mjd_hi, cap, extra_filters=()):
+    """Every locus with an LSST diaObject whose first alert falls in [mjd_lo, mjd_hi).
+
+    Returns (es_query, n_matching, loci). ANTARES counts at most 10,000 hits and
+    pages at most that far, so more than `cap` matches returns no loci.
+    """
+    filters = [{"exists": {"field": "properties.survey.lsst.dia_object_id"}},
+               {"range": {"properties.oldest_alert_observation_time": {"gte": mjd_lo, "lt": mjd_hi}}}, *extra_filters]
+    es_query = {"query": {"bool": {"filter": filters}}, "sort": [{"properties.oldest_alert_observation_time": "asc"}]}
+    n = _search(es_query, 1).get("meta", {}).get("count", 0)
+    if n > cap:
+        return es_query, n, []
+    loci, page = [], 1000
+    while len(loci) < n:
+        data = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                             "page[limit]": page, "page[offset]": len(loci)}).get("data", [])
+        if not data:
+            break
+        loci += [_listing_summary(x) for x in data]
+    return es_query, n, loci
+
+
 def locus_summary(locus_id):
     return _listing_summary(_get(f"{ANTARES_API}/loci/{locus_id}")["data"])
 

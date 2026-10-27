@@ -10,6 +10,10 @@ or for asteroids a pipeline SSO association or a SkyBoT match. There is no TNS
 query yet: a SIMBAD/NED name with a TNS designation (SN/AT 20xxabc) or a
 supernova/nova type stands in for it.
 
+A night counts once every object of a night pull (sources.antares_night) has
+a label from you. When a night was pulled more than once, the pull with the
+lowest detection minimum is the one that has to be finished.
+
 Filter achievements live in the filter lab, which keeps its pipelines in the
 browser, so the server lists them with count None and home.js fills them in.
 """
@@ -17,13 +21,10 @@ browser, so the server lists them with count None and home.js fills them in.
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta
 
 from . import db
 
 SAME_SOURCE_ARCSEC = 1.0
-MJD_EPOCH = datetime(1858, 11, 17)
-MIN_NIGHT_OBJECTS = 20  # a night needs this many queued objects to count as cleared
 
 TNS_NAME = re.compile(r"^(SN|AT)\s?\d{4}[a-z]+", re.I)
 SIMBAD_TRANSIENT = {"SN*", "SN", "No*", "Transient", "ev"}
@@ -43,7 +44,7 @@ ACHIEVEMENTS = [
     ("agn", "vetting", "Black Hole Sun", "AGN confirmed by Milliquas, SIMBAD or NED", [1, 10, 50, 250]),
     ("sso", "vetting", "Like a Rolling Stone", "asteroids confirmed by an SSO association or SkyBoT", [1, 10, 50, 250]),
     ("hosts", "vetting", "Our House", "host galaxies associated", [10, 100, 500, 2000]),
-    ("nights", "vetting", "All Night Long", f"nights with every queued object vetted (at least {MIN_NIGHT_OBJECTS})", [1, 5, 10, 30]),
+    ("nights", "vetting", "All Night Long", "pulled nights with every object vetted", [1, 5, 10, 30]),
     ("first_filter", "filtering", "The First Cut Is the Deepest", "filter lab pipelines changed from the default", [1]),
 ]
 CATEGORIES = ["vetting", "filtering"]
@@ -84,10 +85,6 @@ def _payloads(object_ids, kind):
     return {r["object_id"]: json.loads(r["payload"]) for r in rows}
 
 
-def _night(mjd):
-    return (MJD_EPOCH + timedelta(days=mjd)).date().isoformat() if mjd is not None else None
-
-
 def counts(labeler):
     """{achievement key: count} for one labeler (filter achievements excluded)."""
     latest = db.query(
@@ -101,16 +98,14 @@ def counts(labeler):
     xm = _payloads(by_class["transient"] | by_class["agn"], "xmatch")
     sso_ant, sso_sb = _payloads(by_class["sso"], "antares"), _payloads(by_class["sso"], "skybot")
 
-    # The night an object first alerted: the queue's ANTARES summary, else the label snapshot.
-    first = db.query(
-        "SELECT q.object_id, COALESCE(q.first_mjd, (SELECT json_extract(l.snapshot, '$.first_mjd') FROM labels l "
-        "WHERE l.object_id = q.object_id ORDER BY l.id LIMIT 1)) mjd FROM queue q"
-    )
     vetted = {r["object_id"] for r in latest}
-    per_night = defaultdict(list)
-    for r in first:
-        if r["mjd"] is not None:
-            per_night[_night(r["mjd"])].append(r["object_id"] in vetted)
+    broadest = {}
+    for p in db.night_pulls():
+        if p["object_ids"]:
+            key = (p["filters"].get("min_det") or 1, -len(p["object_ids"]))
+            if p["night"] not in broadest or key < broadest[p["night"]][0]:
+                broadest[p["night"]] = (key, p["object_ids"])
+    nights = [n for n, (_, ids) in broadest.items() if vetted.issuperset(ids)]
 
     return {
         "vetted": len(latest),
@@ -121,7 +116,7 @@ def counts(labeler):
         "agn": sum(known_agn(xm.get(o, {})) for o in by_class["agn"]),
         "sso": sum(known_sso(sso_ant.get(o), sso_sb.get(o)) for o in by_class["sso"]),
         "hosts": sum(bool(r["host"]) and not json.loads(r["host"]).get("hostless") for r in latest),
-        "nights": sum(len(v) >= MIN_NIGHT_OBJECTS and all(v) for v in per_night.values()),
+        "nights": len(nights),
     }
 
 

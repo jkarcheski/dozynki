@@ -36,7 +36,12 @@ async function api(path, opts = {}) {
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (!r.ok) throw new Error(`${r.status}: ${(await r.text()).slice(0, 300)}`);
+  if (!r.ok) {
+    const text = await r.text();
+    let detail;
+    try { detail = JSON.parse(text).detail; } catch { /* not JSON */ }
+    throw new Error(typeof detail === "string" ? detail : `${r.status}: ${text.slice(0, 300)}`);
+  }
   return r.json();
 }
 
@@ -53,6 +58,7 @@ async function init() {
   buildLabelBar();
   initFilters();
   $("#fill").onclick = fillQueue;
+  $("#pull-night").onclick = pullNight;
   $("#add-ids").onclick = addIds;
   $("#watch-recheck").onclick = recheckWatchlist;
   $("#export").onclick = doExport;
@@ -166,13 +172,18 @@ function onKey(e) {
 // ---------- queue ----------
 
 async function refreshStats() {
-  const s = await api("/api/stats");
+  const [s, n] = await Promise.all([api("/api/stats"), api("/api/nights")]);
+  // unfinished night pulls, one entry per night
+  const open = {};
+  for (const p of n.nights) if (p.vetted < p.n) open[p.night] = p;
+  const nights = Object.values(open).map((p) => `night ${p.night} <b>${p.vetted}/${p.n}</b>`).join(" · ");
   const q = s.queue;
   const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
   $("#stats").innerHTML =
     `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · watching <b>${q.watch || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
     (classes ? ` &nbsp;|&nbsp; ${classes}` : "") +
-    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
+    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "") +
+    (nights ? ` &nbsp;|&nbsp; ${nights}` : "");
 }
 
 // ---------- filters (shared by sampling and by which queued object comes next) ----------
@@ -235,6 +246,23 @@ async function fillQueue() {
     toast("Fill failed: " + e.message, 5000);
   } finally {
     $("#fill").disabled = false;
+  }
+}
+
+async function pullNight() {
+  const night = $("#night").value;
+  if (!night) return toast("Pick a night first");
+  $("#pull-night").disabled = true;
+  try {
+    const r = await api("/api/queue/night", { method: "POST", body: { night, ...getFilters() } });
+    toast(`Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue`, 5000);
+    refreshMatching();
+    refreshStats();
+    if (!cur) next();
+  } catch (e) {
+    toast("Pull failed: " + e.message, 8000);
+  } finally {
+    $("#pull-night").disabled = false;
   }
 }
 

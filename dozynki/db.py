@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS labels (
     app_version  TEXT
 );
 CREATE INDEX IF NOT EXISTS labels_object ON labels(object_id);
+CREATE TABLE IF NOT EXISTS night_pulls (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    night       TEXT NOT NULL,         -- Rubin dayObs, YYYY-MM-DD
+    filters     TEXT,                  -- JSON: filter bar at pull time
+    object_ids  TEXT NOT NULL,         -- JSON list: every object the pull matched
+    pulled_at   TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS rejection_pipelines (
     version     TEXT PRIMARY KEY,      -- hash of the resolved pipeline (rejection.py)
     config      TEXT NOT NULL,         -- JSON list of {"rule", **params}
@@ -178,6 +185,16 @@ def save_rejections(object_id, version, decisions):
             [(object_id, version, step, None if d is None else int(d), now()) for step, d in decisions.items()],
         )
         _conn.commit()
+
+
+def add_night_pull(night, filters, object_ids):
+    return execute("INSERT INTO night_pulls (night, filters, object_ids, pulled_at) VALUES (?, ?, ?, ?)",
+                   (night, json.dumps(filters), json.dumps(object_ids), now())).lastrowid
+
+
+def night_pulls():
+    return [r | {"filters": json.loads(r["filters"] or "{}"), "object_ids": json.loads(r["object_ids"])}
+            for r in query("SELECT * FROM night_pulls ORDER BY id")]
 
 
 def stats():
