@@ -93,6 +93,9 @@ for _table, _cols in MIGRATIONS.items():
     for _col, _type in _cols.items():
         if _col not in _have:
             _conn.execute(f"ALTER TABLE {_table} ADD COLUMN {_col} {_type}")
+# Night pulls from before batches took the whole night at once: one batch covering it.
+_conn.execute("UPDATE night_pulls SET seed = 0, start = 0, n_matching = json_array_length(object_ids) "
+              "WHERE seed IS NULL AND json_array_length(object_ids) > 0")
 _conn.commit()
 
 
@@ -196,7 +199,7 @@ def add_night_pull(night, filters, object_ids, seed, start, n_matching):
 
 
 def night_pulls():
-    # rows without a seed are whole-night pulls from before nights were sampled in batches
+    # rows without a seed are empty whole-night pulls from before nights were sampled in batches
     return [r | {"filters": json.loads(r["filters"] or "{}"), "object_ids": json.loads(r["object_ids"])}
             for r in query("SELECT * FROM night_pulls WHERE seed IS NOT NULL ORDER BY id")]
 

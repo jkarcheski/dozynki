@@ -44,8 +44,8 @@ alert came on one Rubin night (dayObs: noon to noon UTC), with at least the filt
 date range is ignored. The first sample of a night at a detection minimum fixes a random order (seeded on
 `locus_id`, which new alerts don't change); later samples continue it, so they never repeat and, given time,
 cover the whole night. ANTARES counts and pages only 10,000 matches, so a busier night can't be finished
-at that minimum; raise it. Batches are recorded in the `night_pulls` table, and the header shows each
-unfinished night as vetted / sampled of the night's size. ANTARES's first alert includes ZTF, so objects
+at that minimum; raise it. Batches are recorded in the `night_pulls` table, and the landing page's Nights
+card shows each night's progress: sampled and vetted of the night's size, and what is left. ANTARES's first alert includes ZTF, so objects
 with earlier ZTF alerts are not part of a later night. Night samples are left out of the filter lab and
 compare pages' default population, which is the uniform random sample.
 

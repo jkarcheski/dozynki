@@ -172,18 +172,13 @@ function onKey(e) {
 // ---------- queue ----------
 
 async function refreshStats() {
-  const [s, n] = await Promise.all([api("/api/stats"), api("/api/nights")]);
-  // sampled nights not finished yet: vetted / taken of the night's size
-  const nights = n.nights.filter((p) => !p.done).map((p) =>
-    `<span title="≥ ${p.min_det} detections: ${p.vetted} vetted of ${p.taken} sampled; the night has ${p.capped ? "over " : ""}${p.n_matching}">`
-    + `night ${p.night} <b>${p.vetted}/${p.taken}</b> of ${p.capped ? "10000+" : p.n_matching}</span>`).join(" · ");
+  const s = await api("/api/stats");
   const q = s.queue;
   const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
   $("#stats").innerHTML =
     `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · watching <b>${q.watch || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
     (classes ? ` &nbsp;|&nbsp; ${classes}` : "") +
-    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "") +
-    (nights ? ` &nbsp;|&nbsp; ${nights}` : "");
+    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
 }
 
 // ---------- filters (shared by sampling and by which queued object comes next) ----------

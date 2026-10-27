@@ -60,9 +60,25 @@ function renderAchievements(ach, rc) {
     }).join("") + `</div>`).join("");
 }
 
+function renderNights(rows) {
+  if (!rows.length) {
+    $("#nights").innerHTML = `<tr><td class="muted">No nights sampled yet. Pick a night next to "Sample night" in the vetter.</td></tr>`;
+    return;
+  }
+  const size = (r) => (r.capped ? "10000+" : r.n_matching);
+  $("#nights").innerHTML =
+    `<tr><th>Night</th><th class="num">Detections</th><th class="num">Sampled</th><th class="num">Vetted</th><th></th><th></th></tr>`
+    + rows.map((r) => `<tr><td>${esc(r.night)}</td><td class="num">≥ ${r.min_det}</td>`
+      + `<td class="num">${r.taken} of ${size(r)}</td><td class="num">${r.vetted}</td>`
+      + `<td class="lb-bar" title="vetted of the whole night"><i style="width:${(100 * r.vetted / Math.max(1, r.n_matching)).toFixed(1)}%"></i></td>`
+      + `<td class="muted">${r.done ? "finished" : r.capped ? "too many to finish; raise the detection minimum"
+        : r.taken < r.n_matching ? `${r.n_matching - r.taken} left to sample` : `${r.taken - r.vetted} left to vet`}</td></tr>`).join("");
+}
+
 async function init() {
   const [cfg, s, lb, ach, rc] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
     api("/api/achievements"), api("/api/rejection/config")]);
+  api("/api/nights").then((n) => renderNights(n.nights)).catch((e) => { $("#err").textContent = e.message; });
   renderLeaderboard(lb, cfg.labeler);
   renderAchievements(ach, rc);
   const q = s.queue;

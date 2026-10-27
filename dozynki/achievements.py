@@ -95,7 +95,7 @@ def nights(labeler, vetted=None):
         groups[(p["night"], p["filters"].get("min_det") or 1)].append(p)
     out = []
     for (night, min_det), batches in sorted(groups.items()):
-        ids = [o for b in batches for o in b["object_ids"]]
+        ids = list(dict.fromkeys(o for b in batches for o in b["object_ids"]))  # a night pulled twice repeats them
         size = batches[-1]["n_matching"] or 0
         n_vetted = sum(o in vetted for o in ids)
         out.append({"night": night, "min_det": min_det, "taken": len(ids), "vetted": n_vetted, "n_matching": size,
