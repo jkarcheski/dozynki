@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, achievements, assemble, compare, db, evaluate, export, farm, rejection, sky, sources
+from . import __version__, assemble, compare, db, evaluate, export, rejection, sky, sources
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
@@ -160,7 +160,7 @@ def pull_night(body: NightPull):
 def nights():
     """Each sampled night (per detection minimum): objects taken so far, how many the
     current labeler has vetted, and the night's size at the latest batch."""
-    return {"nights": achievements.nights(LABELER)}
+    return {"nights": sources.nights(LABELER)}
 
 
 class AddIds(BaseModel):
@@ -276,7 +276,6 @@ def post_label(body: Label):
         phase = "revealed"
     else:
         phase = "blind" if state["blind"] else "unblinded"
-    before = achievements.summary(LABELER)
     raw = assemble.load(body.object_id)
     snap = assemble.snapshot(assemble.evidence(body.object_id, raw)) | {"blind_mode": state["blind"]}
     label_id = db.add_label(
@@ -298,10 +297,7 @@ def post_label(body: Label):
         }
     )
     db.set_status(body.object_id, "watch" if WATCH_FLAG in body.flags else "labeled")
-    # A transient label on a known SN / TNS name (or a TDE or nova) is a needle in the haystack.
-    found = achievements.needle((raw["xmatch"] or {}).get("data") or {}) if body.klass == "transient" else None
-    return {"id": label_id, "phase": phase, "needle": found,
-            "achievements": achievements.newly_earned(before, achievements.summary(LABELER))}
+    return {"id": label_id, "phase": phase}
 
 
 @app.post("/api/watch/recheck")
@@ -364,43 +360,6 @@ def stats():
 @app.get("/api/leaderboard")
 def leaderboard(days: int = 7):
     return {"days": days, "labelers": db.leaderboard(days)}
-
-
-@app.get("/api/achievements")
-def get_achievements(labeler: str | None = None):
-    who = labeler or LABELER
-    return {"labeler": who, "categories": achievements.CATEGORIES, "achievements": achievements.summary(who)}
-
-
-@app.get("/api/farm")
-def get_farm():
-    """Coins earned, spent and left, the shop and the achievement unlocks, for the current labeler."""
-    return farm.state(LABELER)
-
-
-class Purchase(BaseModel):
-    item: str
-
-
-@app.post("/api/farm/buy")
-def buy(body: Purchase):
-    try:
-        return farm.buy(LABELER, body.item)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-class Wear(BaseModel):
-    slot: str
-    item: str | None = None
-
-
-@app.post("/api/farm/wear")
-def wear(body: Wear):
-    try:
-        return farm.wear(LABELER, body.slot, body.item)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
 
 
 @app.get("/api/rejection/config")

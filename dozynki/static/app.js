@@ -55,7 +55,6 @@ async function init() {
     CFG.blind = e.target.checked;
     if (cur) loadObject(cur.evidence.object_id);
   };
-  Harvest.mountStack($("#haystack"));
   buildLabelBar();
   initFilters();
   $("#fill").onclick = fillQueue;
@@ -175,7 +174,6 @@ function onKey(e) {
 async function refreshStats() {
   const s = await api("/api/stats");
   const q = s.queue;
-  Harvest.setStack(q.pending || 0);
   const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
   $("#stats").innerHTML =
     `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · watching <b>${q.watch || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
@@ -235,7 +233,6 @@ async function fillQueue() {
   $("#fill").disabled = true;
   try {
     const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters() } });
-    if (r.added) Harvest.reap(r.added);
     toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : ""), 5000);
     refreshMatching();
     refreshStats();
@@ -254,7 +251,6 @@ async function pullNight() {
   try {
     const r = await api("/api/queue/night", { method: "POST", body: { night, n: +$("#fill-n").value, ...getFilters() } });
     const size = r.capped ? "over 10000" : r.n_matching;
-    if (r.added) Harvest.reap(r.added);
     toast(r.returned
       ? `Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue (${r.taken} of ${size} sampled)`
       : `Night ${r.night}: nothing left to sample (${r.taken} of ${size})`, 6000);
@@ -1046,9 +1042,7 @@ async function commit() {
   };
   try {
     const r = await api("/api/label", { method: "POST", body });
-    const won = (r.achievements || []).map((a) => `${a.name} (${a.tiers[a.earned - 1]} ${a.what})`);
-    toast(`Saved ${r.phase} label: ${form.klass}` + (won.length ? ` · Achievement: ${won.join(", ")}` : ""), won.length ? 6000 : 2500);
-    if (r.needle) Harvest.needle(r.needle);
+    toast(`Saved ${r.phase} label: ${form.klass}`);
     refreshStats();
     const oid = cur.evidence.object_id;
     if (r.phase === "blind") {

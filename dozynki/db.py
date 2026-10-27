@@ -71,19 +71,6 @@ CREATE TABLE IF NOT EXISTS saved_pipelines (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS purchases (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    labeler     TEXT NOT NULL,
-    item        TEXT NOT NULL,         -- farm.ITEMS key
-    price       INTEGER NOT NULL,      -- coins paid then
-    bought_at   TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS wearing (
-    labeler     TEXT NOT NULL,
-    slot        TEXT NOT NULL,         -- farm.SLOTS
-    item        TEXT NOT NULL,         -- farm.WARDROBE key; no row means the default
-    PRIMARY KEY (labeler, slot)
-);
 """
 
 

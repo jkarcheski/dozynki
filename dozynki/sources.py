@@ -5,6 +5,7 @@ Babamul Kafka topics and user-supplied object lists are planned additions.
 """
 
 import random
+from collections import defaultdict
 from datetime import date
 
 from . import db
@@ -68,3 +69,22 @@ def antares_night(night, n=50, filters=None):
 
 
 SOURCES = {"antares_random_lsst": antares_random_lsst}
+
+
+def nights(labeler, vetted=None):
+    """Sampled nights, one row per (night, detection minimum), lowest minimum first."""
+    if vetted is None:
+        vetted = {r["object_id"] for r in db.query(
+            "SELECT DISTINCT object_id FROM labels WHERE COALESCE(labeler, 'anonymous') = ?", (labeler,))}
+    groups = defaultdict(list)
+    for p in db.night_pulls():
+        groups[(p["night"], p["filters"].get("min_det") or 1)].append(p)
+    out = []
+    for (night, min_det), batches in sorted(groups.items()):
+        ids = list(dict.fromkeys(o for b in batches for o in b["object_ids"]))  # a night pulled twice repeats them
+        size = batches[-1]["n_matching"] or 0
+        n_vetted = sum(o in vetted for o in ids)
+        out.append({"night": night, "min_det": min_det, "taken": len(ids), "vetted": n_vetted, "n_matching": size,
+                    "capped": size >= ES_WINDOW,
+                    "done": 0 < size < ES_WINDOW and len(ids) >= size and n_vetted == len(ids)})
+    return out
