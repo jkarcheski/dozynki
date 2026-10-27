@@ -48,26 +48,28 @@ def random_lsst_loci(n, seed, extra_filters=()):
     return es_query, [_listing_summary(x) for x in resp.get("data", [])]
 
 
-def night_lsst_loci(mjd_lo, mjd_hi, cap, extra_filters=()):
-    """Every locus with an LSST diaObject whose first alert falls in [mjd_lo, mjd_hi).
+def night_lsst_loci(mjd_lo, mjd_hi, seed, offset, n, extra_filters=()):
+    """A batch of loci with an LSST diaObject whose first alert falls in [mjd_lo, mjd_hi).
 
-    Returns (es_query, n_matching, loci). ANTARES counts at most 10,000 hits and
-    pages at most that far, so more than `cap` matches returns no loci.
+    The order is random but fixed by seed: the score hashes locus_id, which (unlike
+    _seq_no) does not change when a locus gets new alerts, so batches taken at
+    increasing offsets with one seed never repeat. Returns (es_query, n_matching, loci);
+    ANTARES counts and pages only the first 10,000 matches.
     """
     filters = [{"exists": {"field": "properties.survey.lsst.dia_object_id"}},
                {"range": {"properties.oldest_alert_observation_time": {"gte": mjd_lo, "lt": mjd_hi}}}, *extra_filters]
-    es_query = {"query": {"bool": {"filter": filters}}, "sort": [{"properties.oldest_alert_observation_time": "asc"}]}
-    n = _search(es_query, 1).get("meta", {}).get("count", 0)
-    if n > cap:
-        return es_query, n, []
-    loci, page = [], 1000
-    while len(loci) < n:
-        data = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
-                                             "page[limit]": page, "page[offset]": len(loci)}).get("data", [])
-        if not data:
-            break
-        loci += [_listing_summary(x) for x in data]
-    return es_query, n, loci
+    es_query = {
+        "query": {
+            "function_score": {
+                "query": {"bool": {"filter": filters}},
+                "random_score": {"seed": seed, "field": "locus_id"},
+                "boost_mode": "replace",
+            }
+        }
+    }
+    resp = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                         "page[limit]": n, "page[offset]": offset})
+    return es_query, resp.get("meta", {}).get("count", 0), [_listing_summary(x) for x in resp.get("data", [])]
 
 
 def locus_summary(locus_id):

@@ -10,9 +10,9 @@ or for asteroids a pipeline SSO association or a SkyBoT match. There is no TNS
 query yet: a SIMBAD/NED name with a TNS designation (SN/AT 20xxabc) or a
 supernova/nova type stands in for it.
 
-A night counts once every object of a night pull (sources.antares_night) has
-a label from you. When a night was pulled more than once, the pull with the
-lowest detection minimum is the one that has to be finished.
+A night counts once its batches (sources.antares_night) have taken every object
+of the night and you have vetted them all. A night sampled at several detection
+minimums counts by the lowest one.
 
 Filter achievements live in the filter lab, which keeps its pipelines in the
 browser, so the server lists them with count None and home.js fills them in.
@@ -22,7 +22,7 @@ import json
 import re
 from collections import defaultdict
 
-from . import db
+from . import db, sources
 
 SAME_SOURCE_ARCSEC = 1.0
 
@@ -44,7 +44,7 @@ ACHIEVEMENTS = [
     ("agn", "vetting", "Black Hole Sun", "AGN confirmed by Milliquas, SIMBAD or NED", [1, 10, 50, 250]),
     ("sso", "vetting", "Like a Rolling Stone", "asteroids confirmed by an SSO association or SkyBoT", [1, 10, 50, 250]),
     ("hosts", "vetting", "Our House", "host galaxies associated", [10, 100, 500, 2000]),
-    ("nights", "vetting", "All Night Long", "pulled nights with every object vetted", [1, 5, 10, 30]),
+    ("nights", "vetting", "All Night Long", "sampled nights with every object vetted", [1, 5, 10, 30]),
     ("first_filter", "filtering", "The First Cut Is the Deepest", "filter lab pipelines changed from the default", [1]),
 ]
 CATEGORIES = ["vetting", "filtering"]
@@ -85,6 +85,25 @@ def _payloads(object_ids, kind):
     return {r["object_id"]: json.loads(r["payload"]) for r in rows}
 
 
+def nights(labeler, vetted=None):
+    """Sampled nights, one row per (night, detection minimum), lowest minimum first."""
+    if vetted is None:
+        vetted = {r["object_id"] for r in db.query(
+            "SELECT DISTINCT object_id FROM labels WHERE COALESCE(labeler, 'anonymous') = ?", (labeler,))}
+    groups = defaultdict(list)
+    for p in db.night_pulls():
+        groups[(p["night"], p["filters"].get("min_det") or 1)].append(p)
+    out = []
+    for (night, min_det), batches in sorted(groups.items()):
+        ids = [o for b in batches for o in b["object_ids"]]
+        size = batches[-1]["n_matching"] or 0
+        n_vetted = sum(o in vetted for o in ids)
+        out.append({"night": night, "min_det": min_det, "taken": len(ids), "vetted": n_vetted, "n_matching": size,
+                    "capped": size >= sources.ES_WINDOW,
+                    "done": 0 < size < sources.ES_WINDOW and len(ids) >= size and n_vetted == len(ids)})
+    return out
+
+
 def counts(labeler):
     """{achievement key: count} for one labeler (filter achievements excluded)."""
     latest = db.query(
@@ -100,12 +119,8 @@ def counts(labeler):
 
     vetted = {r["object_id"] for r in latest}
     broadest = {}
-    for p in db.night_pulls():
-        if p["object_ids"]:
-            key = (p["filters"].get("min_det") or 1, -len(p["object_ids"]))
-            if p["night"] not in broadest or key < broadest[p["night"]][0]:
-                broadest[p["night"]] = (key, p["object_ids"])
-    nights = [n for n, (_, ids) in broadest.items() if vetted.issuperset(ids)]
+    for row in nights(labeler, vetted):
+        broadest.setdefault(row["night"], row)  # rows come lowest detection minimum first
 
     return {
         "vetted": len(latest),
@@ -116,7 +131,7 @@ def counts(labeler):
         "agn": sum(known_agn(xm.get(o, {})) for o in by_class["agn"]),
         "sso": sum(known_sso(sso_ant.get(o), sso_sb.get(o)) for o in by_class["sso"]),
         "hosts": sum(bool(r["host"]) and not json.loads(r["host"]).get("hostless") for r in latest),
-        "nights": len(nights),
+        "nights": sum(row["done"] for row in broadest.values()),
     }
 
 

@@ -173,10 +173,10 @@ function onKey(e) {
 
 async function refreshStats() {
   const [s, n] = await Promise.all([api("/api/stats"), api("/api/nights")]);
-  // unfinished night pulls, one entry per night
-  const open = {};
-  for (const p of n.nights) if (p.vetted < p.n) open[p.night] = p;
-  const nights = Object.values(open).map((p) => `night ${p.night} <b>${p.vetted}/${p.n}</b>`).join(" · ");
+  // sampled nights not finished yet: vetted / taken of the night's size
+  const nights = n.nights.filter((p) => !p.done).map((p) =>
+    `<span title="≥ ${p.min_det} detections: ${p.vetted} vetted of ${p.taken} sampled; the night has ${p.capped ? "over " : ""}${p.n_matching}">`
+    + `night ${p.night} <b>${p.vetted}/${p.taken}</b> of ${p.capped ? "10000+" : p.n_matching}</span>`).join(" · ");
   const q = s.queue;
   const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
   $("#stats").innerHTML =
@@ -254,8 +254,11 @@ async function pullNight() {
   if (!night) return toast("Pick a night first");
   $("#pull-night").disabled = true;
   try {
-    const r = await api("/api/queue/night", { method: "POST", body: { night, ...getFilters() } });
-    toast(`Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue`, 5000);
+    const r = await api("/api/queue/night", { method: "POST", body: { night, n: +$("#fill-n").value, ...getFilters() } });
+    const size = r.capped ? "over 10000" : r.n_matching;
+    toast(r.returned
+      ? `Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue (${r.taken} of ${size} sampled)`
+      : `Night ${r.night}: nothing left to sample (${r.taken} of ${size})`, 6000);
     refreshMatching();
     refreshStats();
     if (!cur) next();

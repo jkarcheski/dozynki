@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS night_pulls (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     night       TEXT NOT NULL,         -- Rubin dayObs, YYYY-MM-DD
     filters     TEXT,                  -- JSON: filter bar at pull time
-    object_ids  TEXT NOT NULL,         -- JSON list: every object the pull matched
+    object_ids  TEXT NOT NULL,         -- JSON list: the objects in this batch
     pulled_at   TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS rejection_pipelines (
@@ -85,6 +85,8 @@ MIGRATIONS = {
     "labels": {"alt_classes": "TEXT"},  # JSON list of "could also be" classes
     # locus summary used by the queue filters (filters.py); NULL until fetched
     "queue": {"n_det": "INTEGER", "first_mjd": "REAL", "last_mjd": "REAL"},
+    # night batches: the random order (seed), where this batch starts in it, and the night's size then
+    "night_pulls": {"seed": "INTEGER", "start": "INTEGER", "n_matching": "INTEGER"},
 }
 for _table, _cols in MIGRATIONS.items():
     _have = {r["name"] for r in _conn.execute(f"PRAGMA table_info({_table})")}
@@ -187,14 +189,16 @@ def save_rejections(object_id, version, decisions):
         _conn.commit()
 
 
-def add_night_pull(night, filters, object_ids):
-    return execute("INSERT INTO night_pulls (night, filters, object_ids, pulled_at) VALUES (?, ?, ?, ?)",
-                   (night, json.dumps(filters), json.dumps(object_ids), now())).lastrowid
+def add_night_pull(night, filters, object_ids, seed, start, n_matching):
+    return execute("INSERT INTO night_pulls (night, filters, object_ids, pulled_at, seed, start, n_matching) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   (night, json.dumps(filters), json.dumps(object_ids), now(), seed, start, n_matching)).lastrowid
 
 
 def night_pulls():
+    # rows without a seed are whole-night pulls from before nights were sampled in batches
     return [r | {"filters": json.loads(r["filters"] or "{}"), "object_ids": json.loads(r["object_ids"])}
-            for r in query("SELECT * FROM night_pulls ORDER BY id")]
+            for r in query("SELECT * FROM night_pulls WHERE seed IS NOT NULL ORDER BY id")]
 
 
 def stats():
