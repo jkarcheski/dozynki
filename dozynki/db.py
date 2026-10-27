@@ -78,6 +78,12 @@ CREATE TABLE IF NOT EXISTS purchases (
     price       INTEGER NOT NULL,      -- coins paid then
     bought_at   TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS wearing (
+    labeler     TEXT NOT NULL,
+    slot        TEXT NOT NULL,         -- farm.SLOTS
+    item        TEXT NOT NULL,         -- farm.WARDROBE key; no row means the default
+    PRIMARY KEY (labeler, slot)
+);
 """
 
 
@@ -270,3 +276,15 @@ def add_purchase(labeler, item, price):
 
 def purchases(labeler):
     return query("SELECT item, price, bought_at FROM purchases WHERE labeler = ? ORDER BY id", (labeler,))
+
+
+def wearing(labeler):
+    return {r["slot"]: r["item"] for r in query("SELECT slot, item FROM wearing WHERE labeler = ?", (labeler,))}
+
+
+def put_on(labeler, slot, item=None):
+    """Wear item in slot, or with None go back to the default."""
+    if item is None:
+        execute("DELETE FROM wearing WHERE labeler = ? AND slot = ?", (labeler, slot))
+    else:
+        execute("INSERT OR REPLACE INTO wearing (labeler, slot, item) VALUES (?, ?, ?)", (labeler, slot, item))

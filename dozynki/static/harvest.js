@@ -148,9 +148,85 @@ const Harvest = (() => {
     });
   }
 
+  // ---------- farmer (farm.py WARDROBE) ----------
+
+  // Standing with the feet at the origin, about 66 tall; wear is {slot: key or null}, null drawing the default
+  // (short hair, work clothes, shoes, no hat). Back to front: back hair, legs, boots, skirt, torso, arms, head, hat.
+  const SHORT = `<path class="hair" d="M-7.3 -52 C-8 -60 -3 -61.6 0 -61.6 C4 -61.6 8 -59 7.3 -52 C5 -56.5 -2 -57.5 -7.3 -52 Z"/>`;
+  const HAIR = {
+    long_hair: [`<path class="hair" d="M-8 -54 C-9 -63 9 -63 8 -54 L9.5 -39 Q0 -37 -9.5 -39 Z"/>`, SHORT],
+    bun: ["", `<circle class="hair" cx="0" cy="-62.5" r="3.8"/>${SHORT}`],
+    curly: ["", [[-7.4, -54], [-6.4, -58.6], [-3, -61.6], [1.4, -62.2], [5.4, -60], [7.6, -55.4]]
+      .map(([x, y]) => `<circle class="hair" cx="${x}" cy="${y}" r="3.2"/>`).join("")],
+    braids: ["", SHORT + [-1, 1].map((side) => [0, 1, 2, 3, 4].map((k) =>
+      `<ellipse class="hair" cx="${side * (7.4 + k * 0.3)}" cy="${-50 + k * 3}" rx="2" ry="2.1"/>`).join("")
+      + `<path class="ribbon red" d="M${side * 8.6} -36.4 l${side * 2} 3.4 M${side * 8.6} -36.4 l${-side * 1} 3.8"/>`).join("")],
+  };
+  const SKIRT_STRIPES = ["orange", "green", "magenta", "orange", "yellow", "blue", "orange", "green", "magenta", "orange"];
+  const OUTFIT = {
+    // [legs, skirt, shirt class, overlay]
+    default: [`<path class="trousers" d="M-7 -27 H7 L6 -3 H1.6 L0 -20 L-1.6 -3 H-6 Z"/>`, "", "shirt", ""],
+    flannel: [`<path class="denim" d="M-7 -27 H7 L6 -3 H1.6 L0 -20 L-1.6 -3 H-6 Z"/>`, "", "flannel",
+      `<path class="check" d="M-7.6 -39 H7.6 M-7.3 -33 H7.3 M-3 -45 V-26 M3 -45 V-26"/>`],
+    overalls: [`<path class="denim" d="M-7 -27 H7 L6 -3 H1.6 L0 -20 L-1.6 -3 H-6 Z"/>`, "", "shirt light",
+      `<rect class="denim" x="-5.4" y="-38" width="10.8" height="12"/><path class="strap" d="M-4.6 -38 L-6 -44.6 M4.6 -38 L6 -44.6"/>`
+      + `<rect class="pocket" x="-2.6" y="-35" width="5.2" height="4" rx=".6"/>`],
+    lowicz: [`<path class="stocking" d="M-3.6 -9 V-3 M3.6 -9 V-3"/>`,
+      SKIRT_STRIPES.map((c, i) => { // slices of a flared skirt, -7..7 at the waist and -12..12 at the hem
+        const a = -7 + 1.4 * i, b = a + 1.4, c0 = -12 + 2.4 * i, c1 = c0 + 2.4;
+        return `<path class="stripe ${c}" d="M${a} -29 L${b} -29 L${c1} -8 L${c0} -8 Z"/>`;
+      }).join("") + `<path class="hem" d="M-12 -8.6 H12"/>`, "shirt blouse",
+      `<path class="vest black" d="M-7.2 -41 H7.2 L6.6 -28 H-6.6 Z"/>`
+      + [[-3.6, -37, "red"], [3.6, -37, "yellow"], [-3.6, -32, "blue"], [3.6, -32, "red"], [0, -34.5, "green"]]
+        .map(([x, y, c]) => `<circle class="bloom ${c}" cx="${x}" cy="${y}" r="1.3"/>`).join("")
+      + [-3, -1, 1, 3].map((x) => `<circle class="bead" cx="${x}" cy="${-44.4 + Math.abs(x) * .35}" r=".9"/>`).join("")],
+    krakow: [`<path class="trousers red" d="M-7 -27 H7 L6 -3 H1.6 L0 -20 L-1.6 -3 H-6 Z"/>`
+      + `<path class="pinstripe" d="M-5.6 -26 L-5 -4 M-3.2 -26 L-3 -4 M3.2 -26 L3 -4 M5.6 -26 L5 -4"/>`, "", "shirt blouse",
+      `<path class="vest navy" d="M-7.4 -43.4 L-1.2 -43.4 L-1.2 -28 H-6.8 Z M7.4 -43.4 L1.2 -43.4 L1.2 -28 H6.8 Z"/>`
+      + `<path class="tassel" d="M-4 -40 v3 M-4 -35 v3 M4 -40 v3 M4 -35 v3"/><rect class="belt" x="-7.2" y="-28.6" width="14.4" height="2.6"/>`],
+  };
+  const BOOTS = {
+    default: `<path class="shoe" d="M-6.2 -3 H-1.4 V0 H-7.4 Z M1.4 -3 H6.2 L7.4 0 H1.4 Z"/>`,
+    wellies: `<path class="welly" d="M-6.4 -12 H-1.2 V0 H-7.8 Q-8 -1.6 -6.4 -2.2 Z M1.2 -12 H6.4 V-2.2 Q8 -1.6 7.8 0 H1.2 Z"/>`,
+    cowboy_boots: `<path class="leather" d="M-6.4 -11 H-1.4 V-1.8 L-1 0 H-9.6 Q-9.4 -2.2 -6.4 -2.6 Z M1.4 -11 H6.4 V-2.6 Q9.4 -2.2 9.6 0 H1 L1.4 -1.8 Z"/>`
+      + `<path class="stitch" d="M-5.4 -9 Q-4 -7 -2.4 -9 M2.4 -9 Q4 -7 5.4 -9"/>`,
+  };
+  const HATS = {
+    straw_hat: `<ellipse class="straw-hat" cx="0" cy="-58" rx="13" ry="2.4"/><path class="straw-hat" d="M-6 -58 Q-6.4 -66.4 0 -66.4 Q6.4 -66.4 6 -58 Z"/>`
+      + `<path class="band" d="M-6.2 -59.6 H6.2"/>`,
+    flat_cap: `<path class="cap" d="M-7.6 -55.6 Q-7.4 -63 0 -63 Q7 -62.4 7.8 -57 L13 -56 Q8 -54.2 -7.6 -55.6 Z"/>`,
+    cowboy_hat: `<path class="cowboy" d="M-6.6 -57.6 L-6 -66.4 Q-3 -64.4 0 -66.6 Q3 -64.4 6 -66.4 L6.6 -57.6 Z"/>`
+      + `<path class="cowboy" d="M-14.6 -60.4 Q-12.4 -55.4 0 -56.2 Q12.4 -55.4 14.6 -60.4 Q10 -57.2 0 -58 Q-10 -57.2 -14.6 -60.4 Z"/>`
+      + `<path class="band dark" d="M-6.4 -59.4 H6.4"/>`,
+    rogatywka: `<path class="feather-stem" d="M4.4 -64 Q8.6 -73 7.2 -84"/><ellipse class="feather" cx="7.2" cy="-84.6" rx="2.8" ry="4.4"/>`
+      + `<circle class="feather-eye" cx="7.2" cy="-84" r="1.3"/>`
+      + `<path class="crimson" d="M-8.4 -57 L-9.6 -66.4 L0 -63.4 L9.6 -66.4 L8.4 -57 Z"/><rect class="fur" x="-8.6" y="-59.4" width="17.2" height="3.4" rx="1"/>`,
+  };
+
+  function farmer(wear = {}) {
+    const [hairBack, hairFront] = HAIR[wear.hair] || ["", SHORT];
+    const [legs, skirt, shirt, overlay] = OUTFIT[wear.outfit] || OUTFIT.default;
+    return `<g class="farmer-figure">${hairBack}${legs}${BOOTS[wear.boots] || BOOTS.default}${skirt}`
+      + `<path class="${shirt}" d="M-8 -44.4 Q0 -46.2 8 -44.4 L7.2 -26 H-7.2 Z"/>${overlay}`
+      + `<path class="sleeve ${shirt}" d="M-7.6 -43.4 L-11 -30.6 M7.6 -43.4 L11 -30.6"/>`
+      + `<circle class="skin" cx="-11.4" cy="-29.2" r="1.9"/><circle class="skin" cx="11.4" cy="-29.2" r="1.9"/>`
+      + `<rect class="skin" x="-1.8" y="-47.4" width="3.6" height="3.4"/><circle class="skin" cx="0" cy="-53" r="7"/>`
+      + `<circle class="eye" cx="-2.5" cy="-53.4" r=".85"/><circle class="eye" cx="2.5" cy="-53.4" r=".85"/>`
+      + `<circle class="cheek" cx="-4.2" cy="-50.6" r="1.3"/><circle class="cheek" cx="4.2" cy="-50.6" r="1.3"/>`
+      + `<path class="smile" d="M-2 -50 Q0 -48.4 2 -50"/>${hairFront}${HATS[wear.hat] || ""}</g>`;
+  }
+
+  // The farmer alone; slot zooms in on the part a wardrobe item changes.
+  const ZOOM = { hat: "-19 -91 38 40", hair: "-16 -66 32 32", outfit: "-17 -50 34 52", boots: "-13 -16 26 19" };
+
+  function farmerIcon(wear = {}, cls = "farm-icon", slot = null) {
+    return `<svg class="${cls}" viewBox="${ZOOM[slot] || "-30 -90 60 96"}" aria-hidden="true">`
+      + `<path class="ground" d="M-30 0 H30 V6 H-30 Z"/>${farmer(wear)}</svg>`;
+  }
+
   // ---------- landing page ----------
 
-  function field(el, pending = 0, owned = []) {
+  function field(el, pending = 0, owned = [], wear = {}) {
     const rand = rng(1913);
     const sway = (x, r) => -(x / 180) - r() * 0.6; // a wave of wind from left to right
     const items = owned.filter((k) => FARM[k]);
@@ -168,6 +244,7 @@ const Harvest = (() => {
       <g class="wheat back">${back}</g>
       <g class="farm">${items.map((k) => `<g transform="translate(${FARM[k][0]} 123)"><g class="farm-item ${k}">${FARM[k][2]()}</g></g>`).join("")}</g>
       <g class="wheat">${front}</g>
+      <g transform="translate(535 128)"><g class="farmer">${farmer(wear)}</g></g>
       ${pending ? `<g class="field-stack" transform="translate(905 124) scale(${(0.55 + 0.45 * Math.min(1, pending / 200)).toFixed(2)})">`
         + `<title>${pending} objects waiting in the haystack</title>${haystack()}</g>` : ""}
     </svg>`;
@@ -277,5 +354,5 @@ const Harvest = (() => {
     return overlay(`needle${rare ? " rare" : ""}${calm() ? " still" : ""}`, svg, caption, rare ? 6000 : 4800);
   }
 
-  return { field, farmIcon, fitIcons, mountStack, setStack, reap, needle };
+  return { field, farmIcon, farmerIcon, fitIcons, mountStack, setStack, reap, needle };
 })();

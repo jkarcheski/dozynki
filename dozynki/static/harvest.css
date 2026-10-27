@@ -4,6 +4,7 @@
   --soil: #9b7a4c; --tractor: #c0392b; --tire: #2b2b2e; --sun: #f2c35a; --needle: #9aa3ad;
   --barn: #b23a2c; --wood: #7a5532; --stone: #a3a29c; --leafy: #5d8a3a; --poppy: #d6362b; --white: #f7f4ec;
   --hide: #8b5a34; --dark: #2b2b2e; --line-ink: #3a3a3e;
+  --skin: #e6b48c; --hair: #5b3a1e; --shirt: #7c8a4a; --trousers: #6b4f36; --denim: #3f5f8f; --navy: #1f2a4f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -11,6 +12,7 @@
     --soil: #6b5434; --tractor: #e0574a; --tire: #111113; --sun: #e9b949; --needle: #c4ccd5;
     --barn: #c9493a; --wood: #9a7048; --stone: #8b8a85; --leafy: #6fa047; --poppy: #ec4b3f; --white: #e8e4da;
     --hide: #a06a3e; --dark: #0f0f11; --line-ink: #cfcfd4;
+    --skin: #e0ab82; --hair: #6e4826; --shirt: #8d9c56; --trousers: #7d5d40; --denim: #5476ad; --navy: #33427a;
   }
 }
 
@@ -168,6 +170,66 @@
 .farm-item .ribbon { fill: none; stroke-width: 2.4; }
 .farm-item .ribbon.red { stroke: var(--poppy); }
 .farm-item .ribbon.white { stroke: var(--white); }
+
+/* Farmer (harvest.js farmer) */
+.harvest-field .farmer { transform-box: fill-box; transform-origin: 50% 100%; animation: pop .6s 1s both; }
+.harvest-field .farmer-figure { animation: breathe 3.6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes breathe { to { transform: scaleY(1.025); } }
+.farmer-figure path, .farmer-figure rect { stroke-linejoin: round; stroke-linecap: round; }
+.farmer-figure .skin { fill: var(--skin); }
+.farmer-figure .eye { fill: #2b2b2e; }
+.farmer-figure .cheek { fill: #e8786a; opacity: .45; }
+.farmer-figure .smile { fill: none; stroke: #6b3b2a; stroke-width: .8; }
+.farmer-figure .hair { fill: var(--hair); }
+.farmer-figure .shirt { fill: var(--shirt); }
+.farmer-figure .shirt.light { fill: #e9dfc8; }
+.farmer-figure .shirt.blouse { fill: var(--white); }
+.farmer-figure .flannel { fill: #b23a2c; }
+.farmer-figure .sleeve { fill: none; stroke: var(--shirt); stroke-width: 3.6; }
+.farmer-figure .sleeve.light { stroke: #e9dfc8; }
+.farmer-figure .sleeve.blouse { stroke: var(--white); stroke-width: 4.6; }
+.farmer-figure .sleeve.flannel { stroke: #b23a2c; }
+.farmer-figure .check { fill: none; stroke: #3b1410; stroke-width: .7; opacity: .55; }
+.farmer-figure .trousers { fill: var(--trousers); }
+.farmer-figure .trousers.red { fill: #c8312a; }
+.farmer-figure .pinstripe { fill: none; stroke: var(--white); stroke-width: .8; }
+.farmer-figure .denim { fill: var(--denim); }
+.farmer-figure .strap { fill: none; stroke: var(--denim); stroke-width: 1.6; }
+.farmer-figure .pocket { fill: none; stroke: #2a4066; stroke-width: .6; }
+.farmer-figure .stocking { fill: none; stroke: var(--white); stroke-width: 2.6; }
+.farmer-figure .stripe.orange { fill: #e8792b; }
+.farmer-figure .stripe.green { fill: #2f8a4a; }
+.farmer-figure .stripe.magenta { fill: #c4307a; }
+.farmer-figure .stripe.yellow { fill: #f0c53a; }
+.farmer-figure .stripe.blue { fill: #2f5fb0; }
+.farmer-figure .hem { stroke: #1c1c1e; stroke-width: 1.2; }
+.farmer-figure .vest.black { fill: #1c1c1e; }
+.farmer-figure .vest.navy { fill: var(--navy); }
+.farmer-figure .bloom.red { fill: #e0413a; }
+.farmer-figure .bloom.yellow { fill: #f0c53a; }
+.farmer-figure .bloom.blue { fill: #5b8be0; }
+.farmer-figure .bloom.green { fill: #4caf50; }
+.farmer-figure .bead { fill: #d6362b; }
+.farmer-figure .tassel { fill: none; stroke: #d6362b; stroke-width: 1.2; }
+.farmer-figure .belt { fill: #7a5532; }
+.farmer-figure .shoe { fill: #3a2a1c; }
+.farmer-figure .welly { fill: #3f7a3a; }
+.farmer-figure .leather { fill: #8b5a2b; }
+.farmer-figure .stitch { fill: none; stroke: #e2c08a; stroke-width: .6; }
+.farmer-figure .straw-hat { fill: var(--hay); stroke: var(--hay-line); stroke-width: .5; }
+.farmer-figure .band { stroke: #c0392b; stroke-width: 1.6; }
+.farmer-figure .band.dark { stroke: #3a2414; }
+.farmer-figure .cap { fill: #6e6a64; }
+.farmer-figure .cowboy { fill: #8a5a2b; stroke: #5e3b1a; stroke-width: .5; }
+.farmer-figure .crimson { fill: #c8312a; }
+.farmer-figure .fur { fill: #2b2b2e; }
+.farmer-figure .feather-stem { fill: none; stroke: #4f7a3a; stroke-width: .9; }
+.farmer-figure .feather { fill: #1f8a7a; }
+.farmer-figure .feather-eye { fill: #1f3f8f; }
+.farmer-figure .ribbon { fill: none; stroke-width: 1.2; }
+.farmer-figure .ribbon.red { stroke: #d6362b; }
+
 @media (prefers-reduced-motion: reduce) {
-  .farm-item, .farm-item .sails, .farm-item .bees circle, .farm-item .glow { animation: none !important; }
+  .farm-item, .farm-item .sails, .farm-item .bees circle, .farm-item .glow, .harvest-field .farmer,
+  .harvest-field .farmer-figure { animation: none !important; }
 }

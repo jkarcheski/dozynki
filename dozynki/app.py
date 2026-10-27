@@ -390,6 +390,19 @@ def buy(body: Purchase):
         raise HTTPException(400, str(e))
 
 
+class Wear(BaseModel):
+    slot: str
+    item: str | None = None
+
+
+@app.post("/api/farm/wear")
+def wear(body: Wear):
+    try:
+        return farm.wear(LABELER, body.slot, body.item)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/api/rejection/config")
 def rejection_config():
     return {
