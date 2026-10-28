@@ -12,7 +12,6 @@
 <header>
   <!--nav-->
   <div id="haystack" class="haystack"></div>
-  <div id="stats" class="stats"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
     <span class="group mode" title="Random: every sampled object, as drawn. Filtered: samples are screened with a saved filter from the filter lab first, and you only see what passes.">
@@ -29,9 +28,10 @@
     </span>
     <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>
+    <button id="xmatch-fill" title="Retry catalogs that failed or timed out in cached crossmatches of objects not yet labeled">Retry failed catalogs</button>
     <button id="export">Export</button>
   </div>
-  <div class="filterbar" title="Applied when sampling from ANTARES and when choosing which queued object comes up next">
+  <div class="filterbar" title="Filtered mode only: applied when sampling from ANTARES and when choosing which queued object comes up next">
     <span class="muted">Only objects with</span>
     ≥ <input id="f-min-det" type="number" value="1" min="1" title="Detections (LSST + ZTF; upper limits not counted)"> detections
     <span class="muted">and</span>

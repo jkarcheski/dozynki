@@ -12,7 +12,7 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from . import assemble, db, rejection
+from . import assemble, db, details, rejection
 
 WORKERS = 4
 _lock = threading.Lock()
@@ -33,6 +33,7 @@ def _screen_one(row):
     screen = json.loads(row["source_params"] or "{}")["screen"]
     try:
         assemble.load(oid)
+        details.ensure(oid)
         feats = rejection.features(oid)
     except Exception:
         feats = None

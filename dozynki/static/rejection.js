@@ -8,7 +8,7 @@ const METRICS = [
   { key: "bogus_leak", label: "Bogus leak", hint: "bogus kept / bogus", higher: false },
 ];
 // default sweep range per parameter name
-const SWEEP_RANGE = { min_beta: [0, 30], max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30] };
+const SWEEP_RANGE = { max_ext: [0, 1], max_chi2: [1, 10], max_ratio: [0.5, 4], min_ratio: [0, 1], min_snr: [5, 30], max_len: [0, 10], max_dist: [0, 5], min_sg: [0, 1], min_beta: [0, 30], max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30] };
 const INTEGER_PARAMS = new Set(["n"]);
 
 let CFG = null;
@@ -452,6 +452,90 @@ const QUESTIONS = {
     choices: [{ label: "At least 1 day", params: { days: 1 } }, { label: "At least 3 days", params: { days: 3 } },
       { label: "At least 10 days", params: { days: 10 } }, { label: "No", params: null }],
   },
+  extended_diff: {
+    node: (p) => `Difference image extended (median > ${p.max_ext})?`,
+    ask: "Drop objects whose difference-image detections look extended?",
+    why: "Rubin's extendedness of each diaSource (0 point-like, 1 extended). A real new point source is point-like in the difference image; extended residuals are often bad subtractions of galaxies or bright stars.",
+    choices: [{ label: "Yes, median > 0.5", params: { max_ext: 0.5 } }, { label: "Yes, median > 0.9", params: { max_ext: 0.9 } }, { label: "No", params: null }],
+  },
+  dipole: {
+    node: (p) => `More than ${Math.round(p.max_frac * 100)}% dipoles?`,
+    ask: "Drop objects whose detections are mostly dipoles?",
+    why: "Rubin flags a diaSource as a dipole when it looks like a positive and negative lobe side by side: usually misalignment or a mismatched PSF in the subtraction.",
+    choices: [{ label: "Yes, over 30%", params: { max_frac: 0.3 } }, { label: "Yes, over 50%", params: { max_frac: 0.5 } }, { label: "No", params: null }],
+  },
+  glint: {
+    node: () => "Satellite glint?",
+    ask: "Drop objects with a detection flagged as a satellite glint?",
+    why: "Rubin's glint_trail flag: the detection lies on a trail of glints from a satellite.",
+    choices: [{ label: "Yes, drop them", params: {} }, { label: "No, keep them", params: null }],
+  },
+  bad_psf_fit: {
+    node: (p) => `PSF fit χ²/N above ${p.max_chi2}?`,
+    ask: "Drop objects that don't look like the PSF?",
+    why: "Median reduced χ² of Rubin's PSF fits to the difference-image detections. A point source that matches the PSF fits near 1.",
+    choices: [{ label: "Yes, χ²/N > 2", params: { max_chi2: 2 } }, { label: "Yes, χ²/N > 5", params: { max_chi2: 5 } },
+      { label: "Yes, χ²/N > 10", params: { max_chi2: 10 } }, { label: "No", params: null }],
+  },
+  sharp: {
+    node: (p) => `Sharper than the PSF (size ratio < ${p.min_ratio})?`,
+    ask: "Drop detections much sharper than a point source?",
+    why: "Second moments of the detection relative to the PSF's. Much smaller than the PSF suggests a cosmic ray or hot pixel. Check where the population sits with a sweep: these moments run below 1 for many detections.",
+    choices: [{ label: "Yes, under 0.25×", params: { min_ratio: 0.25 } }, { label: "Yes, under 0.1×", params: { min_ratio: 0.1 } }, { label: "No", params: null }],
+  },
+  oversized: {
+    node: (p) => `Larger than ${p.max_ratio}× the PSF?`,
+    ask: "Drop detections much larger than a point source?",
+    why: "Second moments of the detection relative to the PSF's. A point source is about the PSF's size; extended residuals spread out.",
+    choices: [{ label: "Yes, over 1.5×", params: { max_ratio: 1.5 } }, { label: "Yes, over 2×", params: { max_ratio: 2 } },
+      { label: "Yes, over 3×", params: { max_ratio: 3 } }, { label: "No", params: null }],
+  },
+  measurement_flags: {
+    node: (p) => `More than ${Math.round(p.max_frac * 100)}% failed measurements?`,
+    ask: "Drop objects whose measurements mostly failed?",
+    why: "Rubin's PSF flux, centroid, shape or aperture flux flags: the pipeline couldn't measure the detection properly.",
+    choices: [{ label: "Yes, over 50%", params: { max_frac: 0.5 } }, { label: "Yes, all of them", params: { max_frac: 0.99 } }, { label: "No", params: null }],
+  },
+  low_snr: {
+    node: (p) => `Brightest detection SNR below ${p.min_snr}?`,
+    ask: "How significant does the best detection have to be?",
+    why: "Alerts start at 5σ, where many are noise. This uses the highest SNR of any LSST detection.",
+    choices: [{ label: "SNR ≥ 6", params: { min_snr: 6 } }, { label: "SNR ≥ 7", params: { min_snr: 7 } },
+      { label: "SNR ≥ 10", params: { min_snr: 10 } }, { label: "Any", params: null }],
+  },
+  trailed: {
+    node: (p) => `Trailed more than ${arcsec(p.max_len)}?`,
+    ask: "Drop detections that are trailed, like a fast-moving asteroid?",
+    why: "Rubin's fitted trail length. Fast movers smear into a streak within one exposure.",
+    choices: [{ label: "Yes, over 1.5″", params: { max_len: 1.5 } }, { label: "Yes, over 2″", params: { max_len: 2 } },
+      { label: "Yes, over 4″", params: { max_len: 4 } }, { label: "No", params: null }],
+  },
+  ztf_ps1_star: {
+    node: (p) => `ZTF: PS1 star within ${arcsec(p.max_dist)} (sgscore ≥ ${p.min_sg})?`,
+    ask: "Drop objects ZTF puts on a Pan-STARRS1 star?",
+    why: "From ZTF alerts: the nearest PS1 source and its star/galaxy score (1 star). Only objects with ZTF detections have it.",
+    choices: [{ label: "Yes, within 1.5″, likely star", params: { max_dist: 1.5, min_sg: 0.5 } },
+      { label: "Yes, within 1″, likely star", params: { max_dist: 1, min_sg: 0.5 } },
+      { label: "Yes, within 1″, surely star", params: { max_dist: 1, min_sg: 0.8 } }, { label: "No", params: null }],
+  },
+  antares_bright_star: {
+    node: () => "ANTARES: near a bright guide star?",
+    ask: "Drop objects ANTARES matched to a bright star?",
+    why: "ANTARES's bright guide star catalog match. Bright stars cause ghosts, spikes and bad subtractions nearby. ANTARES doesn't report the separation, so this is yes or no.",
+    choices: [{ label: "Yes, drop them", params: {} }, { label: "No, keep them", params: null }],
+  },
+  antares_gaia_variable: {
+    node: () => "ANTARES: Gaia variable?",
+    ask: "Drop objects ANTARES matched to a known Gaia variable?",
+    why: "ANTARES's match to the Gaia DR3 variability catalog.",
+    choices: [{ label: "Yes, drop them", params: {} }, { label: "No, keep them", params: null }],
+  },
+  scimma_quality: {
+    node: () => "Not tagged quality transient by SCIMMA?",
+    ask: "Require ANTARES's SCIMMA quality-transient tag?",
+    why: "Broker output: an ANTARES filter's tag. Untagged objects are dropped, including ones the filter never saw.",
+    choices: [{ label: "Yes, require it", params: {} }, { label: "No", params: null }],
+  },
   lsst_reliability: {
     node: (p) => `LSST reliability below ${p.min_rel}?`,
     ask: "Use Rubin's reliability score?",
@@ -468,8 +552,10 @@ const QUESTIONS = {
   },
 };
 // Questionnaire order, which is also the built pipeline's order: catalog facts, then data quality, then broker scores.
-const QUESTION_ORDER = ["sso_association", "gaia_star", "milliquas_agn", "galactic_plane", "ecliptic", "negative_flux", "position_scatter",
-  "min_detections", "min_lsst_detections", "min_nights", "min_span", "lsst_reliability", "alerce_stamp_bogus"];
+const QUESTION_ORDER = ["sso_association", "trailed", "glint", "gaia_star", "antares_bright_star", "antares_gaia_variable", "ztf_ps1_star",
+  "milliquas_agn", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
+  "low_snr", "position_scatter", "min_detections", "min_lsst_detections", "min_nights", "min_span",
+  "lsst_reliability", "alerce_stamp_bogus", "scimma_quality"];
 
 function questionFor(name) {
   const rule = CFG.rules.find((r) => r.name === name);
@@ -659,6 +745,7 @@ function renderWizard() {
     ${wiz.at >= 0 ? `<button class="small" data-act="back">← Back</button>` : ""}
     ${wiz.at >= 0 && wiz.at < n ? `Question ${wiz.at + 1} of ${n}` : wiz.at < 0 ? "First, the goal" : "Done"}
     <span class="wiz-progress"><i style="width:${(100 * Math.max(0, wiz.at)) / n}%"></i></span>
+    ${wiz.at >= 0 && wiz.at < n ? `<button class="small" data-act="finish" title="Answer no to every remaining question">Finish here</button>` : ""}
     <button class="small" data-act="close">Close</button></div>`;
   let body;
   if (wiz.at < 0) {
@@ -691,6 +778,12 @@ function renderWizard() {
   el.querySelector("[data-act=close]").onclick = closeWizard;
   el.querySelector("[data-act=back]")?.addEventListener("click", () => { wiz.at--; renderWizard(); });
   el.querySelector("[data-act=next]")?.addEventListener("click", () => { wiz.at = 0; renderWizard(); });
+  el.querySelector("[data-act=finish]")?.addEventListener("click", () => {
+    // leave out every rule not yet answered (each question's "no" is its param-less choice)
+    for (let i = wiz.at; i < wiz.questions.length; i++) wiz.answers[i] = questionFor(wiz.questions[i]).choices.findIndex((c) => !c.params);
+    wiz.at = wiz.questions.length;
+    renderWizard();
+  });
   el.querySelectorAll(".wiz-targets button").forEach((b) => (b.onclick = () => {
     const k = b.dataset.k;
     const next = state.target.includes(k) ? state.target.filter((x) => x !== k) : [...state.target, k];
@@ -735,6 +828,29 @@ function renderWizard() {
   }).catch((e) => { if (token === wizToken) el.querySelector(".wiz-tree").innerHTML = `<div class="err">${esc(e.message)}</div>`; });
 }
 
+// ---------- Rubin detection details (backfill for objects cached before they were kept) ----------
+
+let detailsPoll = null;
+
+async function refreshDetails(start = false) {
+  const el = $("#details-note");
+  let st;
+  try { st = await api("/api/rejection/details", start ? {} : undefined); } catch (e) { return; }
+  clearTimeout(detailsPoll);
+  if (!st.running && !st.missing) {
+    if (!el.hidden && st.total) { toast(`Fetched detection details for ${st.done} objects`); changed(); }
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = st.running
+    ? `<span class="hint">Fetching Rubin detection details from ANTARES: ${st.done} of ${st.total}${st.errors ? ` (${st.errors} failed)` : ""}…</span>`
+    : `<span class="hint"><b>${st.missing}</b> cached objects were fetched before Rubin detection details (extendedness, dipoles, PSF fit, size, glints, measurement flags) were kept, so those rules see them as no data.</span>
+       <button class="small primary" id="details-fetch">Fetch them</button>`;
+  $("#details-fetch")?.addEventListener("click", () => refreshDetails(true));
+  if (st.running) detailsPoll = setTimeout(refreshDetails, 3000);
+}
+
 // ---------- setup ----------
 
 async function init() {
@@ -743,6 +859,7 @@ async function init() {
   try { SAVED = await api("/api/rejection/saved"); } catch (e) { toast("Couldn't load saved filters: " + e.message, 5000); }
   renderSaved();
   $("#wiz-start").onclick = startWizard;
+  refreshDetails();
   renderSettings();
   renderPipeline();
   renderSweepParams();

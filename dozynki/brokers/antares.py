@@ -115,6 +115,7 @@ def get_locus(locus_id):
         "catalog_matches": attr.get("catalog_matches", []),
         "num_alerts": props.get("num_alerts"),
         "points": [p for p in (_normalize(a) for a in alerts) if p],
+        "lsst_details": _details(alerts),
     }
 
 
@@ -173,6 +174,34 @@ def alert_positions(locus_id):
     for p in (_normalize(a) for a in _all_alerts(locus_id)):
         if p and p.get("ra") is not None:
             out[p["alert_id"]] = {k: p.get(k) for k in ("ra", "dec", "pos_err_arcsec")}
+    return out
+
+
+def alert_details(locus_id):
+    """{alert_id: detail} for LSST detections; backfills objects cached before details were kept."""
+    return _details(_all_alerts(locus_id))
+
+
+def _details(alerts):
+    """Rubin pipeline measurements per LSST detection, used by the rejection rules (not shown while vetting)."""
+    out = {}
+    for a in alerts:
+        p = a["attributes"]["properties"]
+        if p.get("ant_survey") != SURVEY_LSST:
+            continue
+        size, psf_size = (p.get("lsst_diaSource_ixx") or 0) + (p.get("lsst_diaSource_iyy") or 0), \
+            (p.get("lsst_diaSource_ixxPSF") or 0) + (p.get("lsst_diaSource_iyyPSF") or 0)
+        chi2, ndata = p.get("lsst_diaSource_psfChi2"), p.get("lsst_diaSource_psfNdata")
+        out[a["id"]] = {
+            "extendedness": p.get("lsst_diaSource_extendedness"),
+            "is_dipole": p.get("lsst_diaSource_isDipole"),
+            "glint_trail": p.get("lsst_diaSource_glint_trail"),
+            # reduced chi2 of the PSF fit, and second moments relative to the PSF's
+            "psf_chi2_red": chi2 / ndata if chi2 is not None and ndata else None,
+            "size_ratio": size / psf_size if size > 0 and psf_size > 0 else None,
+            "measurement_flagged": any(p.get(f"lsst_diaSource_{k}") for k in
+                                       ("psfFlux_flag", "centroid_flag", "shape_flag", "apFlux_flag")),
+        }
     return out
 
 

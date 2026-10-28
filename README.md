@@ -111,6 +111,16 @@ payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered
 [{"rule": "gaia_star", "max_sep": 1.5}, {"rule": "min_nights", "n": 2}, {"rule": "lsst_reliability", "min_rel": 0.3}]
 ```
 
+Rules draw on the light curve, the independent crossmatch, broker scores, and:
+- **Rubin pipeline measurements** of each LSST detection: difference-image extendedness, dipole flag,
+  glint-trail flag, PSF-fit χ²/N, size relative to the PSF (too sharp or too large), failed
+  measurement flags, SNR and trail length. New fetches keep them (`antares.get_locus` "lsst_details");
+  objects cached earlier get them from "Fetch them" in the filter lab (`details.py`, a separate
+  `lsst_details` cache kind, so labeled evidence is untouched). Until then those rules see no data.
+- **ZTF's PS1 star/galaxy score** of the nearest Pan-STARRS1 source (`sgscore1`, `distpsnr1`).
+- **ANTARES locus metadata**: its bright guide star and Gaia DR3 variability catalog matches (yes/no,
+  ANTARES gives no separation) and the SCIMMA quality-transient filter tag (broker output).
+
 ```bash
 .venv/bin/python -m dozynki.evaluate --list-rules
 .venv/bin/python -m dozynki.evaluate                       # default pipeline

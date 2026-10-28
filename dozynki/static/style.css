@@ -23,8 +23,9 @@ header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding
 .filterbar input[type=number] { width: 56px; }
 .filterbar input, .filterbar select { padding: 3px 6px; }
 .filterbar.on { color: var(--accent); }
+.filterbar[hidden] { display: none; }
 .muted { color: var(--muted); font-weight: 400; }
-.stats { flex: 1; color: var(--muted); font-size: 13px; }
+.stats { flex: 1 1 320px; color: var(--muted); font-size: 13px; }
 .stats b { color: var(--ink); }
 .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .group { display: inline-flex; gap: 4px; }

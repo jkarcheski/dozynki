@@ -63,6 +63,7 @@ async function init() {
   $("#pull-night").onclick = pullNight;
   $("#add-ids").onclick = addIds;
   $("#watch-recheck").onclick = recheckWatchlist;
+  $("#xmatch-fill").onclick = fillMissingXmatch;
   $("#export").onclick = doExport;
   $("#commit").onclick = commit;
   $("#skip").onclick = skip;
@@ -176,12 +177,7 @@ function onKey(e) {
 async function refreshStats() {
   const s = await api("/api/stats");
   const q = s.queue;
-  Harvest.setStack(q.pending || 0);
-  const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
-  $("#stats").innerHTML =
-    `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · watching <b>${q.watch || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
-    (classes ? ` &nbsp;|&nbsp; ${classes}` : "") +
-    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
+  Harvest.setStack(q.pending || 0);  // queue and label counts are on the landing page
 }
 
 // ---------- mode: random, or filtered (samples screened with a saved filter first) ----------
@@ -221,6 +217,7 @@ function setMode(change) {
 function renderMode() {
   document.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.v === mode.mode));
   $("#mode-filter").hidden = mode.mode !== "filtered";
+  $(".filterbar").hidden = mode.mode !== "filtered";
   document.body.classList.toggle("filtered-mode", mode.mode === "filtered");
   if (mode.mode !== "filtered") $("#mode-status").textContent = "";
 }
@@ -236,7 +233,11 @@ function renderModeStatus(r) {
 const FILTER_KEY = "dozynki.filters";
 const FILTER_FIELDS = { min_det: "#f-min-det", date_mode: "#f-date-mode", date_from: "#f-date-from", date_to: "#f-date-to" };
 
+// Random mode takes everything as drawn, so the filter bar only applies in filtered mode.
+const NO_FILTERS = { min_det: 1, date_mode: "first", date_from: "", date_to: "" };
+
 function getFilters() {
+  if (mode.mode !== "filtered") return { ...NO_FILTERS };
   return {
     min_det: Math.max(1, +$("#f-min-det").value || 1),
     date_mode: $("#f-date-mode").value,
@@ -262,7 +263,7 @@ function initFilters() {
 }
 
 function onFiltersChanged() {
-  try { localStorage.setItem(FILTER_KEY, JSON.stringify(getFilters())); } catch {}
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify(getFilters())); } catch {}  // only reachable in filtered mode
   refreshMatching();
 }
 
@@ -341,6 +342,26 @@ async function recheckWatchlist() {
     toast("Recheck failed: " + e.message, 5000);
   } finally {
     $("#watch-recheck").disabled = false;
+  }
+}
+
+async function fillMissingXmatch() {
+  $("#xmatch-fill").disabled = true;
+  toast("Retrying failed catalogs (up to a minute if a catalog is still down)…", 60000);
+  try {
+    const r = await api("/api/xmatch/fill-missing", { method: "POST" });
+    const n = Object.keys(r.filled).length, errs = Object.keys(r.errors).length;
+    toast(`${n} of ${r.checked} crossmatch(es) with failed catalogs filled in` + (errs ? `; ${errs} failed` : "")
+      + (r.checked && !n ? " (catalogs still unreachable?)" : ""), 6000);
+    if (cur && r.filled[cur.evidence.object_id]) {
+      // swap in the new crossmatch without resetting the label form
+      cur.evidence.xmatch = (await api(`/api/object/${cur.evidence.object_id}`)).evidence.xmatch;
+      renderField(cur.evidence); renderXmatch(cur.evidence); updateAladin(cur.evidence);
+    }
+  } catch (e) {
+    toast("Retry failed: " + e.message, 5000);
+  } finally {
+    $("#xmatch-fill").disabled = false;
   }
 }
 

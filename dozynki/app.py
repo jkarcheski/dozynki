@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, achievements, assemble, compare, db, evaluate, export, farm, rejection, sky, sources
+from . import __version__, achievements, assemble, compare, db, details, evaluate, export, farm, rejection, sky, sources
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
@@ -367,6 +367,28 @@ def watch_recheck():
     return {"requeued": updated, "unchanged": unchanged, "errors": errors}
 
 
+@app.post("/api/xmatch/fill-missing")
+def xmatch_fill_missing():
+    """Retry catalogs that failed (e.g. timed out) in cached crossmatches. Labeled objects
+    are left alone, so their crossmatch stays the evidence they were labeled with."""
+    rows = db.query(
+        "SELECT c.object_id FROM cache c JOIN queue q USING (object_id) WHERE c.kind = 'xmatch'"
+        " AND q.status != 'labeled' AND json_extract(c.payload, '$.errors') != '{}'"
+    )
+
+    def fill(oid):
+        try:
+            return assemble.fill_missing_xmatch(oid), None
+        except Exception as e:
+            return [], f"{type(e).__name__}: {e}"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = dict(zip([r["object_id"] for r in rows], pool.map(fill, [r["object_id"] for r in rows])))
+    filled = {oid: cats for oid, (cats, _) in results.items() if cats}
+    errors = {oid: err for oid, (_, err) in results.items() if err}
+    return {"checked": len(rows), "filled": filled, "errors": errors}
+
+
 @app.post("/api/skip/{object_id}")
 def skip(object_id: str):
     db.set_status(object_id, "skipped")
@@ -502,6 +524,18 @@ def rejection_sweep(body: Sweep):
                               target=body.target, include_alt=body.include_alt, all_sources=body.all_sources)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
+
+
+@app.get("/api/rejection/details")
+def details_status():
+    """How many cached objects lack Rubin detection details, and the backfill's progress."""
+    return details.status()
+
+
+@app.post("/api/rejection/details")
+def details_backfill():
+    details.backfill()
+    return details.status()
 
 
 class SavedPipeline(BaseModel):
