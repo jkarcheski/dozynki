@@ -201,8 +201,9 @@ DEFAULT_PIPELINE = [
 # keeps; the rest run here on listing_features(). Every other rule waits for the full fetch.
 LISTING_ES = {
     "min_detections": lambda n: [{"range": {"properties.num_mag_values": {"gte": n}}}],
-    "sso_association": lambda: [{"bool": {"must_not": [{"exists": {"field": "properties.survey.lsst.ss_object_id"}},
-                                                       {"exists": {"field": "properties.survey.ztf.ssnamenr"}}]}}],
+    # LSST only: ZTF fills ssnamenr with the string "null" on nearly every locus, so ZTF's
+    # associations wait for the full fetch, which reads them per alert
+    "sso_association": lambda: [{"bool": {"must_not": {"exists": {"field": "properties.survey.lsst.ss_object_id"}}}}],
     "antares_bright_star": lambda: [{"bool": {"must_not": {"term": {"catalogs": "bright_guide_star_cat"}}}}],
     "antares_gaia_variable": lambda: [{"bool": {"must_not": {"term": {"catalogs": "gaia_dr3_variability"}}}}],
     "scimma_quality": lambda: [{"term": {"tags": "lsst_scimma_quality_transient"}}],

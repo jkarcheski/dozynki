@@ -112,7 +112,8 @@ def _listing_summary(x):
         "last_mjd": attr["properties"].get("newest_alert_observation_time"),
         "tags": attr.get("tags", []),
         "catalogs": attr.get("catalogs", []),
-        "ss_ids": survey.get("lsst", {}).get("ss_object_id", []) + survey.get("ztf", {}).get("ssnamenr", []),
+        "ss_ids": [s for s in survey.get("lsst", {}).get("ss_object_id", []) + survey.get("ztf", {}).get("ssnamenr", [])
+                   if s not in (None, "null")],
     }
 
 
