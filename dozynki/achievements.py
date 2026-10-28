@@ -168,6 +168,29 @@ def nights(labeler, vetted=None):
     return out
 
 
+def night_runs(labeler, screen=None, vetted=None):
+    """Whole nights run through a saved filter (nightrun.py), newest first: the night's size,
+    how many passed the listing rules, and where those are now (being checked, thrown out by
+    the full check, vetted, left to vet)."""
+    if vetted is None:
+        vetted = {r["object_id"] for r in db.query(
+            "SELECT DISTINCT object_id FROM labels WHERE COALESCE(labeler, 'anonymous') = ?", (labeler,))}
+    status = {r["object_id"]: r["status"] for r in db.query("SELECT object_id, status FROM queue")}
+    out = []
+    for r in reversed(db.night_runs(screen)):
+        ids = r.pop("object_ids")
+        n_screening = sum(status.get(o) == "screening" for o in ids)
+        n_filtered = sum(status.get(o) == "filtered" for o in ids)
+        n_vetted = sum(o in vetted for o in ids)
+        left = len(ids) - n_screening - n_filtered - n_vetted
+        out.append({k: r[k] for k in ("id", "night", "screen", "state", "n_night", "n_listed", "n_passed", "error",
+                                      "started_at", "finished_at")}
+                   | {"screening": n_screening, "filtered": n_filtered, "vetted": n_vetted, "left": left,
+                      "kept": len(ids) - n_screening - n_filtered,
+                      "done": r["state"] == "done" and not n_screening and not left})
+    return out
+
+
 def counts(labeler):
     """{achievement key: count} for one labeler (filter achievements excluded)."""
     latest = db.query(

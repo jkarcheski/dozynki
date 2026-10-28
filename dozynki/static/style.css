@@ -112,5 +112,6 @@ footer .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 #toast.show { opacity: .95; }
 .loading { color: var(--muted); padding: 40px; text-align: center; }
 .mode select { padding: 3px 6px; }
-.mode #mode-status { font-size: 12px; }
+.mode #mode-status, .mode #run-status { font-size: 12px; }
 body.filtered-mode #mode button.on { background: var(--ok); border-color: var(--ok); }
+body.filtered-mode .random-only, body:not(.filtered-mode) .filtered-only { display: none; }

@@ -72,6 +72,21 @@ def night_lsst_loci(mjd_lo, mjd_hi, seed, offset, n, extra_filters=()):
     return es_query, resp.get("meta", {}).get("count", 0), [_listing_summary(x) for x in resp.get("data", [])]
 
 
+def count_loci(filters):
+    """How many loci match a bool filter; ANTARES stops counting at 10,000."""
+    es_query = {"query": {"bool": {"filter": filters}}}
+    return _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                         "page[limit]": 1}).get("meta", {}).get("count", 0)
+
+
+def list_loci(filters, offset, n):
+    """One page of loci matching a bool filter, as listing summaries (offset + n within 10,000)."""
+    es_query = {"query": {"bool": {"filter": filters}}}
+    resp = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                         "page[limit]": n, "page[offset]": offset})
+    return [_listing_summary(x) for x in resp.get("data", [])]
+
+
 def locus_summary(locus_id):
     return _listing_summary(_get(f"{ANTARES_API}/loci/{locus_id}")["data"])
 
@@ -95,6 +110,9 @@ def _listing_summary(x):
         "n_det": attr["properties"].get("num_mag_values"),
         "first_mjd": attr["properties"].get("oldest_alert_observation_time"),
         "last_mjd": attr["properties"].get("newest_alert_observation_time"),
+        "tags": attr.get("tags", []),
+        "catalogs": attr.get("catalogs", []),
+        "ss_ids": survey.get("lsst", {}).get("ss_object_id", []) + survey.get("ztf", {}).get("ssnamenr", []),
     }
 
 

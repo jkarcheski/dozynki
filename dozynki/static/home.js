@@ -139,9 +139,22 @@ async function checkTns(rc) {
   }
 }
 
-function renderNights(rows) {
-  if (!rows.length) {
-    $("#nights").innerHTML = `<tr><td class="muted">No nights sampled yet. Pick a night next to "Sample night" in the vetter.</td></tr>`;
+// A whole night run through a saved filter (filtered mode): how many pass, and how far you are.
+function runRow(r) {
+  const n = (x) => (x ?? 0).toLocaleString();
+  const pass = r.screening ? `${n(r.kept)} to ${n(r.kept + r.screening)}` : n(r.kept);
+  const status = r.state === "error" ? `failed: ${esc(r.error)}` : r.state !== "done" ? "going through ANTARES…"
+    : r.done ? "finished" : r.screening ? `checking ${n(r.screening)}; ${n(r.left)} left to vet` : `${n(r.left)} left to vet`;
+  return `<tr><td>${esc(r.night)} <span class="pill" title="Filtered mode: the whole night through this saved filter">${esc(r.screen)}</span></td>`
+    + `<td class="num muted">whole night</td><td class="num" title="first or latest alert that night; passing every rule">${pass} of ${n(r.n_night)} pass</td>`
+    + `<td class="num">${n(r.vetted)}${r.filtered ? ` <span class="muted" title="thrown out by the rules that need each object fetched">+ ${n(r.filtered)} filtered</span>` : ""}</td>`
+    + `<td class="lb-bar" title="vetted of those that passed"><i style="width:${(100 * r.vetted / Math.max(1, r.kept + r.screening)).toFixed(1)}%"></i></td>`
+    + `<td class="muted">${status}</td></tr>`;
+}
+
+function renderNights(rows, runs = []) {
+  if (!rows.length && !runs.length) {
+    $("#nights").innerHTML = `<tr><td class="muted">No nights yet. Pick a night next to "Sample night" in the vetter, or "Filter whole night" in filtered mode.</td></tr>`;
     return;
   }
   const size = (r) => (r.capped ? "10000+" : r.n_matching);
@@ -153,13 +166,14 @@ function renderNights(rows) {
       + `<td class="lb-bar" title="vetted (and filtered out) of the whole night"><i style="width:${(100 * (r.vetted + r.filtered) / Math.max(1, r.n_matching)).toFixed(1)}%"></i></td>`
       + `<td class="muted">${r.done ? "finished" : r.capped ? "too many to finish; raise the detection minimum"
         : r.taken < r.n_matching ? `${r.n_matching - r.taken} left to sample`
-        : r.screening ? `screening ${r.screening}` : `${r.taken - r.vetted - r.filtered} left to vet`}</td></tr>`).join("");
+        : r.screening ? `screening ${r.screening}` : `${r.taken - r.vetted - r.filtered} left to vet`}</td></tr>`).join("")
+    + runs.map(runRow).join("");
 }
 
 async function init() {
   const [cfg, s, lb, ach, rc, farm] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
     api("/api/achievements"), api("/api/rejection/config"), api("/api/farm")]);
-  api("/api/nights").then((n) => renderNights(n.nights)).catch((e) => { $("#err").textContent = e.message; });
+  api("/api/nights").then((n) => renderNights(n.nights, n.runs)).catch((e) => { $("#err").textContent = e.message; });
   renderLeaderboard(lb, cfg.labeler);
   renderAchievements(ach, rc);
   $("#tns-check").onclick = () => checkTns(rc);

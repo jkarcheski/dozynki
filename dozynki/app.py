@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, achievements, assemble, compare, db, details, evaluate, export, farm, rejection, sky, sources
+from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
@@ -190,8 +191,35 @@ def pull_night(body: NightPull):
 @app.get("/api/nights")
 def nights():
     """Each sampled night (per detection minimum): objects taken so far, how many the
-    current labeler has vetted, and the night's size at the latest batch."""
-    return {"nights": achievements.nights(LABELER)}
+    current labeler has vetted, and the night's size at the latest batch; and the whole
+    nights run through saved filters."""
+    return {"nights": achievements.nights(LABELER), "runs": achievements.night_runs(LABELER)}
+
+
+class NightRun(BaseModel):
+    night: str
+    screen: str
+
+
+@app.post("/api/nights/run")
+def run_night(body: NightRun):
+    """Filtered mode: run a whole night through a saved filter (nightrun.py)."""
+    scr = Pull(screen=body.screen).resolve_screen()
+    try:
+        run_id = nightrun.start(body.night, scr)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return {"id": run_id}
+
+
+@app.get("/api/nights/runs")
+def night_runs(screen: str = ""):
+    runs = achievements.night_runs(LABELER, screen or None)
+    if any(r["screening"] for r in runs):
+        screening.start()  # resumes after a restart
+    return {"runs": runs, "running": nightrun._running}
 
 
 class AddIds(BaseModel):

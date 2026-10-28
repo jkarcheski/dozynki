@@ -51,6 +51,22 @@ CREATE TABLE IF NOT EXISTS night_pulls (
     object_ids  TEXT NOT NULL,         -- JSON list: the objects in this batch
     pulled_at   TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS night_runs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    night       TEXT NOT NULL,         -- Rubin dayObs, YYYY-MM-DD
+    screen      TEXT NOT NULL,         -- saved filter name
+    version     TEXT NOT NULL,         -- its pipeline's hash then (rejection.version)
+    pipeline    TEXT NOT NULL,         -- JSON: the resolved pipeline then
+    seed        INTEGER NOT NULL,      -- the random order passing objects were queued in
+    state       TEXT NOT NULL,         -- counting | listing | done | error (nightrun.py)
+    n_night     INTEGER,               -- LSST objects alerting that night
+    n_listed    INTEGER,               -- left after the rules ANTARES applies itself
+    n_passed    INTEGER,               -- left after every rule the listing answers; all queued
+    object_ids  TEXT,                  -- JSON list: those objects, in queue order
+    error       TEXT,
+    started_at  TEXT NOT NULL,
+    finished_at TEXT
+);
 CREATE TABLE IF NOT EXISTS rejection_pipelines (
     version     TEXT PRIMARY KEY,      -- hash of the resolved pipeline (rejection.py)
     config      TEXT NOT NULL,         -- JSON list of {"rule", **params}
@@ -152,6 +168,41 @@ def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summa
     return execute("UPDATE queue SET source = ?, source_params = ?, added_at = ?, screen = NULL, screen_result = NULL, "
                    "status = 'pending' WHERE object_id = ? AND screen IS NOT NULL AND status IN ('screening', 'filtered', 'pending')",
                    (source, json.dumps(source_params), now(), str(object_id))).rowcount
+
+
+def add_many_screening(rows, screen):
+    """Queue (object_id, antares_locus, ra, dec, source, source_params, summary) rows as 'screening'
+    in one transaction, keeping their order; objects already queued are left as they are."""
+    t = now()
+    with _lock:
+        before = _conn.total_changes
+        _conn.executemany(
+            "INSERT OR IGNORE INTO queue (object_id, antares_locus, ra, dec, source, source_params, added_at, "
+            "n_det, first_mjd, last_mjd, screen, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'screening')",
+            [(str(oid), locus, ra, dec, source, json.dumps(params), t, sm.get("n_det"), sm.get("first_mjd"),
+              sm.get("last_mjd"), screen) for oid, locus, ra, dec, source, params, sm in rows])
+        _conn.commit()
+        return _conn.total_changes - before
+
+
+def add_night_run(night, screen, version, pipeline, seed):
+    return execute("INSERT INTO night_runs (night, screen, version, pipeline, seed, state, started_at) "
+                   "VALUES (?, ?, ?, ?, ?, 'counting', ?)",
+                   (night, screen, version, json.dumps(pipeline), seed, now())).lastrowid
+
+
+def update_night_run(run_id, **fields):
+    if "object_ids" in fields:
+        fields["object_ids"] = json.dumps(fields["object_ids"])
+    if fields.get("state") in ("done", "error"):
+        fields["finished_at"] = now()
+    execute(f"UPDATE night_runs SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), run_id))
+
+
+def night_runs(screen=None):
+    rows = query("SELECT * FROM night_runs" + (" WHERE screen = ?" if screen else "") + " ORDER BY id",
+                 (screen,) if screen else ())
+    return [r | {"pipeline": json.loads(r["pipeline"]), "object_ids": json.loads(r["object_ids"] or "[]")} for r in rows]
 
 
 def set_screened(object_id, status, result):

@@ -14,17 +14,21 @@
   <div id="haystack" class="haystack"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
-    <span class="group mode" title="Random: every sampled object, as drawn. Filtered: samples are screened with a saved filter from the filter lab first, and you only see what passes.">
+    <span class="group mode" title="Random: every sampled object, as drawn. Filtered: a whole night is run through a saved filter from the filter lab, and you only see what passes.">
       <span class="seg" id="mode"><button data-v="random">Random</button><button data-v="filtered">Filtered</button></span>
       <select id="mode-filter" aria-label="Saved filter to screen with"></select>
       <span id="mode-status" class="muted"></span>
+      <span id="run-status" class="muted filtered-only"></span>
     </span>
     <span class="group">
-      <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
-      <button id="fill" title="Random LSST objects from ANTARES that pass the filters below">Sample random LSST</button>
-      <span class="muted">or from night</span>
+      <span class="random-only">
+        <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
+        <button id="fill" title="Random LSST objects from ANTARES">Sample random LSST</button>
+        <span class="muted">or from night</span>
+      </span>
       <input id="night" type="date" title="Rubin night (dayObs): noon to noon UTC">
-      <button id="pull-night" title="The next random objects whose first alert came that night, with at least the detections set below (the date range is ignored). Later samples of the night continue without repeats.">Sample night</button>
+      <button id="pull-night" class="random-only" title="The next random objects whose first alert came that night. Later samples of the night continue without repeats.">Sample night</button>
+      <button id="run-night" class="filtered-only" title="Every LSST object whose first or latest alert came that night, through the saved filter: the rules ANTARES's listing answers run over the whole night at once, then each object that passes is fetched and checked against the rest before you get to it.">Filter whole night</button>
     </span>
     <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>

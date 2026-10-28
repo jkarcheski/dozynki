@@ -50,17 +50,27 @@ with earlier ZTF alerts are not part of a later night. Night samples are left ou
 compare pages' default population, which is the uniform random sample.
 
 **Random and Filtered modes.** The vetter's mode switch picks what you see. *Random* is everything sampled,
-as drawn. *Filtered* screens each sample with a saved filter from the filter lab before it reaches you, so
-on a live night you only vet what passes. A filtered-mode sample is queued as `screening`; a background
-thread (`screen.py`) fetches each object (the fetch vetting needs anyway), applies the filter, and moves it
-to `pending` or `filtered`, recording the rejecting step in `queue.screen_result` and every decision in
-`rejections`. An object that can't be fetched is kept (`screen_result` "error"). The two modes have separate
-queues and separate night orders, so neither takes the other's objects; a random-mode sample that draws an
-object a filter threw away takes it back into random mode, so Random stays random. The filter as it was is
-stored with each sample (`source_params.screen`), and screened random samples get the source
-`antares_random_lsst_screened`, which keeps them out of the filter lab's uniform population. The Nights card
-lists filtered-mode nights separately (filtered-out objects count as done), and finishing a night counts
-toward achievements in random mode only.
+as drawn. *Filtered* runs a whole night through a saved filter from the filter lab ("Filter whole night"),
+like ANTARES's per-night filter counts, so on a live night you vet only what passes and never sample more.
+A night is every LSST object whose first or latest ANTARES alert came during it (the locus listing has no
+other alert times, so for a past night this misses objects that alerted on it and again later). The run
+(`nightrun.py`, table `night_runs`) has two stages:
+
+1. The rules the locus listing answers run over the whole night at once: ANTARES applies detections,
+   solar-system association, its catalog matches and the SCIMMA tag in its query, and Galactic latitude,
+   ecliptic latitude and span run here on each listing (`rejection.LISTING_ES` / `LISTING_LOCAL`). This
+   takes about 40 s for a 50,000-object night and gives "N of M pass".
+2. Everything that passes is queued as `screening` in a random order, and a background thread (`screen.py`)
+   fetches each object (the fetch vetting needs anyway), applies the whole filter, and moves it to `pending`
+   or `filtered`. It also drops objects with no detection on the night. The rejecting step goes in
+   `queue.screen_result` and every decision in `rejections`; an object that can't be fetched is kept
+   (`screen_result` "error"). This runs at about one object a second, so a big night is checked over hours,
+   ahead of you as you vet.
+
+The filter as it was is stored with the run and each object (`source_params.screen`). The two modes have
+separate queues, so neither takes the other's objects; a random-mode sample that draws an object a filter
+threw away takes it back into random mode, so Random stays random. The Nights card lists filtered nights
+with their pass counts, and finishing a night counts toward achievements in random mode only.
 
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
@@ -148,7 +158,7 @@ does the same thing interactively for one pipeline, scored against no filter.
 - **Saved filters** are named pipelines stored in the `saved_pipelines` table, so every browser sees them.
   Save one from the pipeline card or at the end of the questionnaire, and load one back. The pipeline
   card shows which saved filter it came from and "(edited)" once it differs. The vetter's Filtered mode
-  screens samples with one. On the command line:
+  runs whole nights through one. On the command line:
   `.venv/bin/python -m dozynki.evaluate --saved "<name>"`.
 
 Evaluating stores nothing in the database. Your other settings are remembered in the browser.

@@ -61,6 +61,7 @@ async function init() {
   initFilters();
   $("#fill").onclick = fillQueue;
   $("#pull-night").onclick = pullNight;
+  $("#run-night").onclick = runNight;
   $("#add-ids").onclick = addIds;
   $("#watch-recheck").onclick = recheckWatchlist;
   $("#xmatch-fill").onclick = fillMissingXmatch;
@@ -225,7 +226,66 @@ function renderMode() {
   $(".filterbar").hidden = mode.mode !== "filtered";
   document.body.classList.toggle("filtered-mode", mode.mode === "filtered");
   if (mode.mode !== "filtered") $("#mode-status").textContent = "";
+  $("#mode-status").hidden = false;
+  $("#run-status").textContent = "";
+  watchRuns();
 }
+
+// ---------- filtered mode: whole nights run through the saved filter ----------
+
+async function runNight() {
+  const night = $("#night").value, name = screenName();
+  if (!night) return toast("Pick a night first");
+  $("#run-night").disabled = true;
+  try {
+    await api("/api/nights/run", { method: "POST", body: { night, screen: name } });
+    toast(`Running ${night} through "${name}"; the count comes up next to the filter`, 5000);
+    watchRuns();
+  } catch (e) {
+    toast("Couldn't filter the night: " + e.message, 8000);
+  } finally {
+    $("#run-night").disabled = false;
+  }
+}
+
+const fmtN = (n) => (n ?? 0).toLocaleString();
+
+function runText(r) {
+  if (r.state === "error") return `${r.night}: failed (${r.error})`;
+  if (r.state === "counting") return `${r.night}: counting the night…`;
+  if (r.state === "listing") return `${r.night}: ${fmtN(r.n_night)} objects, going through ${r.n_listed == null ? "them" : fmtN(r.n_listed)}…`;
+  const pass = r.screening ? `${fmtN(r.kept)} to ${fmtN(r.kept + r.screening)}` : fmtN(r.kept);
+  return `${r.night}: ${pass} of ${fmtN(r.n_night)} pass` + (r.screening ? ` · checking ${fmtN(r.screening)}` : "")
+    + ` · ${fmtN(r.left)} left to vet`;
+}
+
+const runTitle = (r) => r.state === "done"
+  ? `${fmtN(r.n_night)} LSST objects first or last alerting on ${r.night}; ${fmtN(r.n_listed)} left after the rules ANTARES applies, `
+    + `${fmtN(r.n_passed)} after the rest the listing answers; the full check has thrown out ${fmtN(r.filtered)} of those so far.`
+  : "";
+
+// The newest run with this filter, followed while ANTARES is being listed; screening is followed by watchScreening.
+let runWatch = null;
+
+async function watchRuns() {
+  clearTimeout(runWatch);
+  runWatch = null;
+  const name = screenName();
+  if (!name) return;
+  let r;
+  try { r = await api("/api/nights/runs?" + new URLSearchParams({ screen: name })); } catch { return; }
+  if (screenName() !== name) return;
+  const run = r.runs[0];
+  $("#run-status").textContent = run ? runText(run) : "No night filtered yet: pick one and press \"Filter whole night\"";
+  $("#run-status").title = run ? runTitle(run) : "";
+  $("#mode-status").hidden = !!run;  // the run's counts say the same, per night
+  $("#run-night").disabled = r.running != null;
+  if (r.running != null) runWatch = setTimeout(watchRuns, 3000);
+  else if (run?.screening) watchScreening();
+  if (r.running == null && wasRunning && !cur) next();  // listing just finished: say so in the empty panel
+  wasRunning = r.running != null;
+}
+let wasRunning = false;
 
 // While objects are being screened, follow them: the stack grows as they pass, the first one
 // comes up if nothing is open, and a toast sums up when the batch is done.
@@ -238,6 +298,7 @@ function watchScreening() {
     let r;
     try { r = await api("/api/queue/matching?" + filterQuery()); } catch { r = null; }
     if (!r || screenName() !== name) { screenWatch = null; return; }  // mode changed: the new mode refreshes itself
+    watchRuns();
     Harvest.setStack(r.n_pending);
     renderModeStatus(r);
     if (!cur && r.n_pending) next();
@@ -417,7 +478,7 @@ async function next() {
       : r.n_pending && filtersActive()
       ? `<div class="loading">No pending objects match the filters (${r.n_pending} pending don't). Sample with these filters, or loosen them.</div>`
       : screenName()
-      ? `<div class="loading">Nothing left that passed "${esc(screenName())}" (${r.n_filtered} filtered out). Sample more above; samples are screened in this mode.</div>`
+      ? `<div class="loading">Nothing left that passed "${esc(screenName())}" (${r.n_filtered} filtered out). Filter another night above.</div>`
       : `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;
     renderForm();
     return;

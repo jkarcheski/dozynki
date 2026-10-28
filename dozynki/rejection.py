@@ -196,6 +196,48 @@ DEFAULT_PIPELINE = [
 ]
 
 
+# Rules ANTARES's locus listing can decide, so a whole night can be filtered without
+# fetching every object (nightrun.py). Some become ES clauses that keep what the rule
+# keeps; the rest run here on listing_features(). Every other rule waits for the full fetch.
+LISTING_ES = {
+    "min_detections": lambda n: [{"range": {"properties.num_mag_values": {"gte": n}}}],
+    "sso_association": lambda: [{"bool": {"must_not": [{"exists": {"field": "properties.survey.lsst.ss_object_id"}},
+                                                       {"exists": {"field": "properties.survey.ztf.ssnamenr"}}]}}],
+    "antares_bright_star": lambda: [{"bool": {"must_not": {"term": {"catalogs": "bright_guide_star_cat"}}}}],
+    "antares_gaia_variable": lambda: [{"bool": {"must_not": {"term": {"catalogs": "gaia_dr3_variability"}}}}],
+    "scimma_quality": lambda: [{"term": {"tags": "lsst_scimma_quality_transient"}}],
+}
+LISTING_LOCAL = {"min_span", "galactic_plane", "ecliptic"}
+
+
+def listing_split(pipeline):
+    """(ES clauses, steps to run on listing_features, steps that need the full fetch)."""
+    es, local, later = [], [], []
+    for step in resolve(pipeline):
+        params = {k: v for k, v in step.items() if k != "rule"}
+        if step["rule"] in LISTING_ES:
+            es += LISTING_ES[step["rule"]](**params)
+        elif step["rule"] in LISTING_LOCAL:
+            local.append(step)
+        else:
+            later.append(step)
+    return es, local, later
+
+
+def listing_features(summaries):
+    """The features LISTING_LOCAL rules read, for many ANTARES listing summaries at once."""
+    from astropy.coordinates import SkyCoord
+
+    if not summaries:
+        return []
+    c = SkyCoord([s["ra"] for s in summaries], [s["dec"] for s in summaries], unit="deg")
+    gal_b, ecl_lat = c.galactic.b.deg, c.barycentrictrueecliptic.lat.deg
+    return [{"n_det": s["n_det"],
+             "span_days": s["last_mjd"] - s["first_mjd"] if s["first_mjd"] is not None and s["last_mjd"] is not None else None,
+             "abs_gal_b": abs(float(b)), "abs_ecl_lat": abs(float(e))}
+            for s, b, e in zip(summaries, gal_b, ecl_lat)]
+
+
 def resolve(pipeline):
     """Fill in default params; checks every rule and param name."""
     out = []

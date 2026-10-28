@@ -6,6 +6,8 @@ background thread fetches each one (the same fetch the vetter would make), appli
 pipeline, and moves it to 'pending' (kept) or 'filtered' (rejected; screen_result names
 the step). An object that can't be fetched goes to 'pending' with screen_result 'error',
 so a broker outage hides nothing. Random mode never serves screened objects.
+Objects from a whole-night run (nightrun.py) are also filtered out when none of their
+detections fall on the night.
 """
 
 import json
@@ -30,15 +32,21 @@ def resolve(name):
 
 def _screen_one(row):
     oid = row["object_id"]
-    screen = json.loads(row["source_params"] or "{}")["screen"]
+    params = json.loads(row["source_params"] or "{}")
+    screen = params["screen"]
     try:
-        assemble.load(oid)
+        raw = assemble.load(oid)
         details.ensure(oid)
         feats = rejection.features(oid)
     except Exception:
         feats = None
     if feats is None:
         db.set_screened(oid, "pending", "error")
+        return
+    night = params.get("mjd_range")  # a whole-night run (nightrun.py): the night's query also catches
+    if night and not any(p["kind"] == "detection" and night[0] <= p["mjd"] < night[1]  # objects alerting around it
+                         for p in raw["antares"]["data"]["points"]):
+        db.set_screened(oid, "filtered", "no_alert_that_night")
         return
     decisions = rejection.apply(feats, screen["pipeline"])
     db.save_pipeline(screen["version"], screen["pipeline"])
