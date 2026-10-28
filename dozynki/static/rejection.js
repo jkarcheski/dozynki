@@ -838,14 +838,14 @@ async function refreshDetails(start = false) {
   try { st = await api("/api/rejection/details", start ? {} : undefined); } catch (e) { return; }
   clearTimeout(detailsPoll);
   if (!st.running && !st.missing) {
-    if (!el.hidden && st.total) { toast(`Fetched detection details for ${st.done} objects`); changed(); }
+    if (!el.hidden && st.total) { toast(`Fetched ANTARES data for ${st.done} objects`); changed(); }
     el.hidden = true;
     return;
   }
   el.hidden = false;
   el.innerHTML = st.running
-    ? `<span class="hint">Fetching Rubin detection details from ANTARES: ${st.done} of ${st.total}${st.errors ? ` (${st.errors} failed)` : ""}…</span>`
-    : `<span class="hint"><b>${st.missing}</b> cached objects were fetched before Rubin detection details (extendedness, dipoles, PSF fit, size, glints, measurement flags) were kept, so those rules see them as no data.</span>
+    ? `<span class="hint">Fetching detection details and catalog matches from ANTARES: ${st.done} of ${st.total}${st.errors ? ` (${st.errors} failed)` : ""}…</span>`
+    : `<span class="hint"><b>${st.missing}</b> cached objects are missing Rubin detection details (extendedness, dipoles, PSF fit, size, glints, measurement flags) or ANTARES's catalog matches (Gaia stars, Milliquas), so those rules see them as no data.</span>
        <button class="small primary" id="details-fetch">Fetch them</button>`;
   $("#details-fetch")?.addEventListener("click", () => refreshDetails(true));
   if (st.running) detailsPoll = setTimeout(refreshDetails, 3000);

@@ -138,6 +138,26 @@ def get_locus(locus_id):
     }
 
 
+# ANTARES's catalog matches (within about 1 arcsec of the locus) and the fields the rejection rules read
+CATALOG_FIELDS = {
+    "gaia_dr3_gaia_source": ("parallax", "parallax_error", "pmra", "pmra_error", "pmdec", "pmdec_error", "phot_g_mean_mag"),
+    "milliquas": ("type", "z", "qpct"),
+    "vsx": ("type",),
+    "gaia_dr3_variability": ("class",),
+}
+
+
+def catalog_matches(locus_id):
+    """{catalog: [{sep (arcsec), radius, ...CATALOG_FIELDS}]} from ANTARES's own crossmatch, nearest first."""
+    out = {}
+    for m in _get(f"{ANTARES_API}/loci/{locus_id}/catalog-matches").get("data", []):
+        meta, props = m.get("meta", {}), m["attributes"].get("properties", {})
+        name = meta.get("catalog_name")
+        out.setdefault(name, []).append({"sep": meta.get("separation"), "radius": meta.get("radius"),
+                                         **{k: props.get(k) for k in CATALOG_FIELDS.get(name, ())}})
+    return {name: sorted(rows, key=lambda r: r["sep"] if r["sep"] is not None else 99) for name, rows in out.items()}
+
+
 def tns_matches(locus_id):
     """TNS entries ANTARES has matched to the locus (its copy of TNS public objects).
 

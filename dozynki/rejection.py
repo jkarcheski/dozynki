@@ -18,7 +18,7 @@ import math
 from dataclasses import dataclass
 from typing import Callable
 
-from . import assemble, db, details
+from . import assemble, crossmatch, db, details
 
 
 def _rms_offset(dets):
@@ -51,6 +51,18 @@ def _nearest(rows, keep=lambda r: True):
     return min(seps, default=None)
 
 
+def _snr(value, err):
+    return abs(value) / err if value is not None and err else None
+
+
+def _likely_star(g):
+    """A Gaia DR3 match with significant parallax or proper motion (the same cut crossmatch.py makes)."""
+    plx = _snr(g.get("parallax"), g.get("parallax_error"))
+    pm = (math.hypot(g["pmra"] / g["pmra_error"], g["pmdec"] / g["pmdec_error"])
+          if None not in (g.get("pmra"), g.get("pmdec")) and g.get("pmra_error") and g.get("pmdec_error") else None)
+    return (plx or 0) > 5 or (pm or 0) > 5
+
+
 def features(object_id):
     """Flat feature dict for one object from its cached payloads, or None if not fetched."""
     raw = assemble._gather(object_id)
@@ -67,6 +79,9 @@ def features(object_id):
     stamp = stamp[max(stamp)] if stamp else {}
     top_host = (xm.get("host_candidates") or [None])[0] or {}
     ant = raw["antares"]["data"]
+    # ANTARES's own catalog matches (about 1 arcsec), not our slower crossmatch; None until fetched
+    cats = details.catalogs(object_id)
+    sky = crossmatch.context(ev["ra"], ev["dec"])
     det = details.get(object_id, ant)
     lsst_details = [det[p["alert_id"]] for p in lsst if p.get("alert_id") in det] if det is not None else []
     ztf_ps1 = [p for p in dets if p["survey"] == "ztf" and p.get("distpsnr1") is not None and p["distpsnr1"] >= 0]
@@ -80,12 +95,12 @@ def features(object_id):
         "frac_pixel_flagged": sum(bool(p.get("pixel_flags")) for p in lsst) / len(lsst) if lsst else None,
         "pos_rms_arcsec": _rms_offset(lsst),
         "sso_associated": bool(ev["sso_associations"]["lsst_ssObjectId"] or ev["sso_associations"]["ztf_ssnamenr"]),
-        "gaia_star_sep": _nearest(xm.get("gaia"), lambda r: r.get("likely_star")),
-        "gaia_sep": _nearest(xm.get("gaia")),
-        "milliquas_sep": _nearest(xm.get("milliquas")),
+        "gaia_star_sep": None if cats is None else _nearest(cats.get("gaia_dr3_gaia_source"), _likely_star),
+        "gaia_sep": None if cats is None else _nearest(cats.get("gaia_dr3_gaia_source")),
+        "milliquas_sep": None if cats is None else _nearest(cats.get("milliquas")),
         "host_d_dlr": top_host.get("d_dlr"),
-        "abs_gal_b": abs((xm.get("context") or {}).get("gal_b")) if (xm.get("context") or {}).get("gal_b") is not None else None,
-        "abs_ecl_lat": abs((xm.get("context") or {}).get("ecl_lat")) if (xm.get("context") or {}).get("ecl_lat") is not None else None,
+        "abs_gal_b": abs(sky["gal_b"]),
+        "abs_ecl_lat": abs(sky["ecl_lat"]),
         # Rubin pipeline measurements per LSST detection (details.py); None before they're fetched
         "extendedness_median": _median(d["extendedness"] for d in lsst_details),
         "frac_dipole": _frac(d["is_dipole"] for d in lsst_details),
@@ -130,9 +145,11 @@ def _within(sep, max_sep):
 RULES = {r.name: r for r in [
     Rule("sso_association", "Rubin ssObjectId or ZTF ssnamenr on any detection", {},
          lambda f: f["sso_associated"]),
-    Rule("gaia_star", "Gaia DR3 source with significant parallax or proper motion within max_sep arcsec",
+    Rule("gaia_star", "Gaia DR3 source with significant parallax or proper motion within max_sep arcsec "
+         "(ANTARES's match, which reaches about 1 arcsec)",
          {"max_sep": 1.0}, lambda f, max_sep: _within(f["gaia_star_sep"], max_sep)),
-    Rule("milliquas_agn", "Milliquas QSO/AGN within max_sep arcsec", {"max_sep": 1.0},
+    Rule("milliquas_agn", "Milliquas QSO/AGN within max_sep arcsec (ANTARES's match, which reaches about 1 arcsec)",
+         {"max_sep": 1.0},
          lambda f, max_sep: _within(f["milliquas_sep"], max_sep)),
     Rule("min_nights", "detected on fewer than n distinct nights", {"n": 2},
          lambda f, n: f["n_nights"] < n),
@@ -207,6 +224,9 @@ LISTING_ES = {
     "antares_bright_star": lambda: [{"bool": {"must_not": {"term": {"catalogs": "bright_guide_star_cat"}}}}],
     "antares_gaia_variable": lambda: [{"bool": {"must_not": {"term": {"catalogs": "gaia_dr3_variability"}}}}],
     "scimma_quality": lambda: [{"term": {"tags": "lsst_scimma_quality_transient"}}],
+    # ANTARES lists the catalogs it matched within about 1 arcsec, so a cut at least that wide is
+    # the same as its match; a narrower one needs the separation, from the full fetch (None: run later)
+    "milliquas_agn": lambda max_sep: [{"bool": {"must_not": {"term": {"catalogs": "milliquas"}}}}] if max_sep >= 1 else None,
 }
 LISTING_LOCAL = {"min_span", "galactic_plane", "ecliptic"}
 
@@ -216,8 +236,9 @@ def listing_split(pipeline):
     es, local, later = [], [], []
     for step in resolve(pipeline):
         params = {k: v for k, v in step.items() if k != "rule"}
-        if step["rule"] in LISTING_ES:
-            es += LISTING_ES[step["rule"]](**params)
+        clauses = LISTING_ES[step["rule"]](**params) if step["rule"] in LISTING_ES else None
+        if clauses is not None:
+            es += clauses
         elif step["rule"] in LISTING_LOCAL:
             local.append(step)
         else:

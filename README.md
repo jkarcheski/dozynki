@@ -1,7 +1,22 @@
 # DOZYNKI
 
-A local web app for vetting LSST alerts, combining ANTARES, ALeRCE and Babamul,
-to build a labeled training set for real/bogus filtering and anomaly detection.
+DOZYNKI helps us pull needles from the haystack of LSST and ZTF alerts by bringing transient brokers
+(ANTARES, ALeRCE and Babamul) together in one place. Join the community in filtering out bogus alerts,
+identifying real objects and their hosts, and creating new human labels.
+
+![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
+
+- **[Vetter](#vetter-identify-transients-and-create-labels)** – label each object blind from the evidence
+  (light curve, cutouts, field image, an independent crossmatch and host ranking), then see what the brokers
+  think. Run it over a random sample or over a whole night, live.
+- **[Filter lab](#filter-lab-filter-out-the-noise)** – build rejection filters by answering plain-language
+  questions, and see what each one would throw away of the objects people have labeled.
+- **[Sky map](#sky-map)** – where the labeled classes and a filter's rejections fall on the sky.
+- **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
+  ALeRCE's classifiers.
+
+It runs on a laptop for one person, or as a shared server where several people label the same objects
+independently.
 
 ## Setup
 
@@ -12,7 +27,7 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 .venv/bin/python -m dozynki   # http://127.0.0.1:8765 (landing page; vetter at /vet)
 ```
 
-## How labeling works
+## Vetter: identify transients and create labels
 
 1. **Sample** – "Sample random LSST" draws a uniform random set of ANTARES loci
    that have an LSST diaObject (Elasticsearch `random_score`). The seed and
@@ -57,15 +72,17 @@ other alert times, so for a past night this misses objects that alerted on it an
 (`nightrun.py`, table `night_runs`) has two stages:
 
 1. The rules the locus listing answers run over the whole night at once: ANTARES applies detections,
-   solar-system association, its catalog matches and the SCIMMA tag in its query, and Galactic latitude,
+   LSST solar-system association, its catalog matches (bright stars, Gaia variables, Milliquas at
+   `max_sep` ≥ 1″) and the SCIMMA tag in its query, and Galactic latitude,
    ecliptic latitude and span run here on each listing (`rejection.LISTING_ES` / `LISTING_LOCAL`). This
    takes about 40 s for a 50,000-object night and gives "N of M pass".
 2. Everything that passes is queued as `screening` in a random order, and a background thread (`screen.py`)
-   fetches each object (the fetch vetting needs anyway), applies the whole filter, and moves it to `pending`
-   or `filtered`. It also drops objects with no detection on the night. The rejecting step goes in
+   fetches what the rules read, all of it stored by brokers: ANTARES's object, alerts and catalog matches,
+   and ALeRCE only for a rule that reads it. Our own crossmatch (VizieR, SIMBAD, Legacy Survey, NED) waits
+   until you open the object. It applies the whole filter and moves the object to `pending` or `filtered`. It also drops objects with no detection on the night. The rejecting step goes in
    `queue.screen_result` and every decision in `rejections`; an object that can't be fetched is kept
-   (`screen_result` "error"). This runs at about one object a second, so a big night is checked over hours,
-   ahead of you as you vet.
+   (`screen_result` "error"). This runs at about 9 objects a second (8 workers), so a 30,000-object night is
+   checked in about an hour, ahead of you as you vet.
 
 The filter as it was is stored with the run and each object (`source_params.screen`). The two modes have
 separate queues, so neither takes the other's objects; a random-mode sample that draws an object a filter
@@ -80,12 +97,6 @@ primary class; the export adds `alt_labels`, `possibly_real` and `possibly_trans
 Keys: `1`–`6`, `0` class · Shift+digit alternative class · `w` watch · `Enter` commit · `n` next · `s` skip · `h` hostless · `f` cycle light-curve mode · `+`/`-` zoom.
 Click anywhere near a source in the field image (the nearest one is picked) or a row of the host table to record the host.
 
-**ZTF.** ZTF detections and upper limits come from the ANTARES locus when ANTARES
-has associated a ZTF object. The crossmatch panel also searches for ZTF objects by
-position through ALeRCE and warns when that disagrees with ANTARES. In the science-mag
-view, ZTF points are approximate totals (reference flux + signed difference flux), shown only
-when the nearest reference source is within 1.5″.
-
 **Detection offsets.** A polar plot (north up, east left) of each detection's position
 relative to the mean LSST position, colored by time, with the rms scatter and a same-night
 motion estimate. A stationary source clusters at the center; a mover makes a time-ordered
@@ -99,20 +110,18 @@ NED class within 1″ confirms or overrides it. Dashed outlines and a "?" mark u
 catalogs); hover a marker or chip for the reasoning. The crossmatch panel lists everything within
 1″ of the alert first. Colors and SIMBAD/NED type mappings live in `static/app.js`.
 
-**Aladin Lite.** An Aladin panel sits beside the LS DR10 cutout (default Pan-STARRS; also DESI Legacy DR10, DSS2,
-unWISE, 2MASS, GALEX) with the LS DR10 and Gaia crossmatches overlaid; clicking an LS
-source there also sets the host. Needs a WebGL2-capable browser.
-
 **Watchlist.** The "Watch for more data" flag parks an object (queue status `watch`).
 "Recheck watchlist" re-polls ANTARES; objects with new alerts return to the queue, and
 the next label is stored with phase `followup`. Un-toggle the flag to finish with it.
 
 Label taxonomy, flags and hotkeys live in `dozynki/labels.py`.
 
-## Rejection filters
+## Filter lab: filter out the noise
 
-The `filtering` branch adds cuts that *throw objects away* and scores them against
-your labels. Rules live in `dozynki/rejection.py`. Each one reads only cached
+![Building a filter with questions: each answer shows what it would drop, and the decision tree grows beside it](docs/images/filter-lab.webp)
+
+Rejection filters are cuts that *throw objects away*, scored against human labels. Rules live in
+`dozynki/rejection.py`. Each one reads only cached
 payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered JSON list;
 `cuts.example.json` is the default pipeline with every parameter spelled out, so copy it
 (`cp cuts.example.json cuts.json`) and edit:
@@ -121,15 +130,20 @@ payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered
 [{"rule": "gaia_star", "max_sep": 1.5}, {"rule": "min_nights", "n": 2}, {"rule": "lsst_reliability", "min_rel": 0.3}]
 ```
 
-Rules draw on the light curve, the independent crossmatch, broker scores, and:
+Rules draw on the light curve, broker scores, and data brokers already store, not on the slow
+independent crossmatch (Galactic and ecliptic latitude come from the position):
 - **Rubin pipeline measurements** of each LSST detection: difference-image extendedness, dipole flag,
   glint-trail flag, PSF-fit χ²/N, size relative to the PSF (too sharp or too large), failed
   measurement flags, SNR and trail length. New fetches keep them (`antares.get_locus` "lsst_details");
   objects cached earlier get them from "Fetch them" in the filter lab (`details.py`, a separate
   `lsst_details` cache kind, so labeled evidence is untouched). Until then those rules see no data.
 - **ZTF's PS1 star/galaxy score** of the nearest Pan-STARRS1 source (`sgscore1`, `distpsnr1`).
-- **ANTARES locus metadata**: its bright guide star and Gaia DR3 variability catalog matches (yes/no,
-  ANTARES gives no separation) and the SCIMMA quality-transient filter tag (broker output).
+- **ANTARES's catalog matches** (`antares.catalog_matches`, cache kind `antares_catalogs`, within
+  about 1 arcsec): Gaia DR3 with parallax and proper motion for `gaia_star` (significant at 5σ, the same
+  cut the crossmatch makes) and Milliquas for `milliquas_agn`, so a `max_sep` above about 1″ reaches no
+  further than ANTARES's match. Objects cached earlier get them from "Fetch them" in the filter lab.
+- **ANTARES locus metadata**: its bright guide star and Gaia DR3 variability catalog matches (yes/no)
+  and the SCIMMA quality-transient filter tag (broker output).
 
 ```bash
 .venv/bin/python -m dozynki.evaluate --list-rules
@@ -177,7 +191,20 @@ Every step's decision is stored in the `rejections` table under the pipeline's v
 hash, and each run writes `exports/rejection/<timestamp>/` (`report.txt`, `metrics.json`,
 `decisions.csv` with the features behind each decision).
 
-## Comparing labels
+## Sky map
+
+![Labeled classes in Galactic coordinates, with the filter lab pipeline's rejections faded](docs/images/sky-map.webp)
+
+`http://127.0.0.1:8765/sky` (or the "Sky map" tab) plots every labeled object on a Hammer–Aitoff map in
+equatorial, Galactic or ecliptic coordinates, colored by class (first blind or latest label). The filter lab's
+current pipeline can be overlaid, fading what it rejects or coloring each object by the step that rejects it,
+and the page follows your changes in the filter lab. Galactic and ecliptic latitude sliders try a latitude cut
+and draw it on the map. Click a point to open it in the vetter. Like the filter lab, only the uniform random
+sample is shown unless "non-random objects too" is on. Code lives in `dozynki/sky.py`.
+
+## Compare: labels against brokers and each other
+
+![Confusion matrix between a labeler's blind labels and an ALeRCE classifier](docs/images/compare.png)
 
 `http://127.0.0.1:8765/compare` (or the "Compare" tab) draws a confusion matrix between
 any two label sources: each labeler's first blind or latest labels, and every ALeRCE
@@ -259,7 +286,11 @@ dozynki/
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
   achievements.py   achievement definitions and counts
+  accounts.py       guests, profiles and sign-in for a shared server
   crossmatch.py     independent catalog crossmatch + DLR
+  rejection.py      rejection rules; evaluate.py scores pipelines against labels
+  nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
+  sky.py            sky map data
   brokers/          antares.py, alerce.py, babamul_client.py
   db.py             SQLite (data/dozynki.sqlite): queue, cache, labels
   export.py         training-set export
@@ -272,3 +303,9 @@ dozynki/
 - Babamul Kafka topics and CSV object lists as queue sources
 - ALeRCE LSST forced photometry in the light curve
 - Anomaly scoring stage for objects labeled real transients
+
+## AI disclosure
+
+Much of DOZYNKI's code was written with Claude (Anthropic) through Claude Code, working from my design and
+direction. I review and test what goes in, and the science choices (what to show, how to label, what makes a
+good filter) are mine. All bugs and breaks are mine too.
