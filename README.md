@@ -91,7 +91,7 @@ other alert times, so for a past night this misses objects that alerted on it an
 The filter as it was is stored with the run and each object (`source_params.screen`). The two modes have
 separate queues, so neither takes the other's objects; a random-mode sample that draws an object a filter
 threw away takes it back into random mode, so Random stays random. The Nights card lists filtered nights
-with their pass counts, and finishing a night counts toward achievements in random mode only.
+with their pass counts.
 
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
@@ -225,52 +225,6 @@ classifier found in the cache (top class). Nothing is stored. Code lives in `doz
 - Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
 - Like the filter lab, only the uniform random sample is used unless "non-random objects too" is on.
 
-## Profiles (shared server)
-
-On a laptop everyone is `DOZYNKI_LABELER` and nothing changes. A shared server sets `DOZYNKI_ACCOUNTS=1`
-(and `DOZYNKI_SECURE_COOKIES=1` behind https), and then:
-
-- **Guests.** Anyone can vet without signing in. Each browser gets a random guest id (a cookie), and its labels
-  count toward the totals as one "guests" row on the leaderboard, never by name.
-- **Profiles.** "guest · sign in" in the tab bar opens `/account`: a handle, a password and an email. The handle is
-  the labeler name on that person's labels; making a profile moves the browser's guest labels to it (a checkbox).
-- **Email** is used only for password resets and is stored as a salted scrypt hash, never as the address. A reset
-  asks for the handle and the same email, and the one-hour link goes to the address just typed. Mail goes through
-  `DOZYNKI_SMTP_*`; without `DOZYNKI_SMTP_HOST` the link is printed in the server log instead.
-- **Each labeler has their own queue.** Labeled, skipped and watched are per labeler (`queue_status`), so several
-  people can label the same object independently, which is what the Compare page needs for agreement. Only a
-  person's own labels show in the vetter, and blind mode and the reveal are per person. `queue.status` now says only
-  whether an object is ready (`pending`), waiting for (`screening`) or thrown away by (`filtered`) a filter.
-- Passwords are scrypt hashes; sessions are random tokens kept as SHA-256 hashes, 30 days, ended everywhere by a
-  password change. Sign-ins and reset requests are rate-limited (in memory). Code in `dozynki/accounts.py`.
-
-Admin commands (with the server's environment):
-
-```bash
-.venv/bin/python -m dozynki.accounts add <handle> --labels-from anonymous   # profile that takes over a laptop's labels
-.venv/bin/python -m dozynki.accounts password <handle>                     # set a forgotten password by hand
-.venv/bin/python -m dozynki.accounts list
-```
-
-## Achievements
-
-The landing page shows tiered achievements for the current labeler (`DOZYNKI_LABELER`), and the vetter
-announces a new tier when a label earns one. Definitions and tiers live in `dozynki/achievements.py`; nothing
-is stored, every count comes from your latest label of each object (primary class only).
-- Counts: objects vetted, labeled star, labeled bogus, hosts associated.
-- Confirmed finds: your class agrees with a catalog within 1″ — transients on TNS or with a SIMBAD/NED supernova
-  type or TNS-style name, rare transients typed TDE or nova, AGN in Milliquas/SIMBAD/NED, asteroids with a
-  pipeline SSO association or a SkyBoT match.
-- TNS: "I Knew You Were Trouble" counts transients you labeled before TNS received their discovery report, and
-  "Told You So" ones TNS has since classified. TNS comes from ANTARES's copy (`tns_public_objects` catalog
-  matches, so no TNS account is needed), cached per object as kind `tns`. A transient label fetches it for that
-  object; "Check TNS" on the landing page re-checks every object labeled transient, since TNS changes after you
-  label. ANTARES refreshes its copy on its own schedule, so a new report can take a while to show up.
-- Nights: nights sampled to the end with every object vetted by you. A night sampled at several detection
-  minimums counts by the lowest one.
-- Filtering: a filter lab pipeline changed from its default. The filter lab keeps pipelines in the browser,
-  so this one is per browser.
-
 ## Export
 
 The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/`:
@@ -289,8 +243,6 @@ dozynki/
   compare.py        confusion matrices between label sources (labelers, ALeRCE)
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
-  achievements.py   achievement definitions and counts
-  accounts.py       guests, profiles and sign-in for a shared server
   crossmatch.py     independent catalog crossmatch + DLR
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
