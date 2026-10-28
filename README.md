@@ -1,6 +1,6 @@
 # DOZYNKI
 
-A local web app for vetting LSST alerts, combining ANTARES, ALeRCE and Babamul,
+Dozynki is a local web app for vetting LSST alerts, combining ANTARES, ALeRCE and Babamul,
 to build a labeled training set for real/bogus filtering and anomaly detection.
 
 The name DOZYNKI is inspired by the Polish harvest festival, reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
