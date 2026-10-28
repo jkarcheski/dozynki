@@ -49,6 +49,19 @@ card shows each night's progress: sampled and vetted of the night's size, and wh
 with earlier ZTF alerts are not part of a later night. Night samples are left out of the filter lab and
 compare pages' default population, which is the uniform random sample.
 
+**Random and Filtered modes.** The vetter's mode switch picks what you see. *Random* is everything sampled,
+as drawn. *Filtered* screens each sample with a saved filter from the filter lab before it reaches you, so
+on a live night you only vet what passes. A filtered-mode sample is queued as `screening`; a background
+thread (`screen.py`) fetches each object (the fetch vetting needs anyway), applies the filter, and moves it
+to `pending` or `filtered`, recording the rejecting step in `queue.screen_result` and every decision in
+`rejections`. An object that can't be fetched is kept (`screen_result` "error"). The two modes have separate
+queues and separate night orders, so neither takes the other's objects; a random-mode sample that draws an
+object a filter threw away takes it back into random mode, so Random stays random. The filter as it was is
+stored with each sample (`source_params.screen`), and screened random samples get the source
+`antares_random_lsst_screened`, which keeps them out of the filter lab's uniform population. The Nights card
+lists filtered-mode nights separately (filtered-out objects count as done), and finishing a night counts
+toward achievements in random mode only.
+
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
 *star*, or *AGN* that could be a nuclear *transient*. `is_real`/`is_transient` follow the
@@ -106,13 +119,13 @@ payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered
 ```
 
 **Filter lab.** `http://127.0.0.1:8765/rejection` (or the "Filter lab" tab)
-does the same thing interactively. It compares two pipelines, A and B, side by side.
+does the same thing interactively for one pipeline, scored against no filter.
 - Pick the target from chips: any class or transient subclass, optionally counting
   "could also be" classes.
-- Toggle rules and edit thresholds; the metrics, the kept-by-class chart, the per-step
-  table and the list of objects A and B disagree on update as you type. Object IDs in that
-  list open in the vetter (`/vet?object=<id>`).
-- Sweep any threshold of A to plot completeness, purity and false-positive rate against
+- Toggle rules and edit thresholds; the metrics, the decision tree, the kept-by-class chart and
+  the per-step table update as you type. Object IDs in the tree's lists open in the vetter
+  (`/vet?object=<id>`).
+- Sweep any threshold to plot completeness, purity and false-positive rate against
   it, then click a point to set it.
 
 - **Build a filter with questions** walks through the rules one plain-language question at a time
@@ -120,11 +133,12 @@ does the same thing interactively. It compares two pipelines, A and B, side by s
   target and other objects it would throw away after your earlier answers, and the decision tree beside it
   grows as you answer. Questions, choices and their order live in `QUESTIONS` in `static/rejection.js`;
   a rule without an entry gets a generic yes/no question.
-- **Decision tree** draws A and B as cascades: each object falls to the first question it answers yes to.
+- **Decision tree** draws the pipeline as a cascade: each object falls to the first question it answers yes to.
   Bars show target vs other; click a box to list its objects.
 - **Saved filters** are named pipelines stored in the `saved_pipelines` table, so every browser sees them.
-  Save one from a pipeline card or at the end of the questionnaire, then load it into A or B. A pipeline
-  card shows which saved filter it came from and "(edited)" once it differs. On the command line:
+  Save one from the pipeline card or at the end of the questionnaire, and load one back. The pipeline
+  card shows which saved filter it came from and "(edited)" once it differs. The vetter's Filtered mode
+  screens samples with one. On the command line:
   `.venv/bin/python -m dozynki.evaluate --saved "<name>"`.
 
 Evaluating stores nothing in the database. Your other settings are remembered in the browser.

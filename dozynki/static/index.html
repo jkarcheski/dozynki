@@ -15,6 +15,11 @@
   <div id="stats" class="stats"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
+    <span class="group mode" title="Random: every sampled object, as drawn. Filtered: samples are screened with a saved filter from the filter lab first, and you only see what passes.">
+      <span class="seg" id="mode"><button data-v="random">Random</button><button data-v="filtered">Filtered</button></span>
+      <select id="mode-filter" aria-label="Saved filter to screen with"></select>
+      <span id="mode-status" class="muted"></span>
+    </span>
     <span class="group">
       <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
       <button id="fill" title="Random LSST objects from ANTARES that pass the filters below">Sample random LSST</button>

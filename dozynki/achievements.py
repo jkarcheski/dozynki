@@ -13,7 +13,7 @@ something, which two achievements are about: an object reported to TNS only afte
 your first transient label of it, and one TNS has since classified.
 
 A night counts once its batches (sources.antares_night) have taken every object
-of the night and you have vetted them all. A night sampled at several detection
+of the night and you have vetted them all, in random mode only. A night sampled at several detection
 minimums counts by the lowest one.
 
 Filter achievements live in the filter lab, which keeps its pipelines in the
@@ -143,21 +143,28 @@ def _payloads(object_ids, kind):
 
 
 def nights(labeler, vetted=None):
-    """Sampled nights, one row per (night, detection minimum), lowest minimum first."""
+    """Sampled nights, one row per (night, detection minimum, mode), random mode and lowest minimum first.
+
+    In filtered mode (screen: a saved filter's name) objects the filter threw away don't need vetting.
+    """
     if vetted is None:
         vetted = {r["object_id"] for r in db.query(
             "SELECT DISTINCT object_id FROM labels WHERE COALESCE(labeler, 'anonymous') = ?", (labeler,))}
+    status = {r["object_id"]: r["status"] for r in db.query("SELECT object_id, status FROM queue")}
     groups = defaultdict(list)
     for p in db.night_pulls():
-        groups[(p["night"], p["filters"].get("min_det") or 1)].append(p)
+        groups[(p["night"], p["filters"].get("min_det") or 1, p["filters"].get("screen") or "")].append(p)
     out = []
-    for (night, min_det), batches in sorted(groups.items()):
+    for (night, min_det, screen), batches in sorted(groups.items()):
         ids = list(dict.fromkeys(o for b in batches for o in b["object_ids"]))  # a night pulled twice repeats them
         size = batches[-1]["n_matching"] or 0
         n_vetted = sum(o in vetted for o in ids)
-        out.append({"night": night, "min_det": min_det, "taken": len(ids), "vetted": n_vetted, "n_matching": size,
+        n_filtered = sum(status.get(o) == "filtered" for o in ids) if screen else 0
+        n_screening = sum(status.get(o) == "screening" for o in ids) if screen else 0
+        out.append({"night": night, "min_det": min_det, "screen": screen or None, "taken": len(ids), "vetted": n_vetted,
+                    "filtered": n_filtered, "screening": n_screening, "n_matching": size,
                     "capped": size >= sources.ES_WINDOW,
-                    "done": 0 < size < sources.ES_WINDOW and len(ids) >= size and n_vetted == len(ids)})
+                    "done": 0 < size < sources.ES_WINDOW and len(ids) >= size and n_vetted + n_filtered == len(ids)})
     return out
 
 
@@ -182,7 +189,8 @@ def counts(labeler):
     vetted = {r["object_id"] for r in latest}
     broadest = {}
     for row in nights(labeler, vetted):
-        broadest.setdefault(row["night"], row)  # rows come lowest detection minimum first
+        if row["screen"] is None:  # finishing a night only counts in random mode
+            broadest.setdefault(row["night"], row)  # rows come lowest detection minimum first
 
     return {
         "vetted": len(latest),

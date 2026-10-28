@@ -95,9 +95,8 @@ function filtersMade(rc) {
   const byName = Object.fromEntries(rc.rules.map((r) => [r.name, r]));
   const norm = (steps) => JSON.stringify((steps || []).filter((s) => byName[s.rule] && s.on)
     .map((s) => [s.rule, { ...byName[s.rule].defaults, ...s.params }]));
-  const A = rc.default_pipeline.map(({ rule, ...params }) => ({ rule, on: true, params }));
-  const B = A.filter((s) => s.rule !== "min_nights"); // rejection.js defaultState()
-  return (norm(saved.A) !== norm(A)) + (norm(saved.B) !== norm(B));
+  const dflt = rc.default_pipeline.map(({ rule, ...params }) => ({ rule, on: true, params }));
+  return Number(norm(saved.pipeline || saved.A) !== norm(dflt));
 }
 
 function renderAchievements(ach, rc) {
@@ -148,11 +147,13 @@ function renderNights(rows) {
   const size = (r) => (r.capped ? "10000+" : r.n_matching);
   $("#nights").innerHTML =
     `<tr><th>Night</th><th class="num">Detections</th><th class="num">Sampled</th><th class="num">Vetted</th><th></th><th></th></tr>`
-    + rows.map((r) => `<tr><td>${esc(r.night)}</td><td class="num">≥ ${r.min_det}</td>`
-      + `<td class="num">${r.taken} of ${size(r)}</td><td class="num">${r.vetted}</td>`
-      + `<td class="lb-bar" title="vetted of the whole night"><i style="width:${(100 * r.vetted / Math.max(1, r.n_matching)).toFixed(1)}%"></i></td>`
+    + rows.map((r) => `<tr><td>${esc(r.night)}${r.screen ? ` <span class="pill" title="Filtered mode: screened with this saved filter">${esc(r.screen)}</span>` : ""}</td>`
+      + `<td class="num">≥ ${r.min_det}</td><td class="num">${r.taken} of ${size(r)}</td>`
+      + `<td class="num">${r.vetted}${r.filtered ? ` <span class="muted" title="thrown away by the filter">+ ${r.filtered} filtered</span>` : ""}</td>`
+      + `<td class="lb-bar" title="vetted (and filtered out) of the whole night"><i style="width:${(100 * (r.vetted + r.filtered) / Math.max(1, r.n_matching)).toFixed(1)}%"></i></td>`
       + `<td class="muted">${r.done ? "finished" : r.capped ? "too many to finish; raise the detection minimum"
-        : r.taken < r.n_matching ? `${r.n_matching - r.taken} left to sample` : `${r.taken - r.vetted} left to vet`}</td></tr>`).join("");
+        : r.taken < r.n_matching ? `${r.n_matching - r.taken} left to sample`
+        : r.screening ? `screening ${r.screening}` : `${r.taken - r.vetted - r.filtered} left to vet`}</td></tr>`).join("");
 }
 
 async function init() {

@@ -57,6 +57,7 @@ async function init() {
   };
   Harvest.mountStack($("#haystack"));
   buildLabelBar();
+  await initMode();
   initFilters();
   $("#fill").onclick = fillQueue;
   $("#pull-night").onclick = pullNight;
@@ -183,6 +184,53 @@ async function refreshStats() {
     (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
 }
 
+// ---------- mode: random, or filtered (samples screened with a saved filter first) ----------
+
+const MODE_KEY = "dozynki.mode";
+let mode = { mode: "random", filter: "" };
+
+const screenName = () => (mode.mode === "filtered" && mode.filter) || "";
+
+async function initMode() {
+  try { mode = { ...mode, ...JSON.parse(localStorage.getItem(MODE_KEY) || "{}") }; } catch {}
+  let saved = [];
+  try { saved = await api("/api/rejection/saved"); } catch {}
+  const sel = $("#mode-filter");
+  sel.innerHTML = saved.map((s) => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join("");
+  if (!saved.some((s) => s.name === mode.filter)) mode.filter = saved[0]?.name || "";
+  if (!mode.filter) mode.mode = "random";
+  sel.value = mode.filter;
+  const filteredBtn = $('#mode button[data-v="filtered"]');
+  filteredBtn.disabled = !saved.length;
+  if (!saved.length) filteredBtn.title = "Save a filter in the filter lab first";
+  document.querySelectorAll("#mode button").forEach((b) => (b.onclick = () => setMode({ mode: b.dataset.v })));
+  sel.onchange = () => setMode({ filter: sel.value });
+  renderMode();
+}
+
+function setMode(change) {
+  mode = { ...mode, ...change };
+  try { localStorage.setItem(MODE_KEY, JSON.stringify(mode)); } catch {}
+  renderMode();
+  skipped.length = 0;
+  cur = null;
+  refreshMatching();
+  next();
+}
+
+function renderMode() {
+  document.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.v === mode.mode));
+  $("#mode-filter").hidden = mode.mode !== "filtered";
+  document.body.classList.toggle("filtered-mode", mode.mode === "filtered");
+  if (mode.mode !== "filtered") $("#mode-status").textContent = "";
+}
+
+// counts from /api/next or /api/queue/matching for the filtered mode's queue
+function renderModeStatus(r) {
+  if (mode.mode !== "filtered") return;
+  $("#mode-status").textContent = (r.n_screening ? `screening ${r.n_screening} · ` : "") + `filtered out ${r.n_filtered ?? 0}`;
+}
+
 // ---------- filters (shared by sampling and by which queued object comes next) ----------
 
 const FILTER_KEY = "dozynki.filters";
@@ -197,7 +245,7 @@ function getFilters() {
   };
 }
 
-const filterQuery = () => new URLSearchParams(getFilters()).toString();
+const filterQuery = () => new URLSearchParams({ ...getFilters(), screen: screenName() }).toString();
 const filtersActive = (f = getFilters()) => f.min_det > 1 || f.date_from || f.date_to;
 
 function initFilters() {
@@ -225,6 +273,7 @@ async function refreshMatching() {
   try {
     const r = await api("/api/queue/matching?" + filterQuery());
     $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
+    renderModeStatus(r);
   } catch (e) {
     $("#f-matching").textContent = e.message;
   }
@@ -234,9 +283,10 @@ async function fillQueue() {
   const n = +$("#fill-n").value;
   $("#fill").disabled = true;
   try {
-    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters() } });
+    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters(), screen: screenName() || null } });
     if (r.added) Harvest.reap(r.added);
-    toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : ""), 5000);
+    toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : "")
+      + (screenName() && r.added ? `; screening them with "${screenName()}"` : ""), 5000);
     refreshMatching();
     refreshStats();
     if (!cur) next();
@@ -252,11 +302,12 @@ async function pullNight() {
   if (!night) return toast("Pick a night first");
   $("#pull-night").disabled = true;
   try {
-    const r = await api("/api/queue/night", { method: "POST", body: { night, n: +$("#fill-n").value, ...getFilters() } });
+    const r = await api("/api/queue/night", { method: "POST", body: { night, n: +$("#fill-n").value, ...getFilters(), screen: screenName() || null } });
     const size = r.capped ? "over 10000" : r.n_matching;
     if (r.added) Harvest.reap(r.added);
     toast(r.returned
       ? `Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue (${r.taken} of ${size} sampled)`
+        + (screenName() && r.added ? `; screening them with "${screenName()}"` : "")
       : `Night ${r.night}: nothing left to sample (${r.taken} of ${size})`, 6000);
     refreshMatching();
     refreshStats();
@@ -302,17 +353,28 @@ async function doExport() {
   }
 }
 
+let screenPoll = null;  // while filtered mode waits on screening
+
 async function next() {
   const exclude = cur && !cur.labels.length ? [...skipped, cur.evidence.object_id] : skipped;
   const r = await api(`/api/next?exclude=${encodeURIComponent(exclude.join(","))}&${filterQuery()}`);
   if (filtersActive()) $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
+  renderModeStatus(r);
+  clearTimeout(screenPoll);
   if (!r.object_id) {
     cur = null;
-    $("#obj-title").textContent = "Queue empty";
-    $("#lc").innerHTML = r.n_pending && filtersActive()
+    loadToken++;  // drop an object still loading from before (e.g. the other mode's)
+    clearPanels();
+    $("#obj-title").textContent = r.n_screening ? "Screening…" : "Queue empty";
+    $("#lc").innerHTML = r.n_screening
+      ? `<div class="loading">Screening ${r.n_screening} objects with "${esc(screenName())}"; the first one that passes comes up here.</div>`
+      : r.n_pending && filtersActive()
       ? `<div class="loading">No pending objects match the filters (${r.n_pending} pending don't). Sample with these filters, or loosen them.</div>`
+      : screenName()
+      ? `<div class="loading">Nothing left that passed "${esc(screenName())}" (${r.n_filtered} filtered out). Sample more above; samples are screened in this mode.</div>`
       : `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;
     renderForm();
+    if (r.n_screening) screenPoll = setTimeout(() => { if (!cur) next(); }, 3000);
     return;
   }
   loadObject(r.object_id);
@@ -331,11 +393,14 @@ async function skip() {
 
 let loadToken = 0;
 
+const clearPanels = () => ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"]
+  .forEach((s) => ($(s).innerHTML = ""));
+
 async function loadObject(oid) {
   window.scrollTo({ top: 0 }); // each new target starts at the cutouts
   $("#obj-title").textContent = `LSST ${oid}`;
   $("#lc").innerHTML = `<div class="loading">Fetching ANTARES, ALeRCE, Babamul and crossmatches…</div>`;
-  ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"].forEach((s) => ($(s).innerHTML = ""));
+  clearPanels();
   form = blankForm();
   selectedPoint = null;
   fieldFov = DEFAULT_FOV;

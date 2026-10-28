@@ -13,7 +13,6 @@ body.lab { padding-bottom: 24px; }
 @media (max-width: 900px) { .lab-main { grid-template-columns: minmax(0, 1fr); } }
 .lab-main .card-head { flex-wrap: wrap; }
 .pipe-title { display: flex; align-items: center; gap: 8px; }
-.pipe-title i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .rule { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 2px 6px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .rule:last-child { border-bottom: 0; }
 .rule.off .name, .rule.off .desc { color: var(--muted); }
@@ -30,16 +29,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td .ci { color: var(--muted); font-size: 11px; }
 td.better { color: var(--ok); }
 td.worse { color: var(--warn); }
-#diff a { color: var(--accent); }
 .pipe-title .muted { font-size: 13px; }
 .card-head select.small { padding: 2px 4px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
 td.wrap { white-space: normal; }
 /* Decision tree: a trunk of questions, "yes" branches to the right are rejections. */
-.trees { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-@media (max-width: 900px) { .trees { grid-template-columns: minmax(0, 1fr); } }
+#tree { margin-top: 8px; }
 .tree { --t: var(--series-1); font-size: 12px; }
-.t-head { font-weight: 600; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
-.t-head i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.t-head { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .t-node { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--card); font-size: 12px; }
 .t-node.q { border-left: 3px solid var(--accent); }
 .t-node.rej { border-style: dashed; }

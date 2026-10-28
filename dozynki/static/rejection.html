@@ -32,18 +32,17 @@
     <div class="tablewrap"><table id="saved"></table></div>
   </section>
 
-  <section class="card pipe" id="pipe-A"></section>
-  <section class="card pipe" id="pipe-B"></section>
+  <section class="card pipe" id="pipe"></section>
+  <section class="card">
+    <div class="card-head"><h2>Decision tree</h2><span class="hint">click a box to list its objects</span></div>
+    <div class="hint">Each object falls to the first question it answers yes to. Bars: target / other.</div>
+    <div id="tree"></div>
+  </section>
 
   <section class="card wide">
     <div class="card-head"><h2>Metrics</h2><span class="hint">value [95% interval] (k/n) · target = what you keep</span></div>
     <div class="tablewrap"><table id="metrics"></table></div>
     <div id="err" class="err"></div>
-  </section>
-
-  <section class="card wide">
-    <div class="card-head"><h2>Decision tree</h2><span class="hint">each question in pipeline order · bars: target / other · click a box to list its objects</span></div>
-    <div class="trees"><div id="tree-A"></div><div id="tree-B"></div></div>
   </section>
 
   <section class="card wide">
@@ -54,7 +53,7 @@
 
   <section class="card wide">
     <div class="card-head">
-      <h2>Threshold sweep <span class="muted">(pipeline A)</span></h2>
+      <h2>Threshold sweep</h2>
       <span class="sweep-controls">
         <select id="sweep-param"></select>
         from <input id="sweep-from" type="number" step="any"> to <input id="sweep-to" type="number" step="any">
@@ -63,7 +62,7 @@
       </span>
     </div>
     <div id="sweep" class="chart"></div>
-    <div class="hint">Click a point to set that threshold in A. Dashed line: A's current value.</div>
+    <div class="hint">Click a point to set that threshold. Dashed line: the current value.</div>
   </section>
 
   <section class="card wide">
@@ -71,10 +70,6 @@
     <div class="tablewrap"><table id="steps"></table></div>
   </section>
 
-  <section class="card wide">
-    <div class="card-head"><h2>Where A and B disagree</h2><span class="hint">click an ID to open it in the vetter</span></div>
-    <div class="tablewrap"><table id="diff"></table></div>
-  </section>
 </main>
 <div id="toast"></div>
 <script src="/static/rejection.js"></script>

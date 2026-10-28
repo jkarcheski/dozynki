@@ -10,13 +10,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, achievements, assemble, compare, db, evaluate, export, farm, rejection, sky, sources
+from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares
 from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
 from .filters import DATE_MODES, Filters
 from .labels import CLASS_BY_KEY, CLASSES, CONFIDENCE, FLAGS, TRANSIENT_SUBCLASSES, WATCH_FLAG
 
 STATIC = Path(__file__).parent / "static"
-PREFETCH = 3
+PREFETCH = 6
 
 app = FastAPI(title="DOZYNKI alert vetter")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -127,32 +128,50 @@ class FilterParams(BaseModel):
             raise HTTPException(400, str(e))
 
 
-class Fill(FilterParams):
-    source: str = "antares_random_lsst"
+class Pull(FilterParams):
     n: int = 50
+    screen: str | None = None  # filtered mode: a saved filter's name
+
+    def resolve_screen(self):
+        if not self.screen:
+            return None
+        try:
+            return screening.resolve(self.screen)
+        except KeyError:
+            raise HTTPException(404, f"no saved filter {self.screen!r}")
+
+
+def _after_pull(body):
+    if body.screen:
+        screening.start()
+    else:
+        assemble.prefetch([r["object_id"] for r in db.next_pending(PREFETCH, where="screen IS NULL")])
+
+
+class Fill(Pull):
+    source: str = "antares_random_lsst"
 
 
 @app.post("/api/queue/fill")
 def fill(body: Fill):
     if body.source not in sources.SOURCES:
         raise HTTPException(400, f"unknown source {body.source}")
-    result = sources.SOURCES[body.source](n=body.n, filters=body.build())
-    assemble.prefetch([r["object_id"] for r in db.next_pending(PREFETCH)])
+    result = sources.SOURCES[body.source](n=body.n, filters=body.build(), screen=body.resolve_screen())
+    _after_pull(body)
     return result
 
 
-class NightPull(FilterParams):
+class NightPull(Pull):
     night: str
-    n: int = 50
 
 
 @app.post("/api/queue/night")
 def pull_night(body: NightPull):
     try:
-        result = sources.antares_night(body.night, body.n, body.build())
+        result = sources.antares_night(body.night, body.n, body.build(), screen=body.resolve_screen())
     except ValueError as e:
         raise HTTPException(400, str(e))
-    assemble.prefetch([r["object_id"] for r in db.next_pending(PREFETCH)])
+    _after_pull(body)
     return result
 
 
@@ -196,29 +215,44 @@ def _safe_summary(locus_id):
         return None
 
 
-def _queue_filter(min_det, date_from, date_to, date_mode):
+def _queue_filter(min_det, date_from, date_to, date_mode, screen=""):
+    """WHERE over the filter bar and the mode: random (screen "") or one saved filter's screened pulls."""
     filters = FilterParams(min_det=min_det, date_from=date_from, date_to=date_to, date_mode=date_mode).build()
     if filters.active:
         _backfill_summaries()
-    return filters.sql()
+    where, params = filters.sql()
+    mode, mode_params = ("screen = ?", [screen]) if screen else ("screen IS NULL", [])
+    return " AND ".join(w for w in (mode, where) if w), mode_params + params
+
+
+def _mode(screen):
+    """Queue counts in this mode; in filtered mode, also how many wait for screening and were thrown away."""
+    counts = db.mode_counts(screen or None)
+    out = {"n_pending": counts.get("pending", 0)}
+    if screen:
+        out |= {"n_screening": counts.get("screening", 0), "n_filtered": counts.get("filtered", 0)}
+        if out["n_screening"]:
+            screening.start()  # resumes after a restart
+    return out
 
 
 @app.get("/api/queue/matching")
-def queue_matching(min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first"):
-    where, params = _queue_filter(min_det, date_from, date_to, date_mode)
-    return {"n_matching": db.count_pending(where, params), "n_pending": db.count_pending()}
+def queue_matching(min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first", screen: str = ""):
+    where, params = _queue_filter(min_det, date_from, date_to, date_mode, screen)
+    return {"n_matching": db.count_pending(where, params), **_mode(screen)}
 
 
 @app.get("/api/next")
-def next_object(exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first"):
+def next_object(exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
+                screen: str = ""):
     skip = tuple(x for x in exclude.split(",") if x)
-    where, params = _queue_filter(min_det, date_from, date_to, date_mode)
+    where, params = _queue_filter(min_det, date_from, date_to, date_mode, screen)
     rows = db.next_pending(PREFETCH + 1, exclude=skip, where=where, params=params)
-    n_matching = db.count_pending(where, params)
+    out = {"n_matching": db.count_pending(where, params), **_mode(screen)}
     if not rows:
-        return {"object_id": None, "n_matching": n_matching, "n_pending": db.count_pending()}
+        return {"object_id": None, **out}
     assemble.prefetch([r["object_id"] for r in rows[1:]])
-    return {"object_id": rows[0]["object_id"], "n_matching": n_matching, "n_pending": db.count_pending()}
+    return {"object_id": rows[0]["object_id"], **out}
 
 
 def _has_blind_label(object_id):

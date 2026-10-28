@@ -1,7 +1,7 @@
 // DOZYNKI sky map: labeled objects on the sky, and what Galactic / ecliptic latitude cuts would reject. Plain JS, no build step.
 
 const STORE_KEY = "dozynki.sky.v1";
-const LAB_KEY = "dozynki.filterlab.v1";  // the Filter lab's saved state, where pipeline A lives
+const LAB_KEY = "dozynki.filterlab.v1";  // the Filter lab's saved state, where its pipeline lives
 const SYMBOLS = { bogus: "x", sso: "triangle-up", star: "star", agn: "diamond", transient: "circle", other: "square", unsure: "circle-open" };
 const BIN = 5;  // histogram bin width, degrees
 const DEG = Math.PI / 180;
@@ -19,7 +19,7 @@ const FRAMES = {
 const COORDS = { eq: ["ra", "dec"], gal: ["l", "b"], ecl: ["elon", "elat"] };
 
 let DATA = null;
-let PIPE = null;  // pipeline A: {steps, rejectedBy: {object_id: step key or null}}, or null if not evaluated
+let PIPE = null;  // the filter lab pipeline: {steps, rejectedBy: {object_id: step key or null}}, or null if not evaluated
 let state = null;
 
 const $ = (s) => document.querySelector(s);
@@ -174,7 +174,7 @@ function renderMap() {
     + `${o.alt_classes.length ? ` (could be ${esc(o.alt_classes.join(", "))})` : ""}`
     + `<br>RA ${o.ra.toFixed(3)} Dec ${o.dec.toFixed(3)}<br>l ${o.l.toFixed(1)} b ${o.b.toFixed(1)} · β ${o.elat.toFixed(1)}`
     + (rejected(o) ? `<br><i>rejected by ${[rejectedB(o) && "|b|", rejectedE(o) && "|β|"].filter(Boolean).join(" and ")} cut</i>` : "")
-    + (state.pipe !== "off" && PIPE ? `<br>pipeline A: ${o.object_id in PIPE.rejectedBy ? (rejectedA(o) ? `rejected by <b>${esc(PIPE.rejectedBy[o.object_id])}</b>` : "kept") : "not scored"}` : "");
+    + (state.pipe !== "off" && PIPE ? `<br>pipeline: ${o.object_id in PIPE.rejectedBy ? (rejectedA(o) ? `rejected by <b>${esc(PIPE.rejectedBy[o.object_id])}</b>` : "kept") : "not scored"}` : "");
   const pointTrace = (objs, k, name = k ?? "unlabeled", c = color(k)) => {
     const xy = objs.map((o) => project(o[lonKey], o[latKey]));
     return {
@@ -193,7 +193,7 @@ function renderMap() {
   if (state.pipe === "step" && PIPE) {
     // one trace per rejecting step (class still shown by symbol); kept and unscored objects in gray underneath
     traces.push(pointTrace(shown.filter((o) => !(o.object_id in PIPE.rejectedBy)), undefined, "not scored", color("unsure")));
-    traces.push(pointTrace(shown.filter((o) => o.object_id in PIPE.rejectedBy && !rejectedA(o)), undefined, "kept by A", color(null)));
+    traces.push(pointTrace(shown.filter((o) => o.object_id in PIPE.rejectedBy && !rejectedA(o)), undefined, "kept by the pipeline", color(null)));
     for (const s of PIPE.steps) {
       const objs = shown.filter((o) => PIPE.rejectedBy[o.object_id] === s);
       if (objs.length) traces.push(pointTrace(objs, undefined, `${s} (${objs.length})`, stepColor(s)));
@@ -232,7 +232,7 @@ function pctCell(k, n) {
   return p === null ? "—" : `${(100 * p).toFixed(1)}% <span class="ci">[${(100 * lo).toFixed(1)}, ${(100 * hi).toFixed(1)}]</span>`;
 }
 
-// Pipeline A columns for a set of objects, counting only the ones it scored
+// Pipeline columns for a set of objects, counting only the ones it scored
 function pipeCells(objs) {
   if (!PIPE) return "";
   const scored = objs.filter((o) => o.object_id in PIPE.rejectedBy);
@@ -251,8 +251,8 @@ function renderCutTable() {
   });
   const all = DATA.objects.filter((o) => o.klass);
   $("#cut-table").innerHTML = `<tr><th>class</th><th class="num">labeled</th><th class="num">|b| cut</th><th class="num">|β| cut</th>
-    <th class="num">either</th><th class="num">rejected</th>${PIPE ? `<th class="num" title="Rejected by pipeline A, of the objects it scored">pipeline A</th>
-    <th class="num" title="Rejected by pipeline A or a latitude cut: what the latitude cuts would add to A">A or latitude</th>` : ""}</tr>${rows.join("")}
+    <th class="num">either</th><th class="num">rejected</th>${PIPE ? `<th class="num" title="Rejected by the filter lab pipeline, of the objects it scored">pipeline</th>
+    <th class="num" title="Rejected by the pipeline or a latitude cut: what the latitude cuts would add to it">pipeline or latitude</th>` : ""}</tr>${rows.join("")}
     <tr><td><b>all</b></td><td class="num">${all.length}</td><td class="num">${state.cut_b > 0 ? all.filter(rejectedB).length : "—"}</td>
     <td class="num">${state.cut_e > 0 ? all.filter(rejectedE).length : "—"}</td><td class="num">${all.filter(rejected).length}</td>
     <td class="num">${all.length ? (100 * all.filter(rejected).length / all.length).toFixed(1) : "—"}%</td>${pipeCells(all)}</tr>`;
@@ -312,11 +312,12 @@ function bindSeg(sel, get, set) {
   });
 }
 
-// Pipeline A's enabled steps as the Filter lab saved them, or the default pipeline if the lab was never opened here.
+// The pipeline's enabled steps as the Filter lab saved them, or the default pipeline if the lab was never opened here.
 async function pipelineA() {
   try {
     const lab = JSON.parse(localStorage.getItem(LAB_KEY));
-    if (lab && Array.isArray(lab.A)) return { pipeline: lab.A.filter((s) => s.on).map((s) => ({ rule: s.rule, ...s.params })), saved: true };
+    const steps = lab && (lab.pipeline || lab.A);  // A: from when the lab compared two pipelines
+    if (Array.isArray(steps)) return { pipeline: steps.filter((s) => s.on).map((s) => ({ rule: s.rule, ...s.params })), saved: true };
   } catch (e) { /* storage blocked or corrupt: use the default */ }
   return { pipeline: (await api("/api/rejection/config")).default_pipeline, saved: false };
 }
@@ -324,16 +325,16 @@ async function pipelineA() {
 async function loadPipe() {
   PIPE = null;
   if (state.pipe === "off") { $("#pipe-info").innerHTML = ""; return; }
-  $("#pipe-info").textContent = "Evaluating pipeline A…";
+  $("#pipe-info").textContent = "Evaluating the filter lab pipeline…";
   try {
     const { pipeline, saved } = await pipelineA();
     const r = await post("/api/rejection/evaluate", { pipeline, truth: state.truth, all_sources: state.all_sources, target: ["transient"] });
     PIPE = { steps: Object.keys(r.steps), rejectedBy: Object.fromEntries(r.objects.map((o) => [o.object_id, o.rejected_by])) };
-    $("#pipe-info").innerHTML = `Pipeline A${saved ? "" : " (default; not yet edited in the Filter lab)"}: `
+    $("#pipe-info").innerHTML = `Filter lab pipeline${saved ? "" : " (default; not yet edited in the Filter lab)"}: `
       + (PIPE.steps.map((s) => `<code>${esc(s)}</code>`).join(" → ") || "no rules enabled")
       + ` · rejects ${r.pipeline_metrics.rejected} of ${r.population.scored} scored. <a href="/rejection">Edit in the Filter lab</a>; this page follows your changes.`;
   } catch (e) {
-    $("#pipe-info").textContent = `Could not evaluate pipeline A: ${e.message}`;
+    $("#pipe-info").textContent = `Could not evaluate the filter lab pipeline: ${e.message}`;
   }
 }
 
@@ -351,7 +352,7 @@ async function init() {
   bindSeg("#truth", () => state.truth, (v) => { state.truth = v; load(); });
   bindSeg("#frame", () => state.frame, (v) => { state.frame = v; render(); });
   bindSeg("#pipe-mode", () => state.pipe, async (v) => { state.pipe = v; await loadPipe(); render(); });
-  // the Filter lab in another tab saved a change to pipeline A
+  // the Filter lab in another tab saved a change to its pipeline
   window.addEventListener("storage", async (e) => { if (e.key === LAB_KEY && state.pipe !== "off") { await loadPipe(); render(); } });
   for (const w of ["b", "e"]) bindSeg(`[data-hist="${w}"]`, () => state.hist[w], (v) => { state.hist[w] = v; render(); });
   $("#all-sources").checked = state.all_sources;

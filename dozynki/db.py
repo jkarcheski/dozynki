@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS queue (
     source         TEXT NOT NULL,      -- how it entered the queue (selection function)
     source_params  TEXT,               -- JSON: query, seed, etc.
     added_at       TEXT NOT NULL,
-    status         TEXT NOT NULL DEFAULT 'pending'   -- pending | labeled | skipped
+    status         TEXT NOT NULL DEFAULT 'pending'   -- pending | labeled | skipped | watch | screening | filtered
 );
 CREATE TABLE IF NOT EXISTS cache (
     object_id   TEXT NOT NULL,
@@ -104,7 +104,10 @@ _conn.executescript(SCHEMA)
 MIGRATIONS = {
     "labels": {"alt_classes": "TEXT"},  # JSON list of "could also be" classes
     # locus summary used by the queue filters (filters.py); NULL until fetched
-    "queue": {"n_det": "INTEGER", "first_mjd": "REAL", "last_mjd": "REAL"},
+    "queue": {"n_det": "INTEGER", "first_mjd": "REAL", "last_mjd": "REAL",
+              # filtered mode (screen.py): saved filter name the pull was screened with (NULL in random mode),
+              # and its verdict: "kept", the rejecting step, or "error" (couldn't fetch, so kept)
+              "screen": "TEXT", "screen_result": "TEXT"},
     # night batches: the random order (seed), where this batch starts in it, and the night's size then
     "night_pulls": {"seed": "INTEGER", "start": "INTEGER", "n_matching": "INTEGER"},
 }
@@ -131,15 +134,36 @@ def query(sql, params=()):
         return [dict(r) for r in _conn.execute(sql, params).fetchall()]
 
 
-def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summary=None):
+def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summary=None, screen=None):
+    """Queue an object; with screen (a saved filter name) it waits as 'screening' for screen.py.
+
+    An object already queued by a filtered-mode pull and not yet labeled is taken over by a
+    random-mode pull, so random mode stays random even for objects a filter threw away.
+    """
     summary = summary or {}
+    row = (str(object_id), antares_locus, ra, dec, source, json.dumps(source_params), now(),
+           summary.get("n_det"), summary.get("first_mjd"), summary.get("last_mjd"), screen,
+           "screening" if screen else "pending")
     cur = execute(
         "INSERT OR IGNORE INTO queue (object_id, antares_locus, ra, dec, source, source_params, added_at, "
-        "n_det, first_mjd, last_mjd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (str(object_id), antares_locus, ra, dec, source, json.dumps(source_params), now(),
-         summary.get("n_det"), summary.get("first_mjd"), summary.get("last_mjd")),
-    )
-    return cur.rowcount
+        "n_det, first_mjd, last_mjd, screen, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+    if cur.rowcount or screen:
+        return cur.rowcount
+    return execute("UPDATE queue SET source = ?, source_params = ?, added_at = ?, screen = NULL, screen_result = NULL, "
+                   "status = 'pending' WHERE object_id = ? AND screen IS NOT NULL AND status IN ('screening', 'filtered', 'pending')",
+                   (source, json.dumps(source_params), now(), str(object_id))).rowcount
+
+
+def set_screened(object_id, status, result):
+    # only while still waiting: a random-mode pull may have taken the object over meanwhile
+    execute("UPDATE queue SET status = ?, screen_result = ? WHERE object_id = ? AND status = 'screening'",
+            (status, result, object_id))
+
+
+def mode_counts(screen):
+    """Queue status counts within one mode (screen None is random mode)."""
+    rows = query("SELECT status, COUNT(*) n FROM queue WHERE screen IS ? GROUP BY status", (screen,))
+    return {r["status"]: r["n"] for r in rows}
 
 
 def next_pending(limit=1, exclude=(), where="", params=()):

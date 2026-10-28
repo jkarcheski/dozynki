@@ -1,4 +1,4 @@
-// DOZYNKI filter lab: compare two rejection pipelines against the labels. Plain JS, no build step.
+// DOZYNKI filter lab: build a rejection pipeline and score it against the labels. Plain JS, no build step.
 
 const STORE_KEY = "dozynki.filterlab.v1";
 const METRICS = [
@@ -8,12 +8,12 @@ const METRICS = [
   { key: "bogus_leak", label: "Bogus leak", hint: "bogus kept / bogus", higher: false },
 ];
 // default sweep range per parameter name
-const SWEEP_RANGE = { max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30] };
+const SWEEP_RANGE = { min_beta: [0, 30], max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30] };
 const INTEGER_PARAMS = new Set(["n"]);
 
 let CFG = null;
 let state = null;
-let results = { A: null, B: null };
+let result = null;
 let evalToken = 0;
 
 const $ = (s) => document.querySelector(s);
@@ -51,26 +51,22 @@ function pipelineFrom(steps) {
 }
 
 function defaultState() {
-  const A = pipelineFrom(CFG.default_pipeline);
-  // B starts as A without the multi-night cut, the biggest single trade-off in the default pipeline
-  const B = A.map((s) => ({ ...s, params: { ...s.params }, on: s.rule === "min_nights" ? false : s.on }));
-  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, A, B, names: { A: null, B: null } };
+  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, pipeline: pipelineFrom(CFG.default_pipeline), name: null };
 }
 
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (saved && Array.isArray(saved.A) && Array.isArray(saved.B)) {
+    const steps = saved && (saved.pipeline || saved.A);  // A: from when the lab compared two pipelines
+    if (Array.isArray(steps)) {
       // drop rules that no longer exist, append new ones (off), and fill in new params
       const byName = Object.fromEntries(CFG.rules.map((r) => [r.name, r]));
-      for (const k of ["A", "B"]) {
-        const kept = saved[k].filter((s) => byName[s.rule])
-          .map((s) => ({ rule: s.rule, on: !!s.on, params: { ...byName[s.rule].defaults, ...s.params } }));
-        const missing = CFG.rules.filter((r) => !kept.some((s) => s.rule === r.name))
-          .map((r) => ({ rule: r.name, on: false, params: { ...r.defaults } }));
-        saved[k] = [...kept, ...missing];
-      }
-      return { ...defaultState(), ...saved, names: { A: null, B: null, ...saved.names } };
+      const kept = steps.filter((s) => byName[s.rule])
+        .map((s) => ({ rule: s.rule, on: !!s.on, params: { ...byName[s.rule].defaults, ...s.params } }));
+      const missing = CFG.rules.filter((r) => !kept.some((s) => s.rule === r.name))
+        .map((r) => ({ rule: r.name, on: false, params: { ...r.defaults } }));
+      const { A, B, names, ...rest } = saved;
+      return { ...defaultState(), ...rest, pipeline: [...kept, ...missing], name: saved.name ?? names?.A ?? null };
     }
   } catch (e) { /* storage blocked or corrupt: start fresh */ }
   return defaultState();
@@ -80,8 +76,8 @@ function saveState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* not essential */ }
 }
 
-const requestFor = (which) => ({
-  pipeline: state[which].filter((s) => s.on).map((s) => ({ rule: s.rule, ...s.params })),
+const requestFor = () => ({
+  pipeline: state.pipeline.filter((s) => s.on).map((s) => ({ rule: s.rule, ...s.params })),
   truth: state.truth,
   target: state.target,
   include_alt: state.include_alt,
@@ -111,73 +107,64 @@ function renderSettings() {
   document.querySelectorAll("#truth button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.truth));
 }
 
-function renderPipeline(which) {
-  const other = which === "A" ? "B" : "A";
-  const el = $(`#pipe-${which}`);
+function renderPipeline() {
+  const el = $("#pipe");
   const rules = Object.fromEntries(CFG.rules.map((r) => [r.name, r]));
-  const name = state.names[which];
-  const saved = SAVED.find((s) => s.name === name);
-  const edited = saved && !sameSteps(saved.config, requestFor(which).pipeline);
+  const saved = SAVED.find((s) => s.name === state.name);
+  const edited = saved && !sameSteps(saved.config, requestFor().pipeline);
   el.innerHTML = `
     <div class="card-head">
-      <h2 class="pipe-title"><i style="background:var(--series-${which === "A" ? 1 : 2})"></i>Pipeline ${which}
-        ${saved ? `<span class="muted">· ${esc(name)}${edited ? " (edited)" : ""}</span>` : ""}</h2>
+      <h2 class="pipe-title">Pipeline ${saved ? `<span class="muted">· ${esc(saved.name)}${edited ? " (edited)" : ""}</span>` : ""}</h2>
       <span>
-        <select class="small" data-act="load" aria-label="Load a saved filter into ${which}"><option value="">Load saved…</option>
+        <select class="small" data-act="load" aria-label="Load a saved filter"><option value="">Load saved…</option>
           ${SAVED.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join("")}</select>
         <button class="small" data-act="save">Save…</button>
-        <button class="small" data-act="copy">Copy to ${other}</button> <button class="small" data-act="reset">Reset</button></span>
+        <button class="small" data-act="reset">Reset</button></span>
     </div>
-    ${state[which].map((s, i) => `
+    <div class="rules">${state.pipeline.map((s, i) => `
       <div class="rule ${s.on ? "" : "off"}">
         <input type="checkbox" data-i="${i}" ${s.on ? "checked" : ""} aria-label="enable ${esc(s.rule)}">
         <span class="name">${esc(s.rule)}${rules[s.rule].broker ? '<span class="tag" title="reads broker output">broker</span>' : ""}</span>
         <span class="params">${Object.entries(s.params).map(([k, v]) =>
           `<label>${esc(k)} <input type="number" step="${INTEGER_PARAMS.has(k) ? 1 : "any"}" data-i="${i}" data-p="${esc(k)}" value="${v}"></label>`).join("")}</span>
         <span class="desc">${esc(rules[s.rule].description)}</span>
-      </div>`).join("")}`;
+      </div>`).join("")}</div>`;
   el.querySelectorAll('input[type=checkbox]').forEach((c) => (c.onchange = () => {
-    state[which][+c.dataset.i].on = c.checked;
-    renderPipeline(which);
+    state.pipeline[+c.dataset.i].on = c.checked;
+    renderPipeline();
     changed();
   }));
   el.querySelectorAll("input[data-p]").forEach((inp) => (inp.oninput = () => {
     const v = Number(inp.value);
     if (inp.value === "" || !Number.isFinite(v)) return;
-    state[which][+inp.dataset.i].params[inp.dataset.p] = v;
-    refreshTitle(which);
+    state.pipeline[+inp.dataset.i].params[inp.dataset.p] = v;
+    refreshTitle();
     changed();
   }));
-  el.querySelector('[data-act=load]').onchange = (e) => e.target.value && loadInto(which, SAVED[+e.target.value]);
+  el.querySelector('[data-act=load]').onchange = (e) => e.target.value && loadSavedFilter(SAVED[+e.target.value]);
   el.querySelector('[data-act=save]').onclick = async () => {
-    const name = prompt(`Save pipeline ${which} as:`, state.names[which] || "");
+    const name = prompt("Save this pipeline as:", state.name || "");
     if (!name?.trim()) return;
     try {
-      if (!(await savePipeline(name.trim(), requestFor(which).pipeline, saved?.name === name.trim() ? saved.note : null))) return;
+      if (!(await savePipeline(name.trim(), requestFor().pipeline, saved?.name === name.trim() ? saved.note : null))) return;
     } catch (e) { return toast("Save failed: " + e.message, 5000); }
-    state.names[which] = name.trim();
+    state.name = name.trim();
     saveState();
-    renderPipeline(which);
-  };
-  el.querySelector('[data-act=copy]').onclick = () => {
-    state[other] = JSON.parse(JSON.stringify(state[which]));
-    state.names[other] = state.names[which];
-    renderPipeline(other);
-    changed();
+    renderPipeline();
   };
   el.querySelector('[data-act=reset]').onclick = () => {
-    state[which] = pipelineFrom(CFG.default_pipeline);
-    state.names[which] = null;
-    renderPipeline(which);
+    state.pipeline = pipelineFrom(CFG.default_pipeline);
+    state.name = null;
+    renderPipeline();
     changed();
   };
 }
 
 // Update only the title's "(edited)" mark, so typing in a threshold box keeps its focus.
-function refreshTitle(which) {
-  const saved = SAVED.find((s) => s.name === state.names[which]);
-  const tag = $(`#pipe-${which} .pipe-title .muted`);
-  if (saved && tag) tag.textContent = `· ${saved.name}${sameSteps(saved.config, requestFor(which).pipeline) ? "" : " (edited)"}`;
+function refreshTitle() {
+  const saved = SAVED.find((s) => s.name === state.name);
+  const tag = $("#pipe .pipe-title .muted");
+  if (saved && tag) tag.textContent = `· ${saved.name}${sameSteps(saved.config, requestFor().pipeline) ? "" : " (edited)"}`;
 }
 
 // ---------- evaluation ----------
@@ -188,15 +175,15 @@ function changed(settings = false) {
   if (settings) renderSettings();
   renderSweepParams();
   clearTimeout(debounce);
-  debounce = setTimeout(evaluateBoth, 200);
+  debounce = setTimeout(evaluatePipeline, 200);
 }
 
-async function evaluateBoth() {
+async function evaluatePipeline() {
   const token = ++evalToken;
   try {
-    const [A, B] = await Promise.all([api("/api/rejection/evaluate", requestFor("A")), api("/api/rejection/evaluate", requestFor("B"))]);
+    const r = await api("/api/rejection/evaluate", requestFor());
     if (token !== evalToken) return; // a newer request superseded this one
-    results = { A, B };
+    result = r;
     $("#err").textContent = "";
     renderAll();
   } catch (e) {
@@ -205,8 +192,7 @@ async function evaluateBoth() {
 }
 
 function renderAll() {
-  const { A } = results;
-  const p = A.population;
+  const p = result.population;
   const excl = Object.entries(p.excluded).map(([k, n]) => `${n} ${k}`).join(", ");
   $("#pop").innerHTML = `<b>${p.scored}</b> scored objects, <b>${p.n_target}</b> target` + (excl ? ` · excluded ${esc(excl)}` : "") +
     (p.n_target < 30 ? ` · <span class="err">few targets: wide intervals</span>` : "");
@@ -214,7 +200,6 @@ function renderAll() {
   renderTrees();
   renderByClass();
   renderSteps();
-  renderDiff();
   drawSweepMarker();
 }
 
@@ -224,17 +209,16 @@ function cell(m) {
 }
 
 function renderMetrics() {
-  const { A, B } = results;
   const rows = METRICS.map((mt) => {
-    const a = A.pipeline_metrics[mt.key], b = B.pipeline_metrics[mt.key];
-    const d = a.value !== null && b.value !== null ? b.value - a.value : null;
+    const base = result.baseline[mt.key], m = result.pipeline_metrics[mt.key];
+    const d = base.value !== null && m.value !== null ? m.value - base.value : null;
     const cls = d === null || Math.abs(d) < 1e-9 ? "" : (d > 0) === mt.higher ? "better" : "worse";
-    return `<tr><th title="${esc(mt.hint)}">${mt.label} <span class="ci">${esc(mt.hint)}</span></th>${cell(A.baseline[mt.key])}${cell(a)}${cell(b)}
+    return `<tr><th title="${esc(mt.hint)}">${mt.label} <span class="ci">${esc(mt.hint)}</span></th>${cell(base)}${cell(m)}
       <td class="num ${cls}">${d === null ? "—" : (d >= 0 ? "+" : "") + d.toFixed(3)}</td></tr>`;
   });
-  rows.push(`<tr><th>Kept</th><td class="num">${A.baseline.kept}</td><td class="num">${A.pipeline_metrics.kept}</td>
-    <td class="num">${B.pipeline_metrics.kept}</td><td class="num">${B.pipeline_metrics.kept - A.pipeline_metrics.kept >= 0 ? "+" : ""}${B.pipeline_metrics.kept - A.pipeline_metrics.kept}</td></tr>`);
-  $("#metrics").innerHTML = `<tr><th></th><th class="num">No filter</th><th class="num">A</th><th class="num">B</th><th class="num">B − A</th></tr>${rows.join("")}`;
+  const kept = result.pipeline_metrics.kept, all = result.baseline.kept;
+  rows.push(`<tr><th>Kept</th><td class="num">${all}</td><td class="num">${kept}</td><td class="num">${kept - all}</td></tr>`);
+  $("#metrics").innerHTML = `<tr><th></th><th class="num">No filter</th><th class="num">Pipeline</th><th class="num">change</th></tr>${rows.join("")}`;
 }
 
 function classCounts(res) {
@@ -263,65 +247,42 @@ function plotLayout(extra = {}) {
 }
 
 function renderByClass() {
-  const a = classCounts(results.A), b = classCounts(results.B);
+  const a = classCounts(result);
   const classes = CFG.classes.map((c) => c.key).filter((k) => a[k]);
   const label = (k) => k + (a[k].target ? (a[k].target === a[k].total ? " ★" : " ☆") : "");
   const x = classes.map(label);
   const bar = (name, ys, color) => ({
     type: "bar", name, x, y: ys, marker: { color, line: { color: cssVar("--card"), width: 2 } },
-    hovertemplate: `${name}: %{y} kept<extra>%{x}</extra>`,
+    hovertemplate: `${name}: %{y}<extra>%{x}</extra>`,
   });
   Plotly.react("by-class", [
     bar("No filter", classes.map((k) => a[k].total), cssVar("--baseline")),
-    bar("A", classes.map((k) => a[k].kept), cssVar("--series-1")),
-    bar("B", classes.map((k) => b[k]?.kept ?? 0), cssVar("--series-2")),
+    bar("Kept", classes.map((k) => a[k].kept), cssVar("--series-1")),
   ], plotLayout({ barmode: "group", bargap: 0.3, bargroupgap: 0.08, yaxis: { title: "objects", gridcolor: cssVar("--line"), rangemode: "tozero" } }),
   { displayModeBar: false, responsive: true });
-  $("#by-class-table").innerHTML = `<tr><th>class</th><th class="num">labeled</th><th class="num">of which target</th><th class="num">kept by A</th><th class="num">kept by B</th></tr>` +
-    classes.map((k) => `<tr><td>${esc(k)}</td><td class="num">${a[k].total}</td><td class="num">${a[k].target}</td><td class="num">${a[k].kept}</td><td class="num">${b[k]?.kept ?? 0}</td></tr>`).join("") +
+  $("#by-class-table").innerHTML = `<tr><th>class</th><th class="num">labeled</th><th class="num">of which target</th><th class="num">kept</th><th class="num">rejected</th></tr>` +
+    classes.map((k) => `<tr><td>${esc(k)}</td><td class="num">${a[k].total}</td><td class="num">${a[k].target}</td><td class="num">${a[k].kept}</td><td class="num">${a[k].total - a[k].kept}</td></tr>`).join("") +
     `<tr><td colspan="5" class="hint">★ all of the class is target, ☆ part of it (a subclass or could-also-be target)</td></tr>`;
 }
 
 function renderSteps() {
-  const rows = [];
-  for (const which of ["A", "B"]) {
-    const res = results[which];
-    const nT = res.population.n_target, nN = res.population.scored - nT;
-    for (const [step, st] of Object.entries(res.steps)) {
-      const lostT = nT - st.alone.completeness.k, cutN = nN - st.alone.fpr.k;
-      const only = Object.entries(st.unique_rejects).filter(([, n]) => n).map(([c, n]) => `${c} ${n}`).join(", ") || "—";
-      rows.push(`<tr><td>${which}</td><td>${esc(step)}${st.broker ? '<span class="tag">broker</span>' : ""}</td>
-        <td class="num">${st.no_data}</td><td class="num">${lostT}</td><td class="num">${cutN}</td><td>${esc(only)}</td>
-        ${cell(st.without_this_step.completeness)}${cell(st.without_this_step.purity)}</tr>`);
-    }
-  }
-  $("#steps").innerHTML = `<tr><th></th><th>step</th><th class="num">no data</th><th class="num">target lost alone</th><th class="num">non-target cut alone</th>
+  const nT = result.population.n_target, nN = result.population.scored - nT;
+  const rows = Object.entries(result.steps).map(([step, st]) => {
+    const lostT = nT - st.alone.completeness.k, cutN = nN - st.alone.fpr.k;
+    const only = Object.entries(st.unique_rejects).filter(([, n]) => n).map(([c, n]) => `${c} ${n}`).join(", ") || "—";
+    return `<tr><td>${esc(step)}${st.broker ? '<span class="tag">broker</span>' : ""}</td>
+      <td class="num">${st.no_data}</td><td class="num">${lostT}</td><td class="num">${cutN}</td><td>${esc(only)}</td>
+      ${cell(st.without_this_step.completeness)}${cell(st.without_this_step.purity)}</tr>`;
+  });
+  $("#steps").innerHTML = `<tr><th>step</th><th class="num">no data</th><th class="num">target lost alone</th><th class="num">non-target cut alone</th>
     <th>only it rejects</th><th class="num">completeness without</th><th class="num">purity without</th></tr>${rows.join("")}`;
-}
-
-function outcome(o) {
-  return o.kept ? "kept" : `rejected · ${esc(o.rejected_by)}`;
-}
-
-function renderDiff() {
-  const bById = Object.fromEntries(results.B.objects.map((o) => [o.object_id, o]));
-  const diff = results.A.objects.filter((o) => bById[o.object_id] && bById[o.object_id].kept !== o.kept);
-  diff.sort((x, y) => (y.target - x.target) || x.truth.localeCompare(y.truth));
-  $("#diff").innerHTML = diff.length
-    ? `<tr><th>object</th><th>label</th><th>target</th><th>A</th><th>B</th></tr>` + diff.map((o) => {
-        const b = bById[o.object_id];
-        const lab = o.truth + (o.subclass ? ` · ${o.subclass}` : "") + (o.alt_classes ? ` (or ${o.alt_classes})` : "");
-        return `<tr><td><a href="/vet?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
-          <td>${esc(lab)}</td><td>${o.target ? "✓" : ""}</td><td>${outcome(o)}</td><td>${outcome(b)}</td></tr>`;
-      }).join("")
-    : `<tr><td class="hint">A and B keep exactly the same objects.</td></tr>`;
 }
 
 // ---------- sweep ----------
 
 function sweepOptions() {
   const out = [];
-  state.A.forEach((s, i) => {
+  state.pipeline.forEach((s) => {
     if (!s.on) return;
     for (const p of Object.keys(s.params)) out.push({ value: `${s.rule}:${p}`, label: `${s.rule} · ${p}`, rule: s.rule, param: p });
   });
@@ -349,8 +310,8 @@ let lastSweep = null;
 
 async function runSweep() {
   const [rule, param] = ($("#sweep-param").value || ":").split(":");
-  if (!rule) return toast("Enable a rule with a threshold in pipeline A first");
-  const body = requestFor("A");
+  if (!rule) return toast("Enable a rule with a threshold first");
+  const body = requestFor();
   const step = body.pipeline.findIndex((s) => s.rule === rule);
   const lo = Number($("#sweep-from").value), hi = Number($("#sweep-to").value), n = Math.max(2, Math.min(60, Number($("#sweep-n").value)));
   let values = Array.from({ length: n }, (_, i) => lo + (hi - lo) * i / (n - 1));
@@ -389,18 +350,18 @@ function drawSweep() {
   el.removeAllListeners?.("plotly_click");
   el.on("plotly_click", (ev) => {
     const v = ev.points[0].x;
-    const s = state.A.find((s) => s.rule === rule);
+    const s = state.pipeline.find((s) => s.rule === rule);
     if (!s) return;
     s.params[param] = INTEGER_PARAMS.has(param) ? Math.round(v) : +v.toPrecision(4);
-    renderPipeline("A");
+    renderPipeline();
     changed();
-    toast(`A: ${rule} ${param} = ${s.params[param]}`);
+    toast(`${rule} ${param} = ${s.params[param]}`);
   });
 }
 
 function markerShape() {
   if (!lastSweep) return [];
-  const s = state.A.find((s) => s.rule === lastSweep.rule && s.on);
+  const s = state.pipeline.find((s) => s.rule === lastSweep.rule && s.on);
   if (!s) return [];
   const v = s.params[lastSweep.param];
   return [{ type: "line", x0: v, x1: v, y0: 0, y1: 1.02, line: { color: cssVar("--muted"), width: 1.5, dash: "dash" } }];
@@ -442,6 +403,13 @@ const QUESTIONS = {
     why: "Low |b| fields are full of variable stars and crowding artifacts.",
     choices: [{ label: "Yes, |b| < 15°", params: { min_b: 15 } }, { label: "Yes, |b| < 10°", params: { min_b: 10 } },
       { label: "Yes, |b| < 5°", params: { min_b: 5 } }, { label: "No", params: null }],
+  },
+  ecliptic: {
+    node: (p) => `Within ${p.min_beta}° of the ecliptic?`,
+    ask: "Avoid the ecliptic, where most asteroids are?",
+    why: "Ecliptic latitude |β|. Unknown asteroids that the pipeline didn't associate pile up near the ecliptic.",
+    choices: [{ label: "Yes, |β| < 15°", params: { min_beta: 15 } }, { label: "Yes, |β| < 10°", params: { min_beta: 10 } },
+      { label: "Yes, |β| < 5°", params: { min_beta: 5 } }, { label: "No", params: null }],
   },
   negative_flux: {
     node: (p) => `More than ${Math.round(p.max_frac * 100)}% negative detections?`,
@@ -500,7 +468,7 @@ const QUESTIONS = {
   },
 };
 // Questionnaire order, which is also the built pipeline's order: catalog facts, then data quality, then broker scores.
-const QUESTION_ORDER = ["sso_association", "gaia_star", "milliquas_agn", "galactic_plane", "negative_flux", "position_scatter",
+const QUESTION_ORDER = ["sso_association", "gaia_star", "milliquas_agn", "galactic_plane", "ecliptic", "negative_flux", "position_scatter",
   "min_detections", "min_lsst_detections", "min_nights", "min_span", "lsst_reliability", "alerce_stamp_bogus"];
 
 function questionFor(name) {
@@ -591,11 +559,7 @@ function renderTree(el, res, title) {
 }
 
 function renderTrees() {
-  for (const which of ["A", "B"]) {
-    const name = state.names?.[which];
-    renderTree($(`#tree-${which}`), results[which],
-      `<i style="background:var(--series-${which === "A" ? 1 : 2})"></i>Pipeline ${which}${name ? ` · ${esc(name)}` : ""}`);
-  }
+  renderTree($("#tree"), result, `Pipeline${state.name ? ` · ${esc(state.name)}` : ""}`);
 }
 
 // ---------- saved filters ----------
@@ -605,8 +569,7 @@ let SAVED = [];
 async function loadSaved() {
   SAVED = await api("/api/rejection/saved");
   renderSaved();
-  renderPipeline("A");
-  renderPipeline("B");
+  renderPipeline();
 }
 
 function stepChip(step) {
@@ -621,16 +584,16 @@ function renderSaved() {
         <td class="wrap">${s.config.map(stepChip).join("") || '<span class="hint">none: keeps everything</span>'}</td>
         <td class="wrap hint">${esc(s.note || "")}</td>
         <td class="hint">${esc(s.updated_at.slice(0, 16).replace("T", " "))}</td>
-        <td><button class="small" data-i="${i}" data-to="A">Load into A</button> <button class="small" data-i="${i}" data-to="B">Load into B</button>
+        <td><button class="small" data-i="${i}" data-load>Load</button>
           <button class="small" data-i="${i}" data-del title="Delete">✕</button></td></tr>`).join("")
     : `<tr><td class="hint wrap">Nothing saved yet. Save a pipeline from its card, or build one with questions.</td></tr>`;
-  $("#saved").querySelectorAll("button[data-to]").forEach((b) => (b.onclick = () => loadInto(b.dataset.to, SAVED[+b.dataset.i])));
+  $("#saved").querySelectorAll("button[data-load]").forEach((b) => (b.onclick = () => loadSavedFilter(SAVED[+b.dataset.i])));
   $("#saved").querySelectorAll("button[data-del]").forEach((b) => (b.onclick = async () => {
     const s = SAVED[+b.dataset.i];
     if (!confirm(`Delete saved filter "${s.name}"?`)) return;
     try {
       await fetch(`/api/rejection/saved/${encodeURIComponent(s.name)}`, { method: "DELETE" });
-      for (const k of ["A", "B"]) if (state.names[k] === s.name) state.names[k] = null;
+      if (state.name === s.name) state.name = null;
       saveState();
       await loadSaved();
       toast(`Deleted "${s.name}"`);
@@ -638,12 +601,12 @@ function renderSaved() {
   }));
 }
 
-function loadInto(which, saved) {
-  state[which] = pipelineFrom(saved.config);
-  state.names[which] = saved.name;
-  renderPipeline(which);
+function loadSavedFilter(saved) {
+  state.pipeline = pipelineFrom(saved.config);
+  state.name = saved.name;
+  renderPipeline();
   changed();
-  toast(`Loaded "${saved.name}" into ${which}`);
+  toast(`Loaded "${saved.name}"`);
 }
 
 async function savePipeline(name, pipeline, note) {
@@ -680,7 +643,7 @@ const wizPipeline = (upto = wiz.answers.length) => wiz.answers.slice(0, upto).fl
   return params ? [{ rule: wiz.questions[i], ...params }] : [];
 });
 
-const evalReq = (pipeline) => ({ ...requestFor("A"), pipeline });
+const evalReq = (pipeline) => ({ ...requestFor(), pipeline });
 
 function wizNote() {
   return wiz.questions.slice(0, wiz.answers.length)
@@ -720,8 +683,7 @@ function renderWizard() {
         <label>Name <input id="wiz-name" maxlength="80" placeholder="e.g. strict transients"></label>
         <label class="grow">Note <input id="wiz-note" value="${esc(wizNote())}"></label>
       </div>
-      <p><button class="primary" data-act="save" data-to="A">Save and load into A</button>
-        <button data-act="save" data-to="B">Save and load into B</button>
+      <p><button class="primary" data-act="save" data-load>Save and use it</button>
         <button data-act="save">Just save</button></p>`;
   }
   el.innerHTML = `<div class="wiz"><div class="wiz-main">${nav}${body}</div><div class="wiz-tree"><div class="hint">building…</div></div></div>`;
@@ -748,7 +710,7 @@ function renderWizard() {
     try {
       if (!(await savePipeline(name, wizPipeline(), $("#wiz-note").value))) return;
     } catch (e) { return toast("Save failed: " + e.message, 5000); }
-    if (b.dataset.to) loadInto(b.dataset.to, SAVED.find((s) => s.name === name));
+    if ("load" in b.dataset) loadSavedFilter(SAVED.find((s) => s.name === name));
     closeWizard();
   }));
 
@@ -782,15 +744,14 @@ async function init() {
   renderSaved();
   $("#wiz-start").onclick = startWizard;
   renderSettings();
-  renderPipeline("A");
-  renderPipeline("B");
+  renderPipeline();
   renderSweepParams();
   $("#include-alt").onchange = (e) => { state.include_alt = e.target.checked; changed(); };
   $("#all-sources").onchange = (e) => { state.all_sources = e.target.checked; changed(); };
   document.querySelectorAll("#truth button").forEach((b) => (b.onclick = () => { state.truth = b.dataset.v; changed(true); }));
   $("#sweep-param").onchange = setSweepRange;
   $("#sweep-run").onclick = runSweep;
-  await evaluateBoth();
+  await evaluatePipeline();
   if (sweepOptions().length) runSweep();
 }
 
