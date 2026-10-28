@@ -254,12 +254,20 @@ const Harvest = (() => {
 
   let stackEl = null, pendingNow = null, reaping = false;
 
+  // Each queue (random mode, or one saved filter's) has its own stack and so its own "full".
+  let stackName = "";
+  const stackKey = () => STACK_KEY + (stackName ? `:${stackName}` : "");
+
   function loadFull() {
-    try { return JSON.parse(localStorage.getItem(STACK_KEY))?.full || 0; } catch { return 0; }
+    try { return JSON.parse(localStorage.getItem(stackKey()))?.full || 0; } catch { return 0; }
   }
 
   function saveFull(full) {
-    try { localStorage.setItem(STACK_KEY, JSON.stringify({ full })); } catch {}
+    try { localStorage.setItem(stackKey(), JSON.stringify({ full })); } catch {}
+  }
+
+  function useStack(name) {
+    stackName = name || "";
   }
 
   function mountStack(el) {
@@ -354,5 +362,5 @@ const Harvest = (() => {
     return overlay(`needle${rare ? " rare" : ""}${calm() ? " still" : ""}`, svg, caption, rare ? 6000 : 4800);
   }
 
-  return { field, farmIcon, farmerIcon, fitIcons, mountStack, setStack, reap, needle };
+  return { field, farmIcon, farmerIcon, fitIcons, mountStack, useStack, setStack, reap, needle };
 })();

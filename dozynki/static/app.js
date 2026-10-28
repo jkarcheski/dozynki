@@ -174,10 +174,13 @@ function onKey(e) {
 
 // ---------- queue ----------
 
+// The haystack is this mode's queue: random mode's, or what passed the chosen filter.
+// (Queue and label counts are on the landing page.)
 async function refreshStats() {
-  const s = await api("/api/stats");
-  const q = s.queue;
-  Harvest.setStack(q.pending || 0);  // queue and label counts are on the landing page
+  const r = await api("/api/queue/matching?" + filterQuery());
+  Harvest.setStack(r.n_pending);
+  renderModeStatus(r);
+  if (r.n_screening) watchScreening();
 }
 
 // ---------- mode: random, or filtered (samples screened with a saved filter first) ----------
@@ -208,6 +211,7 @@ function setMode(change) {
   mode = { ...mode, ...change };
   try { localStorage.setItem(MODE_KEY, JSON.stringify(mode)); } catch {}
   renderMode();
+  refreshStats();
   skipped.length = 0;
   cur = null;
   refreshMatching();
@@ -215,11 +219,33 @@ function setMode(change) {
 }
 
 function renderMode() {
+  Harvest.useStack(screenName());
   document.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.v === mode.mode));
   $("#mode-filter").hidden = mode.mode !== "filtered";
   $(".filterbar").hidden = mode.mode !== "filtered";
   document.body.classList.toggle("filtered-mode", mode.mode === "filtered");
   if (mode.mode !== "filtered") $("#mode-status").textContent = "";
+}
+
+// While objects are being screened, follow them: the stack grows as they pass, the first one
+// comes up if nothing is open, and a toast sums up when the batch is done.
+let screenWatch = null;
+
+function watchScreening() {
+  if (screenWatch) return;
+  const name = screenName();
+  const tick = async () => {
+    let r;
+    try { r = await api("/api/queue/matching?" + filterQuery()); } catch { r = null; }
+    if (!r || screenName() !== name) { screenWatch = null; return; }  // mode changed: the new mode refreshes itself
+    Harvest.setStack(r.n_pending);
+    renderModeStatus(r);
+    if (!cur && r.n_pending) next();
+    if (r.n_screening) { screenWatch = setTimeout(tick, 3000); return; }
+    screenWatch = null;
+    toast(`Screening with "${name}" done: ${r.n_pending} waiting to vet, ${r.n_filtered} filtered out in all`, 6000);
+  };
+  screenWatch = setTimeout(tick, 3000);
 }
 
 // counts from /api/next or /api/queue/matching for the filtered mode's queue
@@ -285,7 +311,7 @@ async function fillQueue() {
   $("#fill").disabled = true;
   try {
     const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters(), screen: screenName() || null } });
-    if (r.added) Harvest.reap(r.added);
+    if (r.added && !screenName()) Harvest.reap(r.added);  // screened objects join the stack as they pass
     toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : "")
       + (screenName() && r.added ? `; screening them with "${screenName()}"` : ""), 5000);
     refreshMatching();
@@ -305,7 +331,7 @@ async function pullNight() {
   try {
     const r = await api("/api/queue/night", { method: "POST", body: { night, n: +$("#fill-n").value, ...getFilters(), screen: screenName() || null } });
     const size = r.capped ? "over 10000" : r.n_matching;
-    if (r.added) Harvest.reap(r.added);
+    if (r.added && !screenName()) Harvest.reap(r.added);  // screened objects join the stack as they pass
     toast(r.returned
       ? `Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue (${r.taken} of ${size} sampled)`
         + (screenName() && r.added ? `; screening them with "${screenName()}"` : "")
@@ -374,14 +400,13 @@ async function doExport() {
   }
 }
 
-let screenPoll = null;  // while filtered mode waits on screening
-
 async function next() {
   const exclude = cur && !cur.labels.length ? [...skipped, cur.evidence.object_id] : skipped;
   const r = await api(`/api/next?exclude=${encodeURIComponent(exclude.join(","))}&${filterQuery()}`);
   if (filtersActive()) $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
   renderModeStatus(r);
-  clearTimeout(screenPoll);
+  Harvest.setStack(r.n_pending);
+  if (r.n_screening) watchScreening();
   if (!r.object_id) {
     cur = null;
     loadToken++;  // drop an object still loading from before (e.g. the other mode's)
@@ -395,7 +420,6 @@ async function next() {
       ? `<div class="loading">Nothing left that passed "${esc(screenName())}" (${r.n_filtered} filtered out). Sample more above; samples are screened in this mode.</div>`
       : `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;
     renderForm();
-    if (r.n_screening) screenPoll = setTimeout(() => { if (!cur) next(); }, 3000);
     return;
   }
   loadObject(r.object_id);

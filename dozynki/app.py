@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
@@ -44,10 +45,21 @@ async def revalidate_static(request, call_next):
     return response
 
 
+STARTED = time.time()
+
+
+def _code_changed():
+    """Python is loaded once at startup (static files aren't), so an edit to it needs a restart."""
+    return any(p.stat().st_mtime > STARTED for p in Path(__file__).parent.rglob("*.py"))
+
+
 def _nav(active):
     on = ' class="on" aria-current="page"'
     tabs = "".join(f'<a href="{path}"{on if path == active else ""}>{label}</a>' for path, _, label in PAGES[1:])
-    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}</nav>'
+    stale = ('<span class="stale" title="The server is still running the code it started with, so pages may '
+             'call features it doesn\'t have yet. Stop it and run python -m dozynki again.">'
+             'Code changed: restart the server</span>') if _code_changed() else ""
+    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>'
 
 
 def _page(path):
