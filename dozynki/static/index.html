@@ -5,23 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DOZYNKI vetter</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/harvest.css">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
 <header>
-  <div class="brand">DOZYNKI <span class="muted">alert vetter</span></div>
-  <div id="stats" class="stats"></div>
+  <!--nav-->
+  <div id="haystack" class="haystack"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
+    <span class="group mode" title="Random: every sampled object, as drawn. Filtered: a whole night is run through a saved filter from the filter lab, and you only see what passes.">
+      <span class="seg" id="mode"><button data-v="random">Random</button><button data-v="filtered">Filtered</button></span>
+      <select id="mode-filter" aria-label="Saved filter to screen with"></select>
+      <span id="mode-status" class="muted"></span>
+      <span id="run-status" class="muted filtered-only"></span>
+    </span>
     <span class="group">
-      <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
-      <button id="fill" title="Random LSST objects from ANTARES that pass the filters below">Sample random LSST</button>
+      <span class="random-only">
+        <input id="fill-n" type="number" value="50" min="1" max="500" title="How many objects to sample">
+        <button id="fill" title="Random LSST objects from ANTARES">Sample random LSST</button>
+        <span class="muted">or from night</span>
+      </span>
+      <input id="night" type="date" title="Rubin night (dayObs): noon to noon UTC">
+      <button id="pull-night" class="random-only" title="The next random objects whose first alert came that night. Later samples of the night continue without repeats.">Sample night</button>
+      <button id="run-night" class="filtered-only" title="Every LSST object whose first or latest alert came that night, through the saved filter: the rules ANTARES's listing answers run over the whole night at once, then each object that passes is fetched and checked against the rest before you get to it.">Filter whole night</button>
     </span>
     <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>
+    <button id="xmatch-fill" title="Retry catalogs that failed or timed out in cached crossmatches of objects not yet labeled">Retry failed catalogs</button>
     <button id="export">Export</button>
   </div>
-  <div class="filterbar" title="Applied when sampling from ANTARES and when choosing which queued object comes up next">
+  <div class="filterbar" title="Filtered mode only: applied when sampling from ANTARES and when choosing which queued object comes up next">
     <span class="muted">Only objects with</span>
     ≥ <input id="f-min-det" type="number" value="1" min="1" title="Detections (LSST + ZTF; upper limits not counted)"> detections
     <span class="muted">and</span>
@@ -42,8 +56,17 @@
     <div class="card">
       <div class="card-head"><h2 id="obj-title">—</h2><span id="cut-meta" class="muted"></span></div>
       <div id="obj-links" class="links"></div>
-      <div id="cutouts" class="cutouts"></div>
-      <div id="point-detail" class="detail"></div>
+      <div class="triplet-row">
+        <div class="triplet">
+          <div id="cutouts" class="cutouts"></div>
+          <div id="point-detail" class="detail"></div>
+        </div>
+        <div class="astro-box">
+          <div class="panel-head">Detection offsets <span id="astro-meta" class="muted"></span></div>
+          <div id="astro"></div>
+          <div id="astro-summary" class="detail"></div>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="card-head">
@@ -93,10 +116,6 @@
       <div class="hint">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on either image to zoom it.</div>
     </div>
     <div class="card">
-      <div class="card-head"><h2>Detection offsets</h2><span id="astro-meta" class="muted"></span></div>
-      <div class="astro-wrap"><div id="astro"></div><div id="astro-summary" class="detail"></div></div>
-    </div>
-    <div class="card">
       <div class="card-head">
         <h2>Independent crossmatch</h2>
         <span class="zoom">
@@ -132,6 +151,7 @@
   </div>
 </footer>
 <div id="toast"></div>
+<script src="/static/harvest.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

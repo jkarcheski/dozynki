@@ -36,7 +36,12 @@ async function api(path, opts = {}) {
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (!r.ok) throw new Error(`${r.status}: ${(await r.text()).slice(0, 300)}`);
+  if (!r.ok) {
+    const text = await r.text();
+    let detail;
+    try { detail = JSON.parse(text).detail; } catch { /* not JSON */ }
+    throw new Error(typeof detail === "string" ? detail : `${r.status}: ${text.slice(0, 300)}`);
+  }
   return r.json();
 }
 
@@ -50,11 +55,16 @@ async function init() {
     CFG.blind = e.target.checked;
     if (cur) loadObject(cur.evidence.object_id);
   };
+  Harvest.mountStack($("#haystack"));
   buildLabelBar();
+  await initMode();
   initFilters();
   $("#fill").onclick = fillQueue;
+  $("#pull-night").onclick = pullNight;
+  $("#run-night").onclick = runNight;
   $("#add-ids").onclick = addIds;
   $("#watch-recheck").onclick = recheckWatchlist;
+  $("#xmatch-fill").onclick = fillMissingXmatch;
   $("#export").onclick = doExport;
   $("#commit").onclick = commit;
   $("#skip").onclick = skip;
@@ -72,7 +82,9 @@ async function init() {
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
   document.addEventListener("keydown", onKey);
   refreshStats();
-  next();
+  // /vet?object=<diaObjectId> opens that object (links from the filter lab)
+  const linked = new URLSearchParams(location.search).get("object");
+  linked ? loadObject(linked) : next();
 }
 
 function buildLabelBar() {
@@ -163,14 +175,144 @@ function onKey(e) {
 
 // ---------- queue ----------
 
+// The haystack is this mode's queue: random mode's, or what passed the chosen filter.
+// (Queue and label counts are on the landing page.)
 async function refreshStats() {
-  const s = await api("/api/stats");
-  const q = s.queue;
-  const classes = Object.entries(s.by_class).map(([k, n]) => `${k} <b>${n}</b>`).join(" · ");
-  $("#stats").innerHTML =
-    `pending <b>${q.pending || 0}</b> · labeled <b>${q.labeled || 0}</b> · watching <b>${q.watch || 0}</b> · skipped <b>${q.skipped || 0}</b>` +
-    (classes ? ` &nbsp;|&nbsp; ${classes}` : "") +
-    (s.revised_after_reveal ? ` &nbsp;|&nbsp; label changed on a later look <b>${s.revised_after_reveal}</b>` : "");
+  const r = await api("/api/queue/matching?" + filterQuery());
+  Harvest.setStack(r.n_pending);
+  renderModeStatus(r);
+  if (r.n_screening) watchScreening();
+}
+
+// ---------- mode: random, or filtered (samples screened with a saved filter first) ----------
+
+const MODE_KEY = "dozynki.mode";
+let mode = { mode: "random", filter: "" };
+
+const screenName = () => (mode.mode === "filtered" && mode.filter) || "";
+
+async function initMode() {
+  try { mode = { ...mode, ...JSON.parse(localStorage.getItem(MODE_KEY) || "{}") }; } catch {}
+  let saved = [];
+  try { saved = await api("/api/rejection/saved"); } catch {}
+  const sel = $("#mode-filter");
+  sel.innerHTML = saved.map((s) => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join("");
+  if (!saved.some((s) => s.name === mode.filter)) mode.filter = saved[0]?.name || "";
+  if (!mode.filter) mode.mode = "random";
+  sel.value = mode.filter;
+  const filteredBtn = $('#mode button[data-v="filtered"]');
+  filteredBtn.disabled = !saved.length;
+  if (!saved.length) filteredBtn.title = "Save a filter in the filter lab first";
+  document.querySelectorAll("#mode button").forEach((b) => (b.onclick = () => setMode({ mode: b.dataset.v })));
+  sel.onchange = () => setMode({ filter: sel.value });
+  renderMode();
+}
+
+function setMode(change) {
+  mode = { ...mode, ...change };
+  try { localStorage.setItem(MODE_KEY, JSON.stringify(mode)); } catch {}
+  renderMode();
+  refreshStats();
+  skipped.length = 0;
+  cur = null;
+  refreshMatching();
+  next();
+}
+
+function renderMode() {
+  Harvest.useStack(screenName());
+  document.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.v === mode.mode));
+  $("#mode-filter").hidden = mode.mode !== "filtered";
+  $(".filterbar").hidden = mode.mode !== "filtered";
+  document.body.classList.toggle("filtered-mode", mode.mode === "filtered");
+  if (mode.mode !== "filtered") $("#mode-status").textContent = "";
+  $("#mode-status").hidden = false;
+  $("#run-status").textContent = "";
+  watchRuns();
+}
+
+// ---------- filtered mode: whole nights run through the saved filter ----------
+
+async function runNight() {
+  const night = $("#night").value, name = screenName();
+  if (!night) return toast("Pick a night first");
+  $("#run-night").disabled = true;
+  try {
+    await api("/api/nights/run", { method: "POST", body: { night, screen: name } });
+    toast(`Running ${night} through "${name}"; the count comes up next to the filter`, 5000);
+    watchRuns();
+  } catch (e) {
+    toast("Couldn't filter the night: " + e.message, 8000);
+  } finally {
+    $("#run-night").disabled = false;
+  }
+}
+
+const fmtN = (n) => (n ?? 0).toLocaleString();
+
+function runText(r) {
+  if (r.state === "error") return `${r.night}: failed (${r.error})`;
+  if (r.state === "counting") return `${r.night}: counting the night…`;
+  if (r.state === "listing") return `${r.night}: ${fmtN(r.n_night)} objects, going through ${r.n_listed == null ? "them" : fmtN(r.n_listed)}…`;
+  const pass = r.screening ? `${fmtN(r.kept)} to ${fmtN(r.kept + r.screening)}` : fmtN(r.kept);
+  return `${r.night}: ${pass} of ${fmtN(r.n_night)} pass` + (r.screening ? ` · checking ${fmtN(r.screening)}` : "")
+    + ` · ${fmtN(r.left)} left to vet`;
+}
+
+const runTitle = (r) => r.state === "done"
+  ? `${fmtN(r.n_night)} LSST objects first or last alerting on ${r.night}; ${fmtN(r.n_listed)} left after the rules ANTARES applies, `
+    + `${fmtN(r.n_passed)} after the rest the listing answers; the full check has thrown out ${fmtN(r.filtered)} of those so far.`
+  : "";
+
+// The newest run with this filter, followed while ANTARES is being listed; screening is followed by watchScreening.
+let runWatch = null;
+
+async function watchRuns() {
+  clearTimeout(runWatch);
+  runWatch = null;
+  const name = screenName();
+  if (!name) return;
+  let r;
+  try { r = await api("/api/nights/runs?" + new URLSearchParams({ screen: name })); } catch { return; }
+  if (screenName() !== name) return;
+  const run = r.runs[0];
+  $("#run-status").textContent = run ? runText(run) : "No night filtered yet: pick one and press \"Filter whole night\"";
+  $("#run-status").title = run ? runTitle(run) : "";
+  $("#mode-status").hidden = !!run;  // the run's counts say the same, per night
+  $("#run-night").disabled = r.running != null;
+  if (r.running != null) runWatch = setTimeout(watchRuns, 3000);
+  else if (run?.screening) watchScreening();
+  if (r.running == null && wasRunning && !cur) next();  // listing just finished: say so in the empty panel
+  wasRunning = r.running != null;
+}
+let wasRunning = false;
+
+// While objects are being screened, follow them: the stack grows as they pass, the first one
+// comes up if nothing is open, and a toast sums up when the batch is done.
+let screenWatch = null;
+
+function watchScreening() {
+  if (screenWatch) return;
+  const name = screenName();
+  const tick = async () => {
+    let r;
+    try { r = await api("/api/queue/matching?" + filterQuery()); } catch { r = null; }
+    if (!r || screenName() !== name) { screenWatch = null; return; }  // mode changed: the new mode refreshes itself
+    watchRuns();
+    Harvest.setStack(r.n_pending);
+    renderModeStatus(r);
+    if (!cur && r.n_pending) next();
+    if (r.n_screening) { screenWatch = setTimeout(tick, 3000); return; }
+    screenWatch = null;
+    toast(`Screening with "${name}" done: ${r.n_pending} waiting to vet, ${r.n_filtered} filtered out in all`, 6000);
+  };
+  screenWatch = setTimeout(tick, 3000);
+}
+
+// counts from /api/next or /api/queue/matching for the filtered mode's queue
+function renderModeStatus(r) {
+  if (mode.mode !== "filtered") return;
+  $("#mode-status").textContent = (r.n_screening ? `screening ${r.n_screening} · ` : "") + `filtered out ${r.n_filtered ?? 0}`;
 }
 
 // ---------- filters (shared by sampling and by which queued object comes next) ----------
@@ -178,7 +320,11 @@ async function refreshStats() {
 const FILTER_KEY = "dozynki.filters";
 const FILTER_FIELDS = { min_det: "#f-min-det", date_mode: "#f-date-mode", date_from: "#f-date-from", date_to: "#f-date-to" };
 
+// Random mode takes everything as drawn, so the filter bar only applies in filtered mode.
+const NO_FILTERS = { min_det: 1, date_mode: "first", date_from: "", date_to: "" };
+
 function getFilters() {
+  if (mode.mode !== "filtered") return { ...NO_FILTERS };
   return {
     min_det: Math.max(1, +$("#f-min-det").value || 1),
     date_mode: $("#f-date-mode").value,
@@ -187,7 +333,7 @@ function getFilters() {
   };
 }
 
-const filterQuery = () => new URLSearchParams(getFilters()).toString();
+const filterQuery = () => new URLSearchParams({ ...getFilters(), screen: screenName() }).toString();
 const filtersActive = (f = getFilters()) => f.min_det > 1 || f.date_from || f.date_to;
 
 function initFilters() {
@@ -204,7 +350,7 @@ function initFilters() {
 }
 
 function onFiltersChanged() {
-  try { localStorage.setItem(FILTER_KEY, JSON.stringify(getFilters())); } catch {}
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify(getFilters())); } catch {}  // only reachable in filtered mode
   refreshMatching();
 }
 
@@ -215,6 +361,7 @@ async function refreshMatching() {
   try {
     const r = await api("/api/queue/matching?" + filterQuery());
     $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
+    renderModeStatus(r);
   } catch (e) {
     $("#f-matching").textContent = e.message;
   }
@@ -224,8 +371,10 @@ async function fillQueue() {
   const n = +$("#fill-n").value;
   $("#fill").disabled = true;
   try {
-    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters() } });
-    toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : ""), 5000);
+    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters(), screen: screenName() || null } });
+    if (r.added && !screenName()) Harvest.reap(r.added);  // screened objects join the stack as they pass
+    toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : "")
+      + (screenName() && r.added ? `; screening them with "${screenName()}"` : ""), 5000);
     refreshMatching();
     refreshStats();
     if (!cur) next();
@@ -233,6 +382,28 @@ async function fillQueue() {
     toast("Fill failed: " + e.message, 5000);
   } finally {
     $("#fill").disabled = false;
+  }
+}
+
+async function pullNight() {
+  const night = $("#night").value;
+  if (!night) return toast("Pick a night first");
+  $("#pull-night").disabled = true;
+  try {
+    const r = await api("/api/queue/night", { method: "POST", body: { night, n: +$("#fill-n").value, ...getFilters(), screen: screenName() || null } });
+    const size = r.capped ? "over 10000" : r.n_matching;
+    if (r.added && !screenName()) Harvest.reap(r.added);  // screened objects join the stack as they pass
+    toast(r.returned
+      ? `Night ${r.night}: ${r.returned} objects, ${r.added} new to the queue (${r.taken} of ${size} sampled)`
+        + (screenName() && r.added ? `; screening them with "${screenName()}"` : "")
+      : `Night ${r.night}: nothing left to sample (${r.taken} of ${size})`, 6000);
+    refreshMatching();
+    refreshStats();
+    if (!cur) next();
+  } catch (e) {
+    toast("Pull failed: " + e.message, 8000);
+  } finally {
+    $("#pull-night").disabled = false;
   }
 }
 
@@ -261,6 +432,26 @@ async function recheckWatchlist() {
   }
 }
 
+async function fillMissingXmatch() {
+  $("#xmatch-fill").disabled = true;
+  toast("Retrying failed catalogs (up to a minute if a catalog is still down)…", 60000);
+  try {
+    const r = await api("/api/xmatch/fill-missing", { method: "POST" });
+    const n = Object.keys(r.filled).length, errs = Object.keys(r.errors).length;
+    toast(`${n} of ${r.checked} crossmatch(es) with failed catalogs filled in` + (errs ? `; ${errs} failed` : "")
+      + (r.checked && !n ? " (catalogs still unreachable?)" : ""), 6000);
+    if (cur && r.filled[cur.evidence.object_id]) {
+      // swap in the new crossmatch without resetting the label form
+      cur.evidence.xmatch = (await api(`/api/object/${cur.evidence.object_id}`)).evidence.xmatch;
+      renderField(cur.evidence); renderXmatch(cur.evidence); updateAladin(cur.evidence);
+    }
+  } catch (e) {
+    toast("Retry failed: " + e.message, 5000);
+  } finally {
+    $("#xmatch-fill").disabled = false;
+  }
+}
+
 async function doExport() {
   try {
     const r = await api("/api/export", { method: "POST" });
@@ -274,11 +465,20 @@ async function next() {
   const exclude = cur && !cur.labels.length ? [...skipped, cur.evidence.object_id] : skipped;
   const r = await api(`/api/next?exclude=${encodeURIComponent(exclude.join(","))}&${filterQuery()}`);
   if (filtersActive()) $("#f-matching").textContent = `${r.n_matching} of ${r.n_pending} pending match`;
+  renderModeStatus(r);
+  Harvest.setStack(r.n_pending);
+  if (r.n_screening) watchScreening();
   if (!r.object_id) {
     cur = null;
-    $("#obj-title").textContent = "Queue empty";
-    $("#lc").innerHTML = r.n_pending && filtersActive()
+    loadToken++;  // drop an object still loading from before (e.g. the other mode's)
+    clearPanels();
+    $("#obj-title").textContent = r.n_screening ? "Screening…" : "Queue empty";
+    $("#lc").innerHTML = r.n_screening
+      ? `<div class="loading">Screening ${r.n_screening} objects with "${esc(screenName())}"; the first one that passes comes up here.</div>`
+      : r.n_pending && filtersActive()
       ? `<div class="loading">No pending objects match the filters (${r.n_pending} pending don't). Sample with these filters, or loosen them.</div>`
+      : screenName()
+      ? `<div class="loading">Nothing left that passed "${esc(screenName())}" (${r.n_filtered} filtered out). Filter another night above.</div>`
       : `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;
     renderForm();
     return;
@@ -299,11 +499,14 @@ async function skip() {
 
 let loadToken = 0;
 
+const clearPanels = () => ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"]
+  .forEach((s) => ($(s).innerHTML = ""));
+
 async function loadObject(oid) {
   window.scrollTo({ top: 0 }); // each new target starts at the cutouts
   $("#obj-title").textContent = `LSST ${oid}`;
   $("#lc").innerHTML = `<div class="loading">Fetching ANTARES, ALeRCE, Babamul and crossmatches…</div>`;
-  ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"].forEach((s) => ($(s).innerHTML = ""));
+  clearPanels();
   form = blankForm();
   selectedPoint = null;
   fieldFov = DEFAULT_FOV;
@@ -514,6 +717,102 @@ function zoom(step) {
   if (aladin) aladin.setFoV(fieldFov / 3600);
 }
 
+// ---------- source classes (what each catalog reports, not a classifier) ----------
+
+const SRC_CLASSES = {
+  star: { color: "#4cc9f0", label: "star" },
+  galaxy: { color: "#ff66aa", label: "galaxy" },
+  agn: { color: "#b07cff", label: "AGN / QSO" },
+  transient: { color: "#ff8c1a", label: "known SN / transient" },
+  other: { color: "#b0b0b0", label: "unclassified" },
+};
+const SAME_SOURCE_ARCSEC = 1.0; // rows from different catalogs this close count as one source
+const CLASS_PRIORITY = ["agn", "star", "galaxy"]; // which confident outside class wins for an LS source
+
+const SIMBAD_AGN = new Set(["QSO", "AGN", "AG", "Sy1", "Sy2", "SyG", "Bla", "BLL", "LIN", "LeQ", "Q"]);
+const SIMBAD_GALAXY = new Set(["G", "GiG", "GiC", "GiP", "BiC", "IG", "PaG", "SBG", "H2G", "EmG", "LSB", "rG", "bCG", "ClG", "GrG", "CGG", "PoG"]);
+const SIMBAD_TRANSIENT = new Set(["SN*", "SN", "No*", "Transient", "ev"]);
+// old-style candidate codes drop the trailing * (e.g. "LP?" = long-period variable candidate)
+const SIMBAD_STAR_CAND = new Set(["LP", "HS", "WD", "BD", "EB", "CV", "RR", "Ce", "RG", "HB", "Pe", "Ae", "Be", "PM", "HV", "Mi", "TT", "Or", "Em", "pA", "WR", "OH", "Y*"]);
+const SIMBAD_CLUSTER = new Set(["GlC", "Gl", "OpC", "Cl*", "*Cl", "As*", "C?*"]);
+
+function simbadClass(otype) {
+  const raw = String(otype || "");
+  const sure = !/\?|_Candidate$/.test(raw);
+  const t = raw.replace(/_Candidate$|\?$/, "");
+  const cls = SIMBAD_TRANSIENT.has(t) ? "transient" : SIMBAD_AGN.has(t) ? "agn" : SIMBAD_GALAXY.has(t) ? "galaxy"
+    : SIMBAD_CLUSTER.has(t) ? "other" : t.endsWith("*") || SIMBAD_STAR_CAND.has(t) ? "star" : "other";
+  return { cls, sure: sure && cls !== "other" };
+}
+
+function nedClass(type) {
+  const t = String(type || "");
+  if (t === "SN" || t === "Nova") return { cls: "transient", sure: true };
+  if (/^(QSO|AGN|Q_Lens|BLLac|Sy)/.test(t)) return { cls: "agn", sure: true };
+  if (/^G/.test(t)) return { cls: "galaxy", sure: true };
+  if (t.endsWith("*")) return { cls: "star", sure: true };
+  return { cls: "other", sure: false }; // IrS, VisS, UvS, RadioS ...: unclassified detections
+}
+
+// {cls, sure, why} for one catalog row, from that catalog alone
+function srcClass(cat, r) {
+  const at = `${fmt(r.sep, 1)}″`;
+  if (cat === "ls") {
+    if (r.type === "PSF") return { cls: "star", sure: false, why: `LS PSF at ${at} (point source: star or QSO)` };
+    if (r.type === "REX") return { cls: "galaxy", sure: false, why: `LS REX at ${at} (barely resolved)` };
+    if (["EXP", "DEV", "SER"].includes(r.type)) return { cls: "galaxy", sure: true, why: `LS ${r.type} at ${at}` };
+    return { cls: "other", sure: false, why: `LS ${r.type} at ${at}` };
+  }
+  if (cat === "gaia") {
+    return r.likely_star
+      ? { cls: "star", sure: true, why: `Gaia at ${at}, plx S/N ${fmt(r.plx_snr, 1)}, pm S/N ${fmt(r.pm_snr, 1)}` }
+      : { cls: "star", sure: false, why: `Gaia at ${at}, no significant plx/pm` };
+  }
+  if (cat === "milliquas") {
+    const sure = /^[QABKN]/.test(r.Type || ""); // R, X, 2 alone are radio/X-ray candidates
+    return { cls: "agn", sure, why: `Milliquas ${r.Type} at ${at}` };
+  }
+  if (cat === "simbad") return { ...simbadClass(r.otype), why: `SIMBAD ${r.otype} at ${at}` };
+  if (cat === "ned") return { ...nedClass(r.type), why: `NED ${r.type} at ${at}` };
+  return { cls: "other", sure: false, why: `${cat} at ${at}` };
+}
+
+function literatureRows(xm) {
+  return ["gaia", "milliquas", "simbad", "ned"].flatMap((cat) => (xm[cat] || []).map((r) => ({ cat, r, c: srcClass(cat, r) })));
+}
+
+const offsetSep = (a, b) => Math.hypot(a.d_east - b.d_east, a.d_north - b.d_north);
+
+// LS shape says star or galaxy; a confident class from another catalog at the
+// same spot (Gaia parallax, Milliquas, SIMBAD/NED type) confirms or overrides it.
+function lsClass(s, xm) {
+  const own = srcClass("ls", s);
+  const near = literatureRows(xm).filter((o) => o.c.sure && CLASS_PRIORITY.includes(o.c.cls) && offsetSep(s, o.r) <= SAME_SOURCE_ARCSEC);
+  if (!near.length) return own;
+  const best = CLASS_PRIORITY.find((k) => near.some((o) => o.c.cls === k));
+  const why = [own.why, ...near.map((o) => o.c.why)].join("; ");
+  if (best === own.cls) return { cls: own.cls, sure: true, why };
+  if (own.sure) return { cls: own.cls, sure: false, why: `${why} (catalogs disagree)` };
+  return { cls: best, sure: true, why };
+}
+
+function classChip(c, detail) {
+  const k = SRC_CLASSES[c.cls];
+  const unsure = !c.sure && c.cls !== "other";
+  return `<span class="cls ${unsure ? "unsure" : ""}" style="--c:${k.color}" title="${esc(c.why)}">${esc(k.label)}${unsure ? "?" : ""}${detail ? ` · ${esc(detail)}` : ""}</span>`;
+}
+
+// every catalog row within SAME_SOURCE_ARCSEC of the alert, so it's clear what sits underneath
+function classSummary(xm) {
+  const rows = [
+    ...(xm.legacy_survey || []).map((s) => ({ sep: s.sep, c: lsClass(s, xm), name: `LS ${s.type}` })),
+    ...literatureRows(xm).map((o) => ({ sep: o.r.sep, c: o.c, name: { gaia: "Gaia", milliquas: "Milliquas", simbad: `SIMBAD ${o.r.otype}`, ned: `NED ${o.r.type}` }[o.cat] })),
+  ].filter((o) => o.sep !== null && o.sep !== undefined && o.sep <= SAME_SOURCE_ARCSEC).sort((a, b) => a.sep - b.sep);
+  const body = rows.map((o) => classChip(o.c, `${o.name} ${fmt(o.sep, 1)}″`)).join("")
+    || `<span class="muted">no catalog source within ${SAME_SOURCE_ARCSEC}″</span>`;
+  return `<h3>At the alert position (≤${SAME_SOURCE_ARCSEC}″)</h3><div>${body}</div>`;
+}
+
 function renderField(ev) {
   const xm = ev.xmatch || {};
   const pixscale = (fieldFov / LS_SIZE).toFixed(4);
@@ -524,16 +823,24 @@ function renderField(ev) {
   const chosen = form.host && form.host.ls_id;
   let svg = "";
   const scale = toPx(0, 0)[2];
+  const dash = (c) => (c.sure ? "" : `stroke-dasharray="3 2"`);
   for (const s of xm.legacy_survey || []) {
     const [x, y] = toPx(s.d_east, s.d_north);
+    const c = lsClass(s, xm), color = SRC_CLASSES[c.cls].color;
+    const title = `<title>${esc(SRC_CLASSES[c.cls].label)}${c.sure ? "" : "?"} r=${fmt(s.mag_r)}: ${esc(c.why)}</title>`;
     if (s.type === "PSF" || !s.a) {
-      svg += `<circle class="src" data-ls="${s.ls_id}" cx="${x}" cy="${y}" r="5" fill="none" stroke="#6cf" stroke-width="1.2"><title>LS ${s.type} r=${fmt(s.mag_r)}</title></circle>`;
+      svg += `<circle class="src" data-ls="${s.ls_id}" cx="${x}" cy="${y}" r="5" fill="none" stroke="${color}" stroke-width="1.4" ${dash(c)}>${title}</circle>`;
     } else {
       const isChosen = String(s.ls_id) === String(chosen);
       svg += `<ellipse class="src" data-ls="${s.ls_id}" cx="${x}" cy="${y}" rx="${Math.max(s.b * scale, 3)}" ry="${Math.max(s.a * scale, 3)}"
-        transform="rotate(${-s.pa_deg} ${x} ${y})" fill="${isChosen ? "rgba(255,210,0,.25)" : "none"}" stroke="${isChosen ? "#ffd200" : "#f6a"}" stroke-width="${isChosen ? 2.5 : 1.3}">
-        <title>LS ${s.type} r=${fmt(s.mag_r)} zphot=${fmt(s.z_phot_median)} dDLR=${fmt(s.d_dlr)}</title></ellipse>`;
+        transform="rotate(${-s.pa_deg} ${x} ${y})" fill="${isChosen ? "rgba(255,210,0,.25)" : "none"}" stroke="${isChosen ? "#ffd200" : color}" stroke-width="${isChosen ? 2.5 : 1.4}" ${isChosen ? "" : dash(c)}>
+        ${title.replace("</title>", ` zphot=${fmt(s.z_phot_median)} dDLR=${fmt(s.d_dlr)}</title>`)}</ellipse>`;
     }
+  }
+  // SIMBAD / NED / Milliquas positions as diamonds; unclassified ones (IrS, VisS ...) stay table-only
+  for (const o of literatureRows(xm).filter((o) => o.cat !== "gaia" && o.c.cls !== "other")) {
+    const [x, y] = toPx(o.r.d_east, o.r.d_north);
+    svg += `<path d="M${x} ${y - 6}l6 6l-6 6l-6 -6z" fill="none" stroke="${SRC_CLASSES[o.c.cls].color}" stroke-width="1.4" ${dash(o.c)}><title>${esc(o.c.why)}</title></path>`;
   }
   (xm.host_candidates || []).forEach((h, i) => {
     const [x, y] = toPx(h.d_east, h.d_north);
@@ -546,8 +853,7 @@ function renderField(ev) {
   }
   for (const g of xm.gaia || []) {
     const [x, y] = toPx(g.d_east, g.d_north);
-    const c = g.likely_star ? "#ff4" : "#bb8";
-    svg += `<path d="M${x - 6} ${y}h12M${x} ${y - 6}v12" stroke="${c}" stroke-width="1.5"><title>Gaia G=${fmt(g.Gmag)} plxSNR=${fmt(g.plx_snr, 1)} pmSNR=${fmt(g.pm_snr, 1)}</title></path>`;
+    svg += `<path d="M${x - 6} ${y}h12M${x} ${y - 6}v12" stroke="${SRC_CLASSES.star.color}" stroke-width="${g.likely_star ? 2 : 1.2}" stroke-opacity="${g.likely_star ? 1 : 0.6}"><title>Gaia G=${fmt(g.Gmag)} plxSNR=${fmt(g.plx_snr, 1)} pmSNR=${fmt(g.pm_snr, 1)}</title></path>`;
   }
   const c = FIELD_PX / 2;
   if (xm.radius_arcsec && xm.radius_arcsec * scale < FIELD_PX * 0.7) {
@@ -560,9 +866,9 @@ function renderField(ev) {
   attachHostPicker(xm);
   $("#field-legend").innerHTML = `
     <div><i style="border-color:#0f0"></i>alert position</div>
-    <div><i style="border-color:#f6a"></i>LS galaxy (half-light ellipse)</div>
-    <div><i style="border-color:#6cf"></i>LS point source</div>
-    <div><i style="border-color:#ff4;border-radius:0"></i>Gaia (bright = sig. plx/pm)</div>
+    ${Object.values(SRC_CLASSES).map((k) => `<div><i style="border-color:${k.color}"></i>${k.label}</div>`).join("")}
+    <div><i style="border-color:var(--muted);border-style:dashed"></i>dashed = uncertain</div>
+    <div>○ LS (ellipse = half-light) · ◇ SIMBAD/NED/Milliquas · + Gaia (bold = sig. plx/pm)</div>
     <div><i style="border-color:#ffd200;background:rgba(255,210,0,.3)"></i>your host</div>`;
 }
 
@@ -591,15 +897,15 @@ function renderAstrometry(ev) {
       text: o.map((x) => `MJD ${x.p.mjd.toFixed(4)} · ${x.p.band} · ${x.r.toFixed(2)}″`),
       hovertemplate: "%{text}<extra></extra>",
       marker: {
-        size: 8, symbol: s === "lsst" ? "circle" : "square",
+        size: 6, symbol: s === "lsst" ? "circle" : "square",
         color: o.map((x) => x.p.mjd), cmin: tmin, cmax: tmax === tmin ? tmin + 1 : tmax, colorscale: "Viridis",
-        showscale: s === "lsst", colorbar: { title: { text: "MJD", side: "right" }, thickness: 8, len: 0.8, tickformat: ".1f", x: 1.12 },
+        showscale: s === "lsst", colorbar: { title: { text: "MJD", side: "right" }, thickness: 6, len: 0.9, tickformat: ".1f", x: 1.1 },
       },
     };
   }).filter((t) => t.r.length);
   Plotly.newPlot("astro", traces, {
-    margin: { l: 30, r: 70, t: 24, b: 24 }, showlegend: false,
-    paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 10 },
+    margin: { l: 24, r: 56, t: 14, b: 14 }, showlegend: false,
+    paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 9 },
     polar: {
       bgcolor: "rgba(0,0,0,0)",
       radialaxis: { range: [0, rmax], angle: 90, ticksuffix: "″", gridcolor: line, linecolor: line, dtick: rmax > 3 ? undefined : 0.5 },
@@ -639,8 +945,6 @@ function astrometrySummary(off, nRef) {
         (moving ? ` <span class="pill warn">consistent with a mover</span>` : "");
     }
   }
-  html += `<div class="muted" style="margin-top:6px">A real stationary source clusters near the center; an asteroid
-    shows a line of points ordered in time (color). Click a point to see its cutouts.</div>`;
   return html;
 }
 
@@ -692,12 +996,17 @@ async function updateAladin(ev) {
     cat.addSources(items);
     aladinCats.push(cat);
   };
-  const ls = xm.legacy_survey || [];
-  mk("LS DR10 galaxies", "#ff66aa", "circle", ls.filter((s) => s.type !== "PSF" && String(s.ls_id) !== chosen)
-    .map((s) => A.source(s.ra, s.dec, { name: `LS ${s.type}`, r: fmt(s.mag_r), z_phot: fmt(s.z_phot_median), dDLR: fmt(s.d_dlr), ls_id: String(s.ls_id) })));
-  mk("LS DR10 point sources", "#66ccff", "circle", ls.filter((s) => s.type === "PSF" && String(s.ls_id) !== chosen)
-    .map((s) => A.source(s.ra, s.dec, { name: "LS PSF", r: fmt(s.mag_r), ls_id: String(s.ls_id) })));
-  mk("Gaia DR3", "#ffff44", "plus", (xm.gaia || []).map((g) => A.source(g.RA_ICRS, g.DE_ICRS, { name: "Gaia", G: fmt(g.Gmag), plx_snr: fmt(g.plx_snr, 1), pm_snr: fmt(g.pm_snr, 1) })));
+  const ls = (xm.legacy_survey || []).filter((s) => String(s.ls_id) !== chosen).map((s) => ({ s, c: lsClass(s, xm) }));
+  const lit = literatureRows(xm).filter((o) => o.cat !== "gaia" && o.c.cls !== "other");
+  const ra = (r) => r.ra ?? r.RAJ2000, dec = (r) => r.dec ?? r.DEJ2000;
+  for (const [k, cls] of Object.entries(SRC_CLASSES)) {
+    const label = (c) => `${cls.label}${c.sure || k === "other" ? "" : "?"}`;
+    mk(`LS DR10: ${cls.label}`, cls.color, "circle", ls.filter((o) => o.c.cls === k)
+      .map(({ s, c }) => A.source(s.ra, s.dec, { name: `LS ${s.type}`, class: label(c), why: c.why, r: fmt(s.mag_r), z_phot: fmt(s.z_phot_median), dDLR: fmt(s.d_dlr), ls_id: String(s.ls_id) })));
+    mk(`SIMBAD/NED/Milliquas: ${cls.label}`, cls.color, "rhomb", lit.filter((o) => o.c.cls === k && ra(o.r) !== undefined)
+      .map(({ r, c }) => A.source(ra(r), dec(r), { name: c.why, class: label(c) })));
+  }
+  mk("Gaia DR3", SRC_CLASSES.star.color, "plus", (xm.gaia || []).map((g) => A.source(g.RA_ICRS, g.DE_ICRS, { name: "Gaia", G: fmt(g.Gmag), plx_snr: fmt(g.plx_snr, 1), pm_snr: fmt(g.pm_snr, 1) })));
   const host = ls.find((s) => String(s.ls_id) === chosen);
   if (host) mk("your host", "#ffd200", "square", [A.source(host.ra, host.dec, { name: "host", ls_id: String(host.ls_id) })]);
 }
@@ -765,16 +1074,17 @@ function renderXmatch(ev) {
     ${ev.ztf_object_id ? `<span class="pill">ANTARES ZTF assoc: ${esc(ev.ztf_object_id)}</span>` : ""}
   </div>`;
   html += `<div id="skybot-out" style="font-size:12px">${renderSkybot(ev.skybot)}</div>`;
+  html += classSummary(xm);
   const chosen = form.host && form.host.ls_id;
+  const clsCol = (cat) => ["class", (r) => classChip(cat === "ls" ? lsClass(r, xm) : srcClass(cat, r))];
   html += `<h3>Host candidates (LS DR10, ranked by d<sub>DLR</sub>)</h3>` +
     table(xm.host_candidates, [
-      ["ls_id", (r) => String(r.ls_id).slice(-7)], ["type", "type"], ["sep″", "sep", 1], ["dDLR", "d_dlr", 2],
+      clsCol("ls"), ["ls_id", (r) => String(r.ls_id).slice(-7)], ["type", "type"], ["sep″", "sep", 1], ["dDLR", "d_dlr", 2],
       ["r", "mag_r", 2], ["z_phot", (r) => `${fmt(r.z_phot_median)} <span class="muted">[${fmt(r.z_phot_l68)}–${fmt(r.z_phot_u68)}]</span>`],
       ["z_spec", "z_spec", 4],
     ], { id: "hosts", rowClass: (r) => "clickable" + (String(r.ls_id) === String(chosen) ? " chosen" : "") });
   html += `<h3>Gaia DR3</h3>` + table(xm.gaia, [
-    ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
-    ["star?", (r) => (r.likely_star ? `<span class="pill warn">yes</span>` : "")],
+    clsCol("gaia"), ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
   ]);
   html += `<h3>ZTF objects (ALeRCE position search, ≤30″)</h3>`;
   if (xm.ztf === undefined) {
@@ -790,9 +1100,9 @@ function renderXmatch(ev) {
       ["", (r) => (r.oid === antZ ? `<span class="pill">ANTARES assoc</span>` : "")],
     ]);
   }
-  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]]);
-  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]]);
-  html += `<h3>NED</h3>` + table(xm.ned, [["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]]);
+  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [clsCol("milliquas"), ["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]]);
+  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [clsCol("simbad"), ["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]]);
+  html += `<h3>NED</h3>` + table(xm.ned, [clsCol("ned"), ["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]]);
   html += `<h3>PS1</h3>` + table(xm.ps1, [["sep″", "sep", 1], ["g", "gmag"], ["r", "rmag"], ["i", "imag"], ["z", "zmag"]]);
   const errs = Object.entries(xm.errors || {});
   if (errs.length) html += `<div class="err">${errs.map(([k, v]) => `${k}: ${esc(v)}`).join("<br>")}</div>`;
@@ -907,7 +1217,9 @@ async function commit() {
   };
   try {
     const r = await api("/api/label", { method: "POST", body });
-    toast(`Saved ${r.phase} label: ${form.klass}`);
+    const won = (r.achievements || []).map((a) => `${a.name} (${a.tiers[a.earned - 1]} ${a.what})`);
+    toast(`Saved ${r.phase} label: ${form.klass}` + (won.length ? ` · Achievement: ${won.join(", ")}` : ""), won.length ? 6000 : 2500);
+    if (r.needle) Harvest.needle(r.needle);
     refreshStats();
     const oid = cur.evidence.object_id;
     if (r.phase === "blind") {

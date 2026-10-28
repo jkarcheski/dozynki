@@ -4,8 +4,22 @@
     {
       "name": "dozynki",
       "runtimeExecutable": "/home/jenna-karcheski/DOZYNKI/.venv/bin/python",
-      "runtimeArgs": ["-m", "dozynki"],
+      "runtimeArgs": [
+        "-m",
+        "dozynki"
+      ],
       "port": 8765
+    },
+    {
+      "name": "dozynki-alt",
+      "runtimeExecutable": "/home/jenna-karcheski/DOZYNKI/.venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "dozynki",
+        "--port",
+        "8766"
+      ],
+      "port": 8766
     }
   ]
 }

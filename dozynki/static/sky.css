@@ -1,0 +1,39 @@
+/* Sky map page; layout from rejection.css, colors from style.css.
+   One categorical slot per class in taxonomy order; each class also has its own marker symbol (sky.js). */
+:root {
+  --cls-bogus: #2a78d6; --cls-sso: #eb6834; --cls-star: #1baf7a; --cls-agn: #eda100;
+  --cls-transient: #e87ba4; --cls-other: #008300; --cls-unsure: #8d8c86; --cls-none: #c9c8c2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cls-bogus: #3987e5; --cls-sso: #d95926; --cls-star: #199e70; --cls-agn: #c98500;
+    --cls-transient: #d55181; --cls-other: #008300; --cls-unsure: #7d7c76; --cls-none: #45443f;
+  }
+}
+/* Pipeline A steps, in pipeline order: the same categorical slots, independent of the class colors. */
+:root {
+  --step-1: #2a78d6; --step-2: #eb6834; --step-3: #1baf7a; --step-4: #eda100;
+  --step-5: #e87ba4; --step-6: #008300; --step-7: #6250d6; --step-8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --step-1: #3987e5; --step-2: #d95926; --step-3: #199e70; --step-4: #c98500;
+    --step-5: #d55181; --step-6: #008300; --step-7: #9085e9; --step-8: #e66767;
+  }
+}
+.skymap { height: 520px; }
+.card-head:has(.overlay) { flex-wrap: wrap; }
+.card-head .overlay { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; margin-left: auto; }
+#pipe-info a { color: var(--accent); }
+#pipe-info code { font-size: 11px; }
+.cuts { display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; margin-bottom: 8px; }
+.cuts label { display: inline-flex; gap: 6px; align-items: center; }
+.cuts input[type=range] { width: 200px; padding: 0; }
+.cuts output { font-variant-numeric: tabular-nums; min-width: 2.5em; text-align: right; font-weight: 600; }
+#show-classes button { display: inline-flex; align-items: center; gap: 5px; }
+#show-classes button i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); display: inline-block; }
+#show-classes button:not(.on) { color: var(--muted); }
+#show-classes button:not(.on) i { background: transparent; border: 1.5px solid var(--c); width: 6px; height: 6px; }
+.small-seg button { font-size: 12px; padding: 1px 8px; }
+td .sw { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+@media (max-width: 700px) { .skymap { height: 340px; } .cuts input[type=range] { width: 140px; } }

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI filter lab</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+  <div id="pop" class="stats"></div>
+  <div class="filterbar settings">
+    <span class="muted">Keep</span>
+    <span id="targets" class="chips"></span>
+    <label title="Also count an object as target when one of its 'could also be' classes is"><input type="checkbox" id="include-alt"> incl. could-also-be</label>
+    <span class="muted">· truth</span>
+    <span class="seg" id="truth"><button data-v="blind" class="on">first blind</button><button data-v="final">latest</button></span>
+    <label title="Also score objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+  </div>
+</header>
+
+<main class="lab-main">
+  <section class="card wide" id="saved-card">
+    <div class="card-head">
+      <h2>Saved filters</h2>
+      <span><button id="wiz-start" class="small primary">Build a filter with questions</button></span>
+    </div>
+    <div id="wizard" hidden></div>
+    <div class="tablewrap"><table id="saved"></table></div>
+  </section>
+
+  <section class="card wide" id="details-note" hidden></section>
+  <section class="card pipe" id="pipe"></section>
+  <section class="card">
+    <div class="card-head"><h2>Decision tree</h2><span class="hint">click a box to list its objects</span></div>
+    <div class="hint">Each object falls to the first question it answers yes to. Bars: target / other.</div>
+    <div id="tree"></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Metrics</h2><span class="hint">value [95% interval] (k/n) · target = what you keep</span></div>
+    <div class="tablewrap"><table id="metrics"></table></div>
+    <div id="err" class="err"></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Kept objects by labeled class</h2><span class="hint">hover for counts</span></div>
+    <div id="by-class" class="chart"></div>
+    <div class="tablewrap"><table id="by-class-table"></table></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head">
+      <h2>Threshold sweep</h2>
+      <span class="sweep-controls">
+        <select id="sweep-param"></select>
+        from <input id="sweep-from" type="number" step="any"> to <input id="sweep-to" type="number" step="any">
+        in <input id="sweep-n" type="number" value="20" min="2" max="60"> steps
+        <button id="sweep-run" class="small primary">Sweep</button>
+      </span>
+    </div>
+    <div id="sweep" class="chart"></div>
+    <div class="hint">Click a point to set that threshold. Dashed line: the current value.</div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Per step</h2><span class="hint">alone = this step on its own · only = rejected by no other enabled step · without = pipeline with this step off</span></div>
+    <div class="tablewrap"><table id="steps"></table></div>
+  </section>
+
+</main>
+<div id="toast"></div>
+<script src="/static/rejection.js"></script>
+</body>
+</html>

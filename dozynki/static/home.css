@@ -1,0 +1,56 @@
+/* Landing page; lab layout from rejection.css, class colors from sky.css. */
+.home { max-width: 1100px; margin: 0 auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.intro h1 { font-size: 20px; margin: 8px 0 4px; }
+.intro p { margin: 0; max-width: 70ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 6px 0 12px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.tile span { color: var(--muted); font-size: 12px; }
+.class-bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--chip); }
+.class-bar i { display: block; height: 100%; background: var(--c); }
+.class-bar i + i { border-left: 2px solid var(--card); }
+.legend-row { font-size: 12px; color: var(--muted); }
+.legend-row span { display: inline-flex; align-items: center; gap: 5px; }
+.legend-row b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.legend-row i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); display: inline-block; }
+.pages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 700px) { .pages { grid-template-columns: 1fr; } }
+.page { color: inherit; text-decoration: none; display: flex; flex-direction: column; gap: 6px; }
+.page:hover { border-color: var(--accent); }
+.page h2 { font-size: 15px; }
+.page p { margin: 0; color: var(--muted); font-size: 13px; flex: 1; }
+.page .go { color: var(--accent); font-size: 13px; font-weight: 600; }
+#leaderboard tr.me td { font-weight: 600; }
+.lb-bar { width: 40%; }
+.lb-bar i { display: block; height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
+#achievements h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 10px 0 6px; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.badge { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; font-size: 12px; }
+.badge b { font-size: 13px; color: var(--muted); }
+.badge.won b { color: var(--ink); }
+.badge.done { border-color: var(--accent); }
+.badge .what, .badge .prog, .badge > .muted { grid-column: 1 / -1; }
+.badge .what { color: var(--muted); }
+.pips { display: inline-flex; gap: 3px; align-items: center; }
+.pips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--muted); }
+.pips i.on { background: var(--accent); border-color: var(--accent); }
+.prog { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
+.prog i { display: block; height: 100%; background: var(--accent); }
+.coins { font-size: 13px; color: var(--muted); }
+.coins b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.coins b::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 5px; border-radius: 50%;
+  background: var(--sun, #f2c35a); box-shadow: inset 0 0 0 2px var(--wheat-dark, #a87526); vertical-align: -1px; }
+#coin-why { margin: 0 0 10px; }
+.shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.shop .item { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column;
+  align-items: center; gap: 4px; font-size: 12px; text-align: center; }
+.shop .item b { font-size: 13px; }
+.shop .item.owned { border-color: var(--accent); }
+.shop .item.locked .farm-icon { filter: grayscale(1); opacity: .35; }
+.farm-icon { width: 100%; height: 72px; }
+.farmer-card { display: grid; grid-template-columns: 180px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 700px) { .farmer-card { grid-template-columns: 1fr; } }
+.farmer-preview { position: sticky; top: 64px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.farmer-big { display: block; width: 100%; height: 240px; }
+#wardrobe h3:first-child { margin-top: 0; }
+.card-head .tns { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }

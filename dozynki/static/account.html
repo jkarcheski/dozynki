@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI profile</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/account.css">
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+</header>
+
+<main class="account">
+  <section class="card" id="off" hidden>
+    <h2>Profiles are off</h2>
+    <p class="muted">This install labels everything as <b id="off-labeler"></b> (<code>DOZYNKI_LABELER</code>).
+      A shared server turns profiles on with <code>DOZYNKI_ACCOUNTS=1</code>.</p>
+  </section>
+
+  <section class="card" id="me" hidden>
+    <h2>Signed in as <span id="me-handle"></span></h2>
+    <p class="muted">Your labels count on the leaderboard under this handle.</p>
+    <button id="logout">Sign out</button>
+  </section>
+
+  <section id="guest" hidden>
+    <p class="muted intro">You're vetting as a guest. Guest labels count toward the totals as one "guests" group.
+      Make a profile to be on the leaderboard under your own handle, keep your queue on any browser, and
+      (soon) share filters and target lists.</p>
+
+    <div class="forms">
+      <form class="card" id="login">
+        <h2>Sign in</h2>
+        <label>Handle <input name="handle" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary">Sign in</button>
+        <a href="#" id="forgot-link" class="hint">Forgot your password?</a>
+        <div class="err"></div>
+      </form>
+
+      <form class="card" id="signup">
+        <h2>Make a profile</h2>
+        <label>Handle <input name="handle" autocomplete="username" required minlength="2" maxlength="32"
+          pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{1,31}" title="2-32 letters, digits, '.', '_' or '-'"></label>
+        <p class="hint">Shown on the leaderboard. Initials or a nickname are fine; it needn't be your name.</p>
+        <label>Email <input name="email" type="email" autocomplete="email" required></label>
+        <p class="hint">Only for resetting your password. It is stored as a one-way hash, not as the address,
+          so nobody can read it back or email you otherwise.</p>
+        <label>Password <input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+        <label class="check"><input name="claim" type="checkbox" checked> Move the labels I made as a guest on this browser to my profile</label>
+        <button class="primary">Make profile</button>
+        <div class="err"></div>
+      </form>
+    </div>
+  </section>
+
+  <form class="card" id="forgot" hidden>
+    <h2>Reset your password</h2>
+    <p class="hint">Enter your handle and the email you signed up with. If they match, we email a link
+      that works for an hour.</p>
+    <label>Handle <input name="handle" autocomplete="username" required></label>
+    <label>Email <input name="email" type="email" autocomplete="email" required></label>
+    <button class="primary">Email me a link</button>
+    <a href="#" class="hint back">Back to sign in</a>
+    <div class="err"></div>
+  </form>
+
+  <form class="card" id="reset" hidden>
+    <h2>Choose a new password</h2>
+    <label>New password <input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+    <button class="primary">Set password and sign in</button>
+    <div class="err"></div>
+  </form>
+</main>
+
+<script src="/static/account.js"></script>
+</body>
+</html>

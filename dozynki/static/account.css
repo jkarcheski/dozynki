@@ -1,0 +1,14 @@
+/* Profile page: sign in, make a profile, reset a password (account.html). */
+.account [hidden] { display: none; }
+.account { max-width: 760px; margin: 24px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 16px; }
+.account h2 { font-size: 16px; margin: 0 0 10px; }
+.account .intro { margin: 0 0 12px; }
+.account .forms { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 640px) { .account .forms { grid-template-columns: 1fr; } }
+.account form { display: flex; flex-direction: column; gap: 8px; }
+.account label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+.account label input:not([type=checkbox]) { color: var(--ink); background: var(--bg); padding: 7px 9px; }
+.account label.check { flex-direction: row; align-items: center; gap: 6px; }
+.account form .hint { margin: -4px 0 2px; }
+.account form button { align-self: flex-start; }
+.account .done { color: var(--ok); font-size: 13px; }

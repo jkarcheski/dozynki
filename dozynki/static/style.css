@@ -12,13 +12,24 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; padding-bottom: 190px; }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 700; letter-spacing: .04em; }
+/* Tab bar shared by every page (app.py fills in <!--nav-->). */
+.tabs { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.tabs a { color: var(--muted); text-decoration: none; font-size: 13px; padding: 4px 10px; border-radius: 6px; }
+.tabs a:hover { color: var(--ink); background: var(--chip); }
+.tabs a.on { color: var(--accent); background: var(--chip); font-weight: 600; }
+.tabs a.brand { color: var(--ink); font-size: 14px; margin-right: 8px; padding-left: 0; }
+.tabs a.brand:hover { background: none; }
+.tabs .stale { margin-left: 8px; font-size: 12px; padding: 2px 8px; border-radius: 10px; color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); cursor: help; }
+.tabs a.who { margin-left: 12px; color: var(--ink); border: 1px solid var(--line); }
 .filterbar { flex-basis: 100%; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .filterbar input[type=number] { width: 56px; }
 .filterbar input, .filterbar select { padding: 3px 6px; }
 .filterbar.on { color: var(--accent); }
+.filterbar[hidden] { display: none; }
 .muted { color: var(--muted); font-weight: 400; }
-.stats { flex: 1; color: var(--muted); font-size: 13px; }
+.stats { flex: 1 1 320px; color: var(--muted); font-size: 13px; }
 .stats b { color: var(--ink); }
+.stats a { color: var(--accent); }
 .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .group { display: inline-flex; gap: 4px; }
 input[type=number] { width: 60px; }
@@ -28,7 +39,7 @@ button:hover { border-color: var(--muted); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 button.small { padding: 2px 8px; font-size: 12px; }
 button:disabled { opacity: .45; cursor: default; }
-main { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
+main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
 @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
 .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
@@ -48,15 +59,19 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: u
 .detail b { color: var(--ink); }
 .field-wrap { display: flex; gap: 10px; flex-wrap: wrap; }
 .panel-head { font-size: 12px; font-weight: 600; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; height: 24px; }
-.field-wrap .panel { flex: 1 1 240px; max-width: 400px; min-width: 0; }
+.field-wrap .panel { flex: 1 1 200px; max-width: 270px; min-width: 0; }
 .legend-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
 #field { position: relative; width: 100%; aspect-ratio: 1; background: #000; border-radius: 4px; }
 #field img { width: 100%; height: 100%; display: block; }
 #aladin { width: 100%; aspect-ratio: 1; border-radius: 4px; overflow: hidden; }
 #aladin-survey { padding: 2px 6px; font-size: 12px; }
-.astro-wrap { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-#astro { width: 340px; height: 280px; }
-#astro-summary { flex: 1; min-width: 160px; }
+.triplet-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.triplet { flex: 0 1 auto; min-width: 0; }
+.astro-box { flex: 1 1 210px; min-width: 210px; max-width: 250px; }
+.astro-box .panel-head { height: auto; flex-wrap: wrap; }
+.astro-box .panel-head .muted { font-weight: 400; }
+#astro { width: 100%; height: 160px; }
+#astro-summary { margin-top: 2px; }
 #field svg { position: absolute; inset: 0; }
 #field svg { cursor: crosshair; }
 #field svg .rank { font: 600 11px system-ui, sans-serif; paint-order: stroke; stroke: #000; stroke-width: 3px; fill: #fff; pointer-events: none; }
@@ -74,6 +89,10 @@ tr.chosen td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .err { color: var(--warn); font-size: 12px; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 10px; background: var(--chip); margin: 1px 3px 1px 0; font-size: 12px; }
 .pill.warn { background: color-mix(in srgb, var(--warn) 25%, transparent); }
+.cls { display: inline-block; padding: 0 7px 0 5px; border-radius: 10px; margin: 1px 3px 1px 0; font-size: 12px; border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); }
+.cls::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 4px; vertical-align: 0; }
+.cls.unsure { border-style: dashed; background: transparent; }
+.cls.unsure::before { background: transparent; border: 1.5px solid var(--c); width: 5px; height: 5px; }
 .bar { height: 6px; background: var(--accent); border-radius: 3px; display: inline-block; vertical-align: middle; }
 .hidden-note { color: var(--muted); font-style: italic; }
 footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line); padding: 8px 16px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
@@ -94,3 +113,7 @@ footer .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 #toast { position: fixed; top: 60px; right: 16px; background: var(--ink); color: var(--card); padding: 8px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 420px; }
 #toast.show { opacity: .95; }
 .loading { color: var(--muted); padding: 40px; text-align: center; }
+.mode select { padding: 3px 6px; }
+.mode #mode-status, .mode #run-status { font-size: 12px; }
+body.filtered-mode #mode button.on { background: var(--ok); border-color: var(--ok); }
+body.filtered-mode .random-only, body:not(.filtered-mode) .filtered-only { display: none; }

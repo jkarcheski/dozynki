@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI sky map</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <link rel="stylesheet" href="/static/sky.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+  <div id="pop" class="stats"></div>
+  <div class="filterbar settings">
+    <span class="muted">Show</span>
+    <span id="show-classes" class="chips"></span>
+    <label title="Queued objects with no label yet, as small gray dots: where the sample has looked"><input type="checkbox" id="unlabeled"> unlabeled</label>
+    <span class="muted">· truth</span>
+    <span class="seg" id="truth"><button data-v="blind" class="on">first blind</button><button data-v="final">latest</button></span>
+    <label title="Also show objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+  </div>
+</header>
+
+<main class="lab-main">
+  <section class="card wide">
+    <div class="card-head">
+      <h2>Sky</h2>
+      <span class="overlay">
+        <span class="muted" title="The pipeline as set in the Filter lab (its enabled rules and thresholds)">Filter lab pipeline</span>
+        <span class="seg" id="pipe-mode"><button data-v="off" class="on">off</button><button data-v="fade">fade rejected</button><button data-v="step">color by step</button></span>
+      </span>
+      <span class="seg" id="frame"><button data-v="eq" class="on">Equatorial</button><button data-v="gal">Galactic</button><button data-v="ecl">Ecliptic</button></span>
+    </div>
+    <div id="map" class="skymap"></div>
+    <div class="hint">Hammer–Aitoff, east left, centered on longitude 0. Solid lines: Galactic plane and ecliptic; dashed: the cuts below. Objects the cuts reject are faded. Click a point to open it in the vetter.</div>
+    <div id="pipe-info" class="hint"></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Latitude cuts</h2><span class="hint">reject objects closer than this to the plane; 0 = off</span></div>
+    <div class="cuts">
+      <label>Galactic |b| &lt; <input id="cut-b" type="range" min="0" max="40" step="0.5"> <output id="cut-b-v"></output>°</label>
+      <label>Ecliptic |β| &lt; <input id="cut-e" type="range" min="0" max="40" step="0.5"> <output id="cut-e-v"></output>°</label>
+    </div>
+    <div class="tablewrap"><table id="cut-table"></table></div>
+    <div class="hint">Rejected fraction with a Wilson 95% interval. A good cut rejects many of the classes you want gone and few of the ones you keep.</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Class mix vs Galactic latitude</h2><span class="seg small-seg" data-hist="b"><button data-v="count" class="on">count</button><button data-v="frac">fraction</button></span></div>
+    <div id="hist-b" class="chart"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Class mix vs ecliptic latitude</h2><span class="seg small-seg" data-hist="e"><button data-v="count" class="on">count</button><button data-v="frac">fraction</button></span></div>
+    <div id="hist-e" class="chart"></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/static/sky.js"></script>
+</body>
+</html>

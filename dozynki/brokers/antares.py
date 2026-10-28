@@ -48,6 +48,45 @@ def random_lsst_loci(n, seed, extra_filters=()):
     return es_query, [_listing_summary(x) for x in resp.get("data", [])]
 
 
+def night_lsst_loci(mjd_lo, mjd_hi, seed, offset, n, extra_filters=()):
+    """A batch of loci with an LSST diaObject whose first alert falls in [mjd_lo, mjd_hi).
+
+    The order is random but fixed by seed: the score hashes locus_id, which (unlike
+    _seq_no) does not change when a locus gets new alerts, so batches taken at
+    increasing offsets with one seed never repeat. Returns (es_query, n_matching, loci);
+    ANTARES counts and pages only the first 10,000 matches.
+    """
+    filters = [{"exists": {"field": "properties.survey.lsst.dia_object_id"}},
+               {"range": {"properties.oldest_alert_observation_time": {"gte": mjd_lo, "lt": mjd_hi}}}, *extra_filters]
+    es_query = {
+        "query": {
+            "function_score": {
+                "query": {"bool": {"filter": filters}},
+                "random_score": {"seed": seed, "field": "locus_id"},
+                "boost_mode": "replace",
+            }
+        }
+    }
+    resp = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                         "page[limit]": n, "page[offset]": offset})
+    return es_query, resp.get("meta", {}).get("count", 0), [_listing_summary(x) for x in resp.get("data", [])]
+
+
+def count_loci(filters):
+    """How many loci match a bool filter; ANTARES stops counting at 10,000."""
+    es_query = {"query": {"bool": {"filter": filters}}}
+    return _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                         "page[limit]": 1}).get("meta", {}).get("count", 0)
+
+
+def list_loci(filters, offset, n):
+    """One page of loci matching a bool filter, as listing summaries (offset + n within 10,000)."""
+    es_query = {"query": {"bool": {"filter": filters}}}
+    resp = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
+                                         "page[limit]": n, "page[offset]": offset})
+    return [_listing_summary(x) for x in resp.get("data", [])]
+
+
 def locus_summary(locus_id):
     return _listing_summary(_get(f"{ANTARES_API}/loci/{locus_id}")["data"])
 
@@ -71,6 +110,10 @@ def _listing_summary(x):
         "n_det": attr["properties"].get("num_mag_values"),
         "first_mjd": attr["properties"].get("oldest_alert_observation_time"),
         "last_mjd": attr["properties"].get("newest_alert_observation_time"),
+        "tags": attr.get("tags", []),
+        "catalogs": attr.get("catalogs", []),
+        "ss_ids": [s for s in survey.get("lsst", {}).get("ss_object_id", []) + survey.get("ztf", {}).get("ssnamenr", [])
+                   if s not in (None, "null")],
     }
 
 
@@ -91,7 +134,51 @@ def get_locus(locus_id):
         "catalog_matches": attr.get("catalog_matches", []),
         "num_alerts": props.get("num_alerts"),
         "points": [p for p in (_normalize(a) for a in alerts) if p],
+        "lsst_details": _details(alerts),
     }
+
+
+# ANTARES's catalog matches (within about 1 arcsec of the locus) and the fields the rejection rules read
+CATALOG_FIELDS = {
+    "gaia_dr3_gaia_source": ("parallax", "parallax_error", "pmra", "pmra_error", "pmdec", "pmdec_error", "phot_g_mean_mag"),
+    "milliquas": ("type", "z", "qpct"),
+    "vsx": ("type",),
+    "gaia_dr3_variability": ("class",),
+}
+
+
+def catalog_matches(locus_id):
+    """{catalog: [{sep (arcsec), radius, ...CATALOG_FIELDS}]} from ANTARES's own crossmatch, nearest first."""
+    out = {}
+    for m in _get(f"{ANTARES_API}/loci/{locus_id}/catalog-matches").get("data", []):
+        meta, props = m.get("meta", {}), m["attributes"].get("properties", {})
+        name = meta.get("catalog_name")
+        out.setdefault(name, []).append({"sep": meta.get("separation"), "radius": meta.get("radius"),
+                                         **{k: props.get(k) for k in CATALOG_FIELDS.get(name, ())}})
+    return {name: sorted(rows, key=lambda r: r["sep"] if r["sep"] is not None else 99) for name, rows in out.items()}
+
+
+def tns_matches(locus_id):
+    """TNS entries ANTARES has matched to the locus (its copy of TNS public objects).
+
+    reported is when TNS received the discovery report (UTC); type is the TNS
+    classification, empty until someone classifies the object.
+    """
+    data = _get(f"{ANTARES_API}/loci/{locus_id}/catalog-matches").get("data", [])
+    out = []
+    for m in data:
+        if m.get("meta", {}).get("catalog_name") != "tns_public_objects":
+            continue
+        p = m["attributes"].get("properties", {})
+        out.append({
+            "name": f"{p.get('name_prefix') or 'AT'} {p.get('name') or m['attributes'].get('object_name')}",
+            "type": p.get("type") or None,
+            "discovered": p.get("discoverydate"),
+            "reported": p.get("time_received") or p.get("creationdate"),
+            "reporting_group": p.get("reporting_group"),
+            "sep": m["meta"].get("separation"),
+        })
+    return out
 
 
 def _all_alerts(locus_id):
@@ -126,6 +213,34 @@ def alert_positions(locus_id):
     for p in (_normalize(a) for a in _all_alerts(locus_id)):
         if p and p.get("ra") is not None:
             out[p["alert_id"]] = {k: p.get(k) for k in ("ra", "dec", "pos_err_arcsec")}
+    return out
+
+
+def alert_details(locus_id):
+    """{alert_id: detail} for LSST detections; backfills objects cached before details were kept."""
+    return _details(_all_alerts(locus_id))
+
+
+def _details(alerts):
+    """Rubin pipeline measurements per LSST detection, used by the rejection rules (not shown while vetting)."""
+    out = {}
+    for a in alerts:
+        p = a["attributes"]["properties"]
+        if p.get("ant_survey") != SURVEY_LSST:
+            continue
+        size, psf_size = (p.get("lsst_diaSource_ixx") or 0) + (p.get("lsst_diaSource_iyy") or 0), \
+            (p.get("lsst_diaSource_ixxPSF") or 0) + (p.get("lsst_diaSource_iyyPSF") or 0)
+        chi2, ndata = p.get("lsst_diaSource_psfChi2"), p.get("lsst_diaSource_psfNdata")
+        out[a["id"]] = {
+            "extendedness": p.get("lsst_diaSource_extendedness"),
+            "is_dipole": p.get("lsst_diaSource_isDipole"),
+            "glint_trail": p.get("lsst_diaSource_glint_trail"),
+            # reduced chi2 of the PSF fit, and second moments relative to the PSF's
+            "psf_chi2_red": chi2 / ndata if chi2 is not None and ndata else None,
+            "size_ratio": size / psf_size if size > 0 and psf_size > 0 else None,
+            "measurement_flagged": any(p.get(f"lsst_diaSource_{k}") for k in
+                                       ("psfFlux_flag", "centroid_flag", "shape_flag", "apFlux_flag")),
+        }
     return out
 
 
