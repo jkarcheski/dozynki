@@ -16,6 +16,12 @@ LABELER = os.environ.get("DOZYNKI_LABELER") or "anonymous"
 BLIND_DEFAULT = os.environ.get("DOZYNKI_BLIND", "1") not in ("0", "false", "False", "")
 BABAMUL_ENABLED = bool(os.environ.get("BABAMUL_API_TOKEN"))
 
+# Profiles (accounts.py), for a shared server. Off: everyone is LABELER, as on a laptop.
+ACCOUNTS = os.environ.get("DOZYNKI_ACCOUNTS", "0") not in ("0", "false", "False", "")
+SECURE_COOKIES = os.environ.get("DOZYNKI_SECURE_COOKIES", "0") not in ("0", "false", "False", "")  # behind https
+BASE_URL = os.environ.get("DOZYNKI_BASE_URL", "").rstrip("/")  # for reset links; else the request's own address
+SMTP = {k: os.environ.get(f"DOZYNKI_SMTP_{k.upper()}", "") for k in ("host", "port", "user", "password", "from")}
+
 ANTARES_API = "https://api.antares.noirlab.edu/v1"
 DATALAB_QUERY = "https://datalab.noirlab.edu/query/query"
 DATALAB_ANON_TOKEN = "anonymous.0.0.anon_access"

@@ -194,6 +194,33 @@ classifier found in the cache (top class). Nothing is stored. Code lives in `doz
 - Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
 - Like the filter lab, only the uniform random sample is used unless "non-random objects too" is on.
 
+## Profiles (shared server)
+
+On a laptop everyone is `DOZYNKI_LABELER` and nothing changes. A shared server sets `DOZYNKI_ACCOUNTS=1`
+(and `DOZYNKI_SECURE_COOKIES=1` behind https), and then:
+
+- **Guests.** Anyone can vet without signing in. Each browser gets a random guest id (a cookie), and its labels
+  count toward the totals as one "guests" row on the leaderboard, never by name.
+- **Profiles.** "guest · sign in" in the tab bar opens `/account`: a handle, a password and an email. The handle is
+  the labeler name on that person's labels; making a profile moves the browser's guest labels to it (a checkbox).
+- **Email** is used only for password resets and is stored as a salted scrypt hash, never as the address. A reset
+  asks for the handle and the same email, and the one-hour link goes to the address just typed. Mail goes through
+  `DOZYNKI_SMTP_*`; without `DOZYNKI_SMTP_HOST` the link is printed in the server log instead.
+- **Each labeler has their own queue.** Labeled, skipped and watched are per labeler (`queue_status`), so several
+  people can label the same object independently, which is what the Compare page needs for agreement. Only a
+  person's own labels show in the vetter, and blind mode and the reveal are per person. `queue.status` now says only
+  whether an object is ready (`pending`), waiting for (`screening`) or thrown away by (`filtered`) a filter.
+- Passwords are scrypt hashes; sessions are random tokens kept as SHA-256 hashes, 30 days, ended everywhere by a
+  password change. Sign-ins and reset requests are rate-limited (in memory). Code in `dozynki/accounts.py`.
+
+Admin commands (with the server's environment):
+
+```bash
+.venv/bin/python -m dozynki.accounts add <handle> --labels-from anonymous   # profile that takes over a laptop's labels
+.venv/bin/python -m dozynki.accounts password <handle>                     # set a forgotten password by hand
+.venv/bin/python -m dozynki.accounts list
+```
+
 ## Achievements
 
 The landing page shows tiered achievements for the current labeler (`DOZYNKI_LABELER`), and the vetter

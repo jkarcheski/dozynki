@@ -22,7 +22,7 @@ TRANSIENT_SUBCLASSES = [
     {"key": "fast", "label": "Fast / other"},
 ]
 
-# "watch" also parks the object on the watchlist (queue status 'watch') so it
+# "watch" also parks the object on the labeler's watchlist (queue_status 'watch') so it
 # comes back for a follow-up label once new alerts arrive.
 WATCH_FLAG = "watch"
 

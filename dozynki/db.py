@@ -5,7 +5,7 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 
-from .config import DB_PATH
+from .config import DB_PATH, LABELER
 
 _lock = threading.Lock()
 
@@ -100,6 +100,31 @@ CREATE TABLE IF NOT EXISTS wearing (
     item        TEXT NOT NULL,         -- farm.WARDROBE key; no row means the default
     PRIMARY KEY (labeler, slot)
 );
+CREATE TABLE IF NOT EXISTS queue_status (
+    object_id   TEXT NOT NULL,
+    labeler     TEXT NOT NULL,
+    status      TEXT NOT NULL,         -- labeled | skipped | watch; no row means still to vet for this labeler
+    PRIMARY KEY (object_id, labeler)
+);
+CREATE TABLE IF NOT EXISTS users (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    handle      TEXT NOT NULL UNIQUE COLLATE NOCASE,  -- also the labeler name on their labels
+    password    TEXT NOT NULL,         -- scrypt hash (accounts.py)
+    email_hash  TEXT NOT NULL,         -- scrypt hash of the lower-cased email; the address itself is never stored
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash  TEXT PRIMARY KEY,      -- sha256 of the cookie value
+    user_id     INTEGER NOT NULL,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS password_resets (
+    token_hash  TEXT PRIMARY KEY,      -- sha256 of the emailed token
+    user_id     INTEGER NOT NULL,
+    expires_at  TEXT NOT NULL,
+    used_at     TEXT
+);
 """
 
 
@@ -135,6 +160,14 @@ for _table, _cols in MIGRATIONS.items():
 # Night pulls from before batches took the whole night at once: one batch covering it.
 _conn.execute("UPDATE night_pulls SET seed = 0, start = 0, n_matching = json_array_length(object_ids) "
               "WHERE seed IS NULL AND json_array_length(object_ids) > 0")
+# Labeled, skipped and watched were once one status for everyone; now they are each labeler's own
+# (queue_status), and queue.status keeps only whether an object is ready: pending | screening | filtered.
+# A labeled or watched object goes to its latest labeler, a skipped one to this install's labeler.
+_conn.execute("INSERT OR IGNORE INTO queue_status (object_id, labeler, status) "
+              "SELECT q.object_id, COALESCE((SELECT COALESCE(l.labeler, 'anonymous') FROM labels l "
+              "WHERE l.object_id = q.object_id ORDER BY l.id DESC LIMIT 1), ?), q.status "
+              "FROM queue q WHERE q.status IN ('labeled', 'skipped', 'watch')", (LABELER,))
+_conn.execute("UPDATE queue SET status = 'pending' WHERE status IN ('labeled', 'skipped', 'watch')")
 _conn.commit()
 
 
@@ -166,7 +199,8 @@ def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summa
     if cur.rowcount or screen:
         return cur.rowcount
     return execute("UPDATE queue SET source = ?, source_params = ?, added_at = ?, screen = NULL, screen_result = NULL, "
-                   "status = 'pending' WHERE object_id = ? AND screen IS NOT NULL AND status IN ('screening', 'filtered', 'pending')",
+                   "status = 'pending' WHERE object_id = ? AND screen IS NOT NULL AND status IN ('screening', 'filtered', 'pending') "
+                   "AND object_id NOT IN (SELECT object_id FROM queue_status)",
                    (source, json.dumps(source_params), now(), str(object_id))).rowcount
 
 
@@ -211,24 +245,32 @@ def set_screened(object_id, status, result):
             (status, result, object_id))
 
 
-def mode_counts(screen):
-    """Queue status counts within one mode (screen None is random mode)."""
-    rows = query("SELECT status, COUNT(*) n FROM queue WHERE screen IS ? GROUP BY status", (screen,))
-    return {r["status"]: r["n"] for r in rows}
+def mode_counts(screen, labeler):
+    """Queue counts within one mode (screen None is random mode), with pending meaning still to vet for this labeler."""
+    rows = query("SELECT status, COUNT(*) n FROM queue WHERE screen IS ? AND status != 'pending' GROUP BY status", (screen,))
+    return {r["status"]: r["n"] for r in rows} | {"pending": count_pending(labeler, "screen IS ?", (screen,))}
 
 
-def next_pending(limit=1, exclude=(), where="", params=()):
+def _not_done(labeler):
+    """WHERE over queue rows this labeler hasn't labeled, skipped or put on their watchlist."""
+    return "NOT EXISTS (SELECT 1 FROM queue_status s WHERE s.object_id = queue.object_id AND s.labeler = ?)", (labeler,)
+
+
+def next_pending(labeler, limit=1, exclude=(), where="", params=()):
+    done, done_params = _not_done(labeler)
     marks = ",".join("?" * len(exclude))
     extra = f"AND object_id NOT IN ({marks})" if exclude else ""
     extra += f" AND {where}" if where else ""
     return query(
-        f"SELECT * FROM queue WHERE status = 'pending' {extra} ORDER BY added_at, rowid LIMIT ?",
-        (*exclude, *params, limit),
+        f"SELECT * FROM queue WHERE status = 'pending' AND {done} {extra} ORDER BY added_at, rowid LIMIT ?",
+        (*done_params, *exclude, *params, limit),
     )
 
 
-def count_pending(where="", params=()):
-    return query(f"SELECT COUNT(*) n FROM queue WHERE status = 'pending'{' AND ' + where if where else ''}", params)[0]["n"]
+def count_pending(labeler, where="", params=()):
+    done, done_params = _not_done(labeler)
+    return query(f"SELECT COUNT(*) n FROM queue WHERE status = 'pending' AND {done}{' AND ' + where if where else ''}",
+                 (*done_params, *params))[0]["n"]
 
 
 def pending_missing_summary():
@@ -245,8 +287,18 @@ def get_queue_item(object_id):
     return rows[0] if rows else None
 
 
-def set_status(object_id, status):
-    execute("UPDATE queue SET status = ? WHERE object_id = ?", (status, object_id))
+def set_status(object_id, labeler, status):
+    """This labeler's own status for an object (labeled | skipped | watch); None puts it back in their queue."""
+    if status is None:
+        execute("DELETE FROM queue_status WHERE object_id = ? AND labeler = ?", (object_id, labeler))
+    else:
+        execute("INSERT OR REPLACE INTO queue_status (object_id, labeler, status) VALUES (?, ?, ?)",
+                (object_id, labeler, status))
+
+
+def watched(labeler):
+    return query("SELECT q.* FROM queue q JOIN queue_status s USING (object_id) WHERE s.labeler = ? AND s.status = 'watch'",
+                 (labeler,))
 
 
 def cache_get(object_id, kind):
@@ -269,8 +321,10 @@ def add_label(row):
     return execute(f"INSERT INTO labels ({cols}) VALUES ({marks})", tuple(row.values())).lastrowid
 
 
-def labels_for(object_id):
-    return query("SELECT * FROM labels WHERE object_id = ? ORDER BY id", (object_id,))
+def labels_for(object_id, labeler):
+    """One labeler's labels of an object: everyone vets blind, so nobody sees another's labels here."""
+    return query("SELECT * FROM labels WHERE object_id = ? AND COALESCE(labeler, 'anonymous') = ? ORDER BY id",
+                 (object_id, labeler))
 
 
 def save_pipeline(version, config):
@@ -320,8 +374,11 @@ def night_pulls():
             for r in query("SELECT * FROM night_pulls WHERE seed IS NOT NULL ORDER BY id")]
 
 
-def stats():
-    q = {r["status"]: r["n"] for r in query("SELECT status, COUNT(*) n FROM queue GROUP BY status")}
+def stats(labeler):
+    """This labeler's queue (pending in every mode, and their labeled / skipped / watch); class tallies over everyone."""
+    q = {"pending": count_pending(labeler)}
+    q |= {r["status"]: r["n"] for r in query("SELECT status, COUNT(*) n FROM queue_status WHERE labeler = ? GROUP BY status",
+                                             (labeler,))}
     # Latest label per object decides its class in the tally.
     by_class = query(
         "SELECT klass, COUNT(*) n FROM labels WHERE id IN (SELECT MAX(id) FROM labels GROUP BY object_id) GROUP BY klass"
@@ -333,14 +390,18 @@ def stats():
     return {"queue": q, "by_class": {r["klass"]: r["n"] for r in by_class}, "revised_after_reveal": changed}
 
 
+# Guests label as "guest:<random id>" (accounts.py); the leaderboard counts them together.
+WHO = "CASE WHEN labeler LIKE 'guest:%' THEN 'guests' ELSE COALESCE(labeler, 'anonymous') END"
+
+
 def leaderboard(days=7):
-    """Objects labeled per labeler, overall and in the last `days` days, most first."""
+    """Objects labeled per labeler (guests as one), overall and in the last `days` days, most first."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
     return query(
-        "SELECT COALESCE(labeler, 'anonymous') labeler, COUNT(DISTINCT object_id) objects, "
+        f"SELECT {WHO} labeler, COUNT(DISTINCT object_id) objects, "
         "COUNT(DISTINCT CASE WHEN phase = 'blind' THEN object_id END) blind, "
         "COUNT(DISTINCT CASE WHEN created_at >= ? THEN object_id END) recent, MAX(created_at) last_at "
-        "FROM labels GROUP BY COALESCE(labeler, 'anonymous') ORDER BY objects DESC, labeler",
+        f"FROM labels GROUP BY {WHO} ORDER BY objects DESC, labeler",
         (since,),
     )
 

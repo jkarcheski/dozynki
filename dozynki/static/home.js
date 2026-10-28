@@ -76,7 +76,7 @@ function renderLeaderboard(lb, me) {
   $("#leaderboard").innerHTML =
     `<tr><th class="num">#</th><th>Labeler</th><th class="num">Objects</th><th></th><th class="num">Blind</th>`
     + `<th class="num">Last ${lb.days} days</th><th>Last label</th></tr>`
-    + lb.labelers.map((r, i) => `<tr${r.labeler === me ? ' class="me"' : ""}><td class="num">${i + 1}</td>`
+    + lb.labelers.map((r, i) => `<tr${r.labeler === me || (me === "guest" && r.labeler === "guests") ? ' class="me"' : ""}><td class="num">${i + 1}</td>`
       + `<td>${esc(r.labeler)}</td><td class="num">${r.objects}</td>`
       + `<td class="lb-bar"><i style="width:${(100 * r.objects / top).toFixed(1)}%"></i></td>`
       + `<td class="num">${r.blind}</td><td class="num">${r.recent}</td>`
@@ -180,7 +180,8 @@ async function init() {
   const q = s.queue;
   pending = q.pending || 0;
   renderFarm(farm);
-  if (cfg.labeler) $("#labeler").innerHTML = `labeling as <b>${esc(cfg.labeler)}</b>`;
+  if (cfg.accounts && !cfg.signed_in) $("#labeler").innerHTML = `labeling as a <b>guest</b> · <a href="/account">make a profile</a> to be on the leaderboard`;
+  else if (cfg.labeler) $("#labeler").innerHTML = `labeling as <b>${esc(cfg.labeler)}</b>`;
   $("#blind").textContent = cfg.blind ? "blind mode on" : "blind mode off";
 
   const tiles = [

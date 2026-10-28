@@ -1,3 +1,4 @@
+import html
 import json
 import re
 import time
@@ -5,16 +6,17 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, achievements, assemble, compare, db, details, evaluate, export, farm, rejection, sky, sources
+from . import __version__, accounts, achievements, assemble, compare, db, details, evaluate, export, farm, rejection, sky, sources
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares
-from .config import BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, XMATCH_MAX_RADIUS_ARCSEC, XMATCH_RADIUS_ARCSEC
+from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
+                     XMATCH_RADIUS_ARCSEC)
 from .filters import DATE_MODES, Filters
 from .labels import CLASS_BY_KEY, CLASSES, CONFIDENCE, FLAGS, TRANSIENT_SUBCLASSES, WATCH_FLAG
 
@@ -23,7 +25,7 @@ PREFETCH = 6
 
 app = FastAPI(title="DOZYNKI alert vetter")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
-state = {"blind": BLIND_DEFAULT}
+blind_mode = {}  # labeler -> blind on/off; a restart goes back to BLIND_DEFAULT
 
 
 # (path, page file, tab label); the order is the order of the tabs.
@@ -34,6 +36,7 @@ PAGES = [
     ("/sky", "sky.html", "Sky map"),
     ("/compare", "compare.html", "Compare"),
 ]
+OTHER_PAGES = [("/account", "account.html")]  # no tab
 
 
 @app.middleware("http")
@@ -46,6 +49,47 @@ async def revalidate_static(request, call_next):
     return response
 
 
+@app.middleware("http")
+async def identify(request, call_next):
+    """request.state.labeler: who labels with this request. Without accounts, LABELER; with them, the
+    signed-in profile's handle, else this browser's guest id (a cookie, made on the first visit)."""
+    request.state.user = None
+    new_guest = None
+    if request.url.path.startswith("/static/"):
+        return await call_next(request)
+    if not ACCOUNTS:
+        request.state.labeler = LABELER
+    elif user := accounts.session_user(request.cookies.get(accounts.SESSION_COOKIE)):
+        request.state.user, request.state.labeler = user, user["handle"]
+    else:
+        guest = request.cookies.get(accounts.GUEST_COOKIE)
+        if not accounts.valid_guest(guest):
+            guest = new_guest = accounts.new_guest()
+        request.state.labeler = guest
+    response = await call_next(request)
+    if new_guest:
+        _set_cookie(response, accounts.GUEST_COOKIE, new_guest, 365)
+    return response
+
+
+def _set_cookie(response, name, value, days):
+    response.set_cookie(name, value, max_age=days * 86400, httponly=True, samesite="lax", secure=SECURE_COOKIES)
+
+
+def _who(request):
+    return request.state.labeler
+
+
+def _blind(request):
+    return blind_mode.get(_who(request), BLIND_DEFAULT)
+
+
+def _display(request):
+    """The name to show: a handle, "guest", or the install's labeler."""
+    who = _who(request)
+    return "guest" if who.startswith("guest:") else who
+
+
 STARTED = time.time()
 
 
@@ -54,62 +98,76 @@ def _code_changed():
     return any(p.stat().st_mtime > STARTED for p in Path(__file__).parent.rglob("*.py"))
 
 
-def _nav(active):
+def _nav(active, request):
     on = ' class="on" aria-current="page"'
     tabs = "".join(f'<a href="{path}"{on if path == active else ""}>{label}</a>' for path, _, label in PAGES[1:])
     stale = ('<span class="stale" title="The server is still running the code it started with, so pages may '
              'call features it doesn\'t have yet. Stop it and run python -m dozynki again.">'
              'Code changed: restart the server</span>') if _code_changed() else ""
-    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>'
+    who = ""
+    if ACCOUNTS:
+        name = html.escape(_display(request))
+        who = (f'<a href="/account" class="who{" on" if active == "/account" else ""}" title="Your profile">{name}</a>'
+               if request.state.user else
+               f'<a href="/account" class="who{" on" if active == "/account" else ""}" '
+               'title="You are vetting as a guest. Make a profile to be on the leaderboard and share filters.">guest · sign in</a>')
+    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}{who}</nav>'
 
 
-def _page(path):
+def _page(path, request):
     """An HTML page whose /static/ links carry the file's mtime, so an edited
     app.js or style.css is a new URL that no browser has cached. <!--nav-->
     becomes the tab bar shared by every page."""
-    name = next(name for p, name, _ in PAGES if p == path)
-    html = (STATIC / name).read_text().replace("<!--nav-->", _nav(path))
+    name = next(name for p, name, *_ in PAGES + OTHER_PAGES if p == path)
+    html = (STATIC / name).read_text().replace("<!--nav-->", _nav(path, request))
     html = re.sub(r'"/static/([\w.-]+)"', lambda m: f'"/static/{m[1]}?v={int((STATIC / m[1]).stat().st_mtime)}"', html)
     return HTMLResponse(html)
 
 
 @app.get("/")
-def home(object: str | None = None):
+def home(request: Request, object: str | None = None):
     # Older links opened objects with /?object=<id>, from when the vetter was the root page.
     if object:
         return RedirectResponse(f"/vet?object={quote(object)}")
-    return _page("/")
+    return _page("/", request)
 
 
 @app.get("/vet")
-def vet_page():
-    return _page("/vet")
+def vet_page(request: Request):
+    return _page("/vet", request)
 
 
 @app.get("/rejection")
-def rejection_page():
-    return _page("/rejection")
+def rejection_page(request: Request):
+    return _page("/rejection", request)
 
 
 @app.get("/compare")
-def compare_page():
-    return _page("/compare")
+def compare_page(request: Request):
+    return _page("/compare", request)
 
 
 @app.get("/sky")
-def sky_page():
-    return _page("/sky")
+def sky_page(request: Request):
+    return _page("/sky", request)
+
+
+@app.get("/account")
+def account_page(request: Request):
+    return _page("/account", request)
 
 
 @app.get("/api/config")
-def get_config():
+def get_config(request: Request):
     return {
         "classes": CLASSES,
         "transient_subclasses": TRANSIENT_SUBCLASSES,
         "flags": FLAGS,
         "confidence": CONFIDENCE,
-        "blind": state["blind"],
-        "labeler": LABELER,
+        "blind": _blind(request),
+        "labeler": _display(request),
+        "accounts": ACCOUNTS,
+        "signed_in": bool(request.state.user),
         "babamul_enabled": BABAMUL_ENABLED,
         "sources": list(sources.SOURCES),
         "date_modes": list(DATE_MODES),
@@ -123,9 +181,91 @@ class BlindToggle(BaseModel):
 
 
 @app.post("/api/config/blind")
-def set_blind(body: BlindToggle):
-    state["blind"] = body.blind
-    return {"blind": state["blind"]}
+def set_blind(body: BlindToggle, request: Request):
+    blind_mode[_who(request)] = body.blind
+    return {"blind": body.blind}
+
+
+def _accounts_on():
+    if not ACCOUNTS:
+        raise HTTPException(404, "profiles are off on this install (DOZYNKI_ACCOUNTS)")
+
+
+def _signed_in(response, user):
+    _set_cookie(response, accounts.SESSION_COOKIE, accounts.start_session(user["id"]), accounts.SESSION_DAYS)
+    return {"ok": True, "handle": user["handle"]}
+
+
+class SignUp(BaseModel):
+    handle: str
+    password: str
+    email: str
+    claim: bool = True  # move this browser's guest labels to the new profile
+
+
+@app.post("/api/account/signup")
+def signup(body: SignUp, request: Request, response: Response):
+    _accounts_on()
+    try:
+        user = accounts.create(body.handle, body.password, body.email)
+    except accounts.AccountError as e:
+        raise HTTPException(400, str(e))
+    if body.claim:
+        accounts.claim_guest(_who(request), user["handle"])
+    return _signed_in(response, user)
+
+
+class SignIn(BaseModel):
+    handle: str
+    password: str
+
+
+@app.post("/api/account/login")
+def login(body: SignIn, request: Request, response: Response):
+    _accounts_on()
+    try:
+        user = accounts.authenticate(body.handle, body.password, request.client.host if request.client else "")
+    except accounts.AccountError as e:
+        raise HTTPException(400, str(e))
+    return _signed_in(response, user)
+
+
+@app.post("/api/account/logout")
+def logout(request: Request, response: Response):
+    accounts.end_session(request.cookies.get(accounts.SESSION_COOKIE))
+    response.delete_cookie(accounts.SESSION_COOKIE)
+    return {"ok": True}
+
+
+class ResetRequest(BaseModel):
+    handle: str
+    email: str
+
+
+@app.post("/api/account/reset-request")
+def reset_request(body: ResetRequest, request: Request):
+    """Always the same answer, whether or not the handle and email match."""
+    _accounts_on()
+    try:
+        accounts.request_reset(body.handle, body.email, str(request.base_url))
+    except OSError as e:  # the mail server; worth telling, since it says nothing about the profile
+        raise HTTPException(502, f"couldn't send the email: {e}")
+    return {"ok": True}
+
+
+class Reset(BaseModel):
+    token: str
+    password: str
+
+
+@app.post("/api/account/reset")
+def reset(body: Reset, response: Response):
+    _accounts_on()
+    try:
+        user = accounts.finish_reset(body.token, body.password)
+    except accounts.AccountError as e:
+        raise HTTPException(400, str(e))
+    return _signed_in(response, user)
 
 
 class FilterParams(BaseModel):
@@ -154,11 +294,11 @@ class Pull(FilterParams):
             raise HTTPException(404, f"no saved filter {self.screen!r}")
 
 
-def _after_pull(body):
+def _after_pull(body, request):
     if body.screen:
         screening.start()
     else:
-        assemble.prefetch([r["object_id"] for r in db.next_pending(PREFETCH, where="screen IS NULL")])
+        assemble.prefetch([r["object_id"] for r in db.next_pending(_who(request), PREFETCH, where="screen IS NULL")])
 
 
 class Fill(Pull):
@@ -166,11 +306,11 @@ class Fill(Pull):
 
 
 @app.post("/api/queue/fill")
-def fill(body: Fill):
+def fill(body: Fill, request: Request):
     if body.source not in sources.SOURCES:
         raise HTTPException(400, f"unknown source {body.source}")
     result = sources.SOURCES[body.source](n=body.n, filters=body.build(), screen=body.resolve_screen())
-    _after_pull(body)
+    _after_pull(body, request)
     return result
 
 
@@ -179,21 +319,21 @@ class NightPull(Pull):
 
 
 @app.post("/api/queue/night")
-def pull_night(body: NightPull):
+def pull_night(body: NightPull, request: Request):
     try:
         result = sources.antares_night(body.night, body.n, body.build(), screen=body.resolve_screen())
     except ValueError as e:
         raise HTTPException(400, str(e))
-    _after_pull(body)
+    _after_pull(body, request)
     return result
 
 
 @app.get("/api/nights")
-def nights():
+def nights(request: Request):
     """Each sampled night (per detection minimum): objects taken so far, how many the
     current labeler has vetted, and the night's size at the latest batch; and the whole
     nights run through saved filters."""
-    return {"nights": achievements.nights(LABELER), "runs": achievements.night_runs(LABELER)}
+    return {"nights": achievements.nights(_who(request)), "runs": achievements.night_runs(_who(request))}
 
 
 class NightRun(BaseModel):
@@ -215,8 +355,8 @@ def run_night(body: NightRun):
 
 
 @app.get("/api/nights/runs")
-def night_runs(screen: str = ""):
-    runs = achievements.night_runs(LABELER, screen or None)
+def night_runs(request: Request, screen: str = ""):
+    runs = achievements.night_runs(_who(request), screen or None)
     if any(r["screening"] for r in runs):
         screening.start()  # resumes after a restart
     return {"runs": runs, "running": nightrun._running}
@@ -265,9 +405,9 @@ def _queue_filter(min_det, date_from, date_to, date_mode, screen=""):
     return " AND ".join(w for w in (mode, where) if w), mode_params + params
 
 
-def _mode(screen):
+def _mode(screen, labeler):
     """Queue counts in this mode; in filtered mode, also how many wait for screening and were thrown away."""
-    counts = db.mode_counts(screen or None)
+    counts = db.mode_counts(screen or None, labeler)
     out = {"n_pending": counts.get("pending", 0)}
     if screen:
         out |= {"n_screening": counts.get("screening", 0), "n_filtered": counts.get("filtered", 0)}
@@ -277,37 +417,38 @@ def _mode(screen):
 
 
 @app.get("/api/queue/matching")
-def queue_matching(min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first", screen: str = ""):
+def queue_matching(request: Request, min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first", screen: str = ""):
     where, params = _queue_filter(min_det, date_from, date_to, date_mode, screen)
-    return {"n_matching": db.count_pending(where, params), **_mode(screen)}
+    return {"n_matching": db.count_pending(_who(request), where, params), **_mode(screen, _who(request))}
 
 
 @app.get("/api/next")
-def next_object(exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
+def next_object(request: Request, exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
                 screen: str = ""):
     skip = tuple(x for x in exclude.split(",") if x)
     where, params = _queue_filter(min_det, date_from, date_to, date_mode, screen)
-    rows = db.next_pending(PREFETCH + 1, exclude=skip, where=where, params=params)
-    out = {"n_matching": db.count_pending(where, params), **_mode(screen)}
+    who = _who(request)
+    rows = db.next_pending(who, PREFETCH + 1, exclude=skip, where=where, params=params)
+    out = {"n_matching": db.count_pending(who, where, params), **_mode(screen, who)}
     if not rows:
         return {"object_id": None, **out}
     assemble.prefetch([r["object_id"] for r in rows[1:]])
     return {"object_id": rows[0]["object_id"], **out}
 
 
-def _has_blind_label(object_id):
-    return any(l["phase"] == "blind" for l in db.labels_for(object_id))
+def _has_blind_label(object_id, labeler):
+    return any(l["phase"] == "blind" for l in db.labels_for(object_id, labeler))
 
 
 @app.get("/api/object/{object_id}")
-def get_object(object_id: str, refresh: bool = False):
+def get_object(object_id: str, request: Request, refresh: bool = False):
     item = db.get_queue_item(object_id)
     if not item:
         raise HTTPException(404, "not in queue")
     raw = assemble.load(object_id, refresh=refresh)
     ev = assemble.evidence(object_id, raw)
-    labels = db.labels_for(object_id)
-    revealed = not state["blind"] or _has_blind_label(object_id)
+    labels = db.labels_for(object_id, _who(request))
+    revealed = not _blind(request) or _has_blind_label(object_id, _who(request))
     return {
         "queue": item,
         "evidence": ev,
@@ -318,8 +459,8 @@ def get_object(object_id: str, refresh: bool = False):
 
 
 @app.get("/api/reveal/{object_id}")
-def reveal(object_id: str):
-    if state["blind"] and not _has_blind_label(object_id):
+def reveal(object_id: str, request: Request):
+    if _blind(request) and not _has_blind_label(object_id, _who(request)):
         raise HTTPException(403, "commit a blind label first")
     return assemble.opinions(assemble.load(object_id))
 
@@ -336,23 +477,24 @@ class Label(BaseModel):
 
 
 @app.post("/api/label")
-def post_label(body: Label):
+def post_label(body: Label, request: Request):
     unknown = [k for k in [body.klass, *body.alt_classes] if k not in CLASS_BY_KEY]
     if unknown:
         raise HTTPException(400, f"unknown class {unknown}")
     alts = sorted(set(body.alt_classes) - {body.klass})
     if not db.get_queue_item(body.object_id):
         raise HTTPException(404, "not in queue")
-    previous = db.labels_for(body.object_id)
+    who = _who(request)
+    previous = db.labels_for(body.object_id, who)
     if previous and WATCH_FLAG in json.loads(previous[-1]["flags"] or "[]"):
         phase = "followup"  # second look at a watched object, possibly with new data
-    elif _has_blind_label(body.object_id):
+    elif _has_blind_label(body.object_id, who):
         phase = "revealed"
     else:
-        phase = "blind" if state["blind"] else "unblinded"
-    before = achievements.summary(LABELER)
+        phase = "blind" if _blind(request) else "unblinded"
+    before = achievements.summary(who)
     raw = assemble.load(body.object_id)
-    snap = assemble.snapshot(assemble.evidence(body.object_id, raw)) | {"blind_mode": state["blind"]}
+    snap = assemble.snapshot(assemble.evidence(body.object_id, raw)) | {"blind_mode": _blind(request)}
     label_id = db.add_label(
         {
             "object_id": body.object_id,
@@ -365,13 +507,13 @@ def post_label(body: Label):
             "flags": json.dumps(body.flags),
             "host": json.dumps(body.host) if body.host else None,
             "notes": body.notes,
-            "labeler": LABELER,
+            "labeler": who,
             "created_at": db.now(),
             "snapshot": json.dumps(snap),
             "app_version": __version__,
         }
     )
-    db.set_status(body.object_id, "watch" if WATCH_FLAG in body.flags else "labeled")
+    db.set_status(body.object_id, who, "watch" if WATCH_FLAG in body.flags else "labeled")
     # A transient label on a known SN / TNS object (or a TDE or nova) is a needle in the haystack.
     found = None
     if body.klass == "transient":
@@ -381,14 +523,14 @@ def post_label(body: Label):
             tns = []  # the next "Check TNS" picks it up
         found = achievements.needle((raw["xmatch"] or {}).get("data") or {}, tns)
     return {"id": label_id, "phase": phase, "needle": found,
-            "achievements": achievements.newly_earned(before, achievements.summary(LABELER))}
+            "achievements": achievements.newly_earned(before, achievements.summary(who))}
 
 
 @app.post("/api/watch/recheck")
-def watch_recheck():
-    """Re-poll ANTARES for watched objects; any with new alerts go back to the queue."""
+def watch_recheck(request: Request):
+    """Re-poll ANTARES for your watched objects; any with new alerts go back to your queue."""
     updated, unchanged, errors = [], 0, {}
-    for item in db.query("SELECT * FROM queue WHERE status = 'watch'"):
+    for item in db.watched(_who(request)):
         oid = item["object_id"]
         try:
             old = db.cache_get(oid, "antares")
@@ -398,7 +540,7 @@ def watch_recheck():
             n_new = summary["num_alerts"] or 0
             if n_new > n_old:
                 assemble.refresh_brokers(oid)
-                db.set_status(oid, "pending")
+                db.set_status(oid, _who(request), None)
                 updated.append({"object_id": oid, "new_alerts": n_new - n_old})
             else:
                 unchanged += 1
@@ -413,7 +555,7 @@ def xmatch_fill_missing():
     are left alone, so their crossmatch stays the evidence they were labeled with."""
     rows = db.query(
         "SELECT c.object_id FROM cache c JOIN queue q USING (object_id) WHERE c.kind = 'xmatch'"
-        " AND q.status != 'labeled' AND json_extract(c.payload, '$.errors') != '{}'"
+        " AND q.object_id NOT IN (SELECT object_id FROM labels) AND json_extract(c.payload, '$.errors') != '{}'"
     )
 
     def fill(oid):
@@ -430,8 +572,8 @@ def xmatch_fill_missing():
 
 
 @app.post("/api/skip/{object_id}")
-def skip(object_id: str):
-    db.set_status(object_id, "skipped")
+def skip(object_id: str, request: Request):
+    db.set_status(object_id, _who(request), "skipped")
     return {"ok": True}
 
 
@@ -459,8 +601,8 @@ def thumbs(alert_id: str):
 
 
 @app.get("/api/stats")
-def stats():
-    return db.stats()
+def stats(request: Request):
+    return db.stats(_who(request))
 
 
 @app.get("/api/leaderboard")
@@ -469,8 +611,8 @@ def leaderboard(days: int = 7):
 
 
 @app.get("/api/achievements")
-def get_achievements(labeler: str | None = None):
-    who = labeler or LABELER
+def get_achievements(request: Request, labeler: str | None = None):
+    who = labeler or _who(request)
     return {"labeler": who, "categories": achievements.CATEGORIES, "achievements": achievements.summary(who),
             "tns_checked_at": achievements.tns_checked_at()}
 
@@ -482,9 +624,9 @@ def tns_check():
 
 
 @app.get("/api/farm")
-def get_farm():
-    """Coins earned, spent and left, the shop and the achievement unlocks, for the current labeler."""
-    return farm.state(LABELER)
+def get_farm(request: Request):
+    """The achievement unlocks for the current labeler."""
+    return farm.state(_who(request))
 
 
 class Purchase(BaseModel):
@@ -492,9 +634,9 @@ class Purchase(BaseModel):
 
 
 @app.post("/api/farm/buy")
-def buy(body: Purchase):
+def buy(body: Purchase, request: Request):
     try:
-        return farm.buy(LABELER, body.item)
+        return farm.buy(_who(request), body.item)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -505,9 +647,9 @@ class Wear(BaseModel):
 
 
 @app.post("/api/farm/wear")
-def wear(body: Wear):
+def wear(body: Wear, request: Request):
     try:
-        return farm.wear(LABELER, body.slot, body.item)
+        return farm.wear(_who(request), body.slot, body.item)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
