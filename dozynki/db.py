@@ -87,17 +87,18 @@ CREATE TABLE IF NOT EXISTS saved_pipelines (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
+-- purchases and wearing are from the old farm shop; nothing writes them now, kept for their rows.
 CREATE TABLE IF NOT EXISTS purchases (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     labeler     TEXT NOT NULL,
-    item        TEXT NOT NULL,         -- farm.ITEMS key
+    item        TEXT NOT NULL,         -- old shop item key
     price       INTEGER NOT NULL,      -- coins paid then
     bought_at   TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS wearing (
     labeler     TEXT NOT NULL,
-    slot        TEXT NOT NULL,         -- farm.SLOTS
-    item        TEXT NOT NULL,         -- farm.WARDROBE key; no row means the default
+    slot        TEXT NOT NULL,         -- hat, hair, outfit or boots
+    item        TEXT NOT NULL,         -- old wardrobe item key
     PRIMARY KEY (labeler, slot)
 );
 CREATE TABLE IF NOT EXISTS queue_status (
@@ -404,23 +405,3 @@ def leaderboard(days=7):
         f"FROM labels GROUP BY {WHO} ORDER BY objects DESC, labeler",
         (since,),
     )
-
-
-def add_purchase(labeler, item, price):
-    execute("INSERT INTO purchases (labeler, item, price, bought_at) VALUES (?, ?, ?, ?)", (labeler, item, price, now()))
-
-
-def purchases(labeler):
-    return query("SELECT item, price, bought_at FROM purchases WHERE labeler = ? ORDER BY id", (labeler,))
-
-
-def wearing(labeler):
-    return {r["slot"]: r["item"] for r in query("SELECT slot, item FROM wearing WHERE labeler = ?", (labeler,))}
-
-
-def put_on(labeler, slot, item=None):
-    """Wear item in slot, or with None go back to the default."""
-    if item is None:
-        execute("DELETE FROM wearing WHERE labeler = ? AND slot = ?", (labeler, slot))
-    else:
-        execute("INSERT OR REPLACE INTO wearing (labeler, slot, item) VALUES (?, ?, ?)", (labeler, slot, item))

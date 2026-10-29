@@ -4,17 +4,18 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
+import requests
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, accounts, achievements, assemble, compare, db, details, evaluate, export, farm, rejection, sky, sources
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
-from .brokers import antares
+from .brokers import antares, pittgoogle
 from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
                      XMATCH_RADIUS_ARCSEC)
 from .filters import DATE_MODES, Filters
@@ -70,6 +71,14 @@ async def identify(request, call_next):
     if new_guest:
         _set_cookie(response, accounts.GUEST_COOKIE, new_guest, 365)
     return response
+
+
+@app.exception_handler(requests.RequestException)
+def upstream_failed(request, e):
+    """A broker or catalog that errors or times out is a 502 the page can show, not a crash."""
+    host = urlparse(e.request.url).hostname if e.request is not None and e.request.url else "an upstream service"
+    status = f" (HTTP {e.response.status_code})" if e.response is not None else ""
+    return JSONResponse({"detail": f"{host} failed{status}; it may be down, try again later"}, status_code=502)
 
 
 def _set_cookie(response, name, value, days):
@@ -309,7 +318,10 @@ class Fill(Pull):
 def fill(body: Fill, request: Request):
     if body.source not in sources.SOURCES:
         raise HTTPException(400, f"unknown source {body.source}")
-    result = sources.SOURCES[body.source](n=body.n, filters=body.build(), screen=body.resolve_screen())
+    try:
+        result = sources.SOURCES[body.source](n=body.n, filters=body.build(), screen=body.resolve_screen())
+    except pittgoogle.Unavailable as e:
+        raise HTTPException(503, str(e))
     _after_pull(body, request)
     return result
 
@@ -627,31 +639,6 @@ def tns_check():
 def get_farm(request: Request):
     """The achievement unlocks for the current labeler."""
     return farm.state(_who(request))
-
-
-class Purchase(BaseModel):
-    item: str
-
-
-@app.post("/api/farm/buy")
-def buy(body: Purchase, request: Request):
-    try:
-        return farm.buy(_who(request), body.item)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-class Wear(BaseModel):
-    slot: str
-    item: str | None = None
-
-
-@app.post("/api/farm/wear")
-def wear(body: Wear, request: Request):
-    try:
-        return farm.wear(_who(request), body.slot, body.item)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
 
 
 @app.get("/api/rejection/config")

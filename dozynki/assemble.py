@@ -75,6 +75,17 @@ def _gather(object_id):
     return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot", "positions")}
 
 
+def fill_missing_xmatch(object_id):
+    """Retry the catalogs that failed in an object's cached crossmatch. Returns the
+    catalogs that came back; the cache is rewritten only when at least one did."""
+    old = db.cache_get(object_id, "xmatch")["data"]
+    new = crossmatch.fill_missing(old)
+    filled = sorted(set(old["errors"]) - set(new["errors"]))
+    if filled:
+        db.cache_put(object_id, "xmatch", new)
+    return filled
+
+
 def rerun_xmatch(object_id, radius):
     ant = db.cache_get(object_id, "antares")["data"]
     return _cached(object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"], radius), refresh=True)
@@ -86,15 +97,29 @@ def skybot(object_id, refresh=False):
     return _cached(object_id, "skybot", lambda: crossmatch.run_skybot(ant["ra"], ant["dec"], mjds), refresh)
 
 
-def prefetch(object_ids):
-    def work():
-        for oid in object_ids:
-            try:
-                load(oid)
-            except Exception:
-                pass
+_prefetch_pool = ThreadPoolExecutor(max_workers=4)
+_prefetching = set()
 
-    threading.Thread(target=work, daemon=True).start()
+
+def prefetch(object_ids):
+    """Load objects in the background, several at once and nearest first, so the
+    next ones are cached before the vetter gets to them."""
+    for oid in object_ids:
+        with _inflight_lock:
+            if oid in _prefetching:
+                continue
+            _prefetching.add(oid)
+        _prefetch_pool.submit(_prefetch_one, oid)
+
+
+def _prefetch_one(object_id):
+    try:
+        load(object_id)
+    except Exception:
+        pass
+    finally:
+        with _inflight_lock:
+            _prefetching.discard(object_id)
 
 
 ZTF_NR_MAX_ARCSEC = 1.5  # reference source must be this close for ref + diff to mean "total flux"

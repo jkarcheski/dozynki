@@ -1,4 +1,4 @@
-// Landing page: labeling progress from /api/stats, the farm shop, and links to the other pages.
+// Landing page: labeling progress from /api/stats, the farm, and links to the other pages.
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -15,60 +15,15 @@ async function post(path, body) {
   return r.json();
 }
 
-// Farm: coins from /api/farm (farm.py), owned items drawn into the wheat field.
+// Farm: achievement unlocks from /api/farm (farm.py), owned ones drawn into the wheat field.
 let pending = 0;
 
 function renderFarm(f) {
-  const c = f.coins;
-  const owned = [...f.shop, ...f.unlocks].filter((i) => i.owned).map((i) => i.key);
-  Harvest.field($("#harvest"), pending, owned, f.wearing);
-  $("#coins").innerHTML = `<b>${c.balance}</b> coin${c.balance === 1 ? "" : "s"}`;
-  $("#coin-why").textContent = `Earned ${c.total}: ${c.label} for objects vetted, ${c.host} for hosts chosen, `
-    + `${c.extra} for flags or notes (one per object)${c.spent ? `; spent ${c.spent}` : ""}.`;
-  $("#shop").innerHTML = f.shop.map((i) => `<div class="item${i.owned ? " owned" : ""}">${Harvest.farmIcon(i.key)}`
-    + `<b>${esc(i.name)}</b>`
-    + (i.owned ? `<span class="muted">on your farm</span>`
-      : `<button class="small${c.balance >= i.price ? " primary" : ""}" data-k="${esc(i.key)}"${c.balance < i.price ? " disabled" : ""}>`
-        + `${i.price} coins</button>`) + `</div>`).join("");
+  Harvest.field($("#harvest"), pending, f.unlocks.filter((i) => i.owned).map((i) => i.key));
   $("#unlocks").innerHTML = f.unlocks.map((i) => `<div class="item${i.owned ? " owned" : " locked"}" title="${esc(i.what)}">`
     + `${Harvest.farmIcon(i.key)}<b>${esc(i.name)}</b>`
     + `<span class="muted">${i.owned ? "on your farm" : `earn ${esc(i.achievement)}`}</span></div>`).join("");
-  Harvest.fitIcons($("#shop"));
   Harvest.fitIcons($("#unlocks"));
-  $("#shop").querySelectorAll("button[data-k]").forEach((b) => (b.onclick = () =>
-    act(b, "#shop-err", "/api/farm/buy", { item: b.dataset.k })));
-  renderWardrobe(f);
-}
-
-async function act(button, errSel, path, body) {
-  button.disabled = true;
-  try {
-    $(errSel).textContent = "";
-    renderFarm(await post(path, body));
-  } catch (e) {
-    $(errSel).textContent = e.message;
-    button.disabled = false;
-  }
-}
-
-const SLOT_NAMES = { hat: "Hats", hair: "Hairstyles", outfit: "Outfits", boots: "Boots" };
-
-// Each wardrobe item is shown on the farmer as they are now dressed, so you see how it would look.
-function renderWardrobe(f) {
-  const c = f.coins;
-  $("#farmer-preview").innerHTML = Harvest.farmerIcon(f.wearing, "farmer-big");
-  $("#wardrobe").innerHTML = f.slots.map((slot) => `<h3>${esc(SLOT_NAMES[slot] || slot)}</h3><div class="shop">`
-    + f.wardrobe.filter((i) => i.slot === slot).map((i) => {
-      const button = i.worn ? `<button class="small" data-slot="${slot}">Take off</button>`
-        : i.owned ? `<button class="small" data-slot="${slot}" data-wear="${esc(i.key)}">Wear</button>`
-        : `<button class="small${c.balance >= i.price ? " primary" : ""}" data-buy="${esc(i.key)}"${c.balance < i.price ? " disabled" : ""}>`
-          + `${i.price} coins</button>`;
-      return `<div class="item${i.worn ? " owned" : ""}">${Harvest.farmerIcon({ ...f.wearing, [slot]: i.key }, "farm-icon", slot)}`
-        + `<b>${esc(i.name)}</b>${button}</div>`;
-    }).join("") + `</div>`).join("");
-  $("#wardrobe").querySelectorAll("button").forEach((b) => (b.onclick = () => b.dataset.buy
-    ? act(b, "#wardrobe-err", "/api/farm/buy", { item: b.dataset.buy })
-    : act(b, "#wardrobe-err", "/api/farm/wear", { slot: b.dataset.slot, item: b.dataset.wear || null })));
 }
 
 function renderLeaderboard(lb, me) {

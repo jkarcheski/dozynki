@@ -2,13 +2,14 @@
 queue.source / queue.source_params so the training set's biases are known.
 
 Babamul Kafka topics and user-supplied object lists are planned additions.
+pittgoogle_random_lsst is a prototype: it needs a Google Cloud project (see brokers/pittgoogle.py).
 """
 
 import random
 from datetime import date
 
 from . import db
-from .brokers import antares
+from .brokers import antares, pittgoogle
 from .filters import MJD_UNIX_EPOCH, Filters
 
 ES_WINDOW = 10000  # ANTARES counts and pages only this many matches of a query
@@ -76,4 +77,25 @@ def antares_night(night, n=50, filters=None, screen=None):
             "taken": start + len(ids), "n_matching": n_matching, "capped": n_matching >= ES_WINDOW}
 
 
-SOURCES = {"antares_random_lsst": antares_random_lsst}
+def pittgoogle_random_lsst(n=50, filters=None, seed=None, screen=None):
+    """Like antares_random_lsst, over the diaObjects in Pitt-Google's alert archive instead of ANTARES's loci.
+
+    The ANTARES locus is looked up when the object is first assembled, so vetting still needs ANTARES.
+    """
+    filters = filters or Filters()
+    seed = seed if seed is not None else random.randrange(2**31)
+    sql, sql_params, objects = pittgoogle.random_lsst_objects(n, seed, filters)
+    params = {"seed": seed, "filters": filters.as_params(), "n_requested": n, "sql": sql, "sql_params": sql_params,
+              "unit": "object (LSST diaObject in Pitt-Google's archive), uniform within the filters; "
+                      "min_det counts LSST detections only"}
+    source = "pittgoogle_random_lsst"
+    if screen:
+        params["screen"], source = screen, "pittgoogle_random_lsst_screened"
+    added = 0
+    for obj in objects:
+        added += db.add_to_queue(obj["dia_object_id"], None, obj["ra"], obj["dec"],
+                                 source, params, summary=obj, screen=screen and screen["name"])
+    return {"source": source, "seed": seed, "returned": len(objects), "added": added}
+
+
+SOURCES = {"antares_random_lsst": antares_random_lsst, "pittgoogle_random_lsst": pittgoogle_random_lsst}

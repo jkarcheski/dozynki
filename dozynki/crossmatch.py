@@ -6,6 +6,8 @@ in `errors` rather than blocking the page.
 
 import io
 import math
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
 import numpy as np
@@ -18,6 +20,7 @@ from astropy.time import Time
 from .config import DATALAB_ANON_TOKEN, DATALAB_QUERY, HTTP_TIMEOUT, XMATCH_RADIUS_ARCSEC
 
 QUERY_TIMEOUT = 45
+DOWN_SECONDS = 300  # after a catalog times out, skip it for this long instead of waiting out every query
 RUBIN_OBS_CODE = "X05"
 
 
@@ -192,7 +195,19 @@ def context(ra, dec):
     }
 
 
+_down = {}  # catalog name -> time.time() until which it is skipped
+_down_lock = threading.Lock()
+
+
 def _run_jobs(jobs, out):
+    with _down_lock:
+        down = {name: until for name, until in _down.items() if until > time.time() and name in jobs}
+    for name, until in down.items():
+        out["errors"][name] = f"skipped: timed out recently (retrying after {time.strftime('%H:%M', time.localtime(until))})"
+        out[name] = None
+    jobs = {name: job for name, job in jobs.items() if name not in down}
+    if not jobs:
+        return out
     pool = ThreadPoolExecutor(max_workers=len(jobs))
     futures = {name: pool.submit(fn, *args) for name, (fn, args) in jobs.items()}
     wait(futures.values(), timeout=QUERY_TIMEOUT)
@@ -200,17 +215,22 @@ def _run_jobs(jobs, out):
         if not f.done():
             out["errors"][name] = "timed out"
             out[name] = None
+            with _down_lock:
+                _down[name] = time.time() + DOWN_SECONDS
         elif f.exception():
             out["errors"][name] = f"{type(f.exception()).__name__}: {f.exception()}"
             out[name] = None
+            if "Timeout" in type(f.exception()).__name__:
+                with _down_lock:
+                    _down[name] = time.time() + DOWN_SECONDS
         else:
             out[name] = f.result()
     pool.shutdown(wait=False, cancel_futures=True)
     return out
 
 
-def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC):
-    jobs = {
+def _jobs(ra, dec, radius):
+    return {
         "legacy_survey": (legacy_survey, (ra, dec, radius)),
         "gaia": (vizier, ("gaia", ra, dec, radius)),
         "ps1": (vizier, ("ps1", ra, dec, radius)),
@@ -219,11 +239,27 @@ def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC):
         "ned": (ned, (ra, dec, radius)),
         "ztf": (ztf_objects, (ra, dec, min(radius, 30))),
     }
-    out = {"ra": ra, "dec": dec, "radius_arcsec": radius, "context": context(ra, dec), "errors": {}}
-    _run_jobs(jobs, out)
+
+
+def _with_hosts(out):
     galaxies = [g for g in out.get("legacy_survey") or [] if g.get("d_dlr") is not None]
     out["host_candidates"] = sorted(galaxies, key=lambda g: g["d_dlr"])[:5]
     return out
+
+
+def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC):
+    out = {"ra": ra, "dec": dec, "radius_arcsec": radius, "context": context(ra, dec), "errors": {}}
+    _run_jobs(_jobs(ra, dec, radius), out)
+    return _with_hosts(out)
+
+
+def fill_missing(out):
+    """Re-query only the catalogs that failed in a crossmatch, keeping the ones that succeeded."""
+    jobs = {name: job for name, job in _jobs(out["ra"], out["dec"], out["radius_arcsec"]).items() if name in out["errors"]}
+    retry = {"errors": {}}
+    _run_jobs(jobs, retry)
+    errors = {name: e for name, e in out["errors"].items() if name not in jobs} | retry.pop("errors")
+    return _with_hosts({**out, **retry, "errors": errors})
 
 
 def run_skybot(ra, dec, detection_mjds):

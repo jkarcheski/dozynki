@@ -9,3 +9,4 @@ astroquery
 python-dotenv
 alerce>=2.3
 babamul
+google-cloud-bigquery>=3.25  # Pitt-Google source (optional)

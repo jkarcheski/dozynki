@@ -22,8 +22,12 @@ SECURE_COOKIES = os.environ.get("DOZYNKI_SECURE_COOKIES", "0") not in ("0", "fal
 BASE_URL = os.environ.get("DOZYNKI_BASE_URL", "").rstrip("/")  # for reset links; else the request's own address
 SMTP = {k: os.environ.get(f"DOZYNKI_SMTP_{k.upper()}", "") for k in ("host", "port", "user", "password", "from")}
 
-ANTARES_API = "https://api.antares.noirlab.edu/v1"
-DATALAB_QUERY = "https://datalab.noirlab.edu/query/query"
+ANTARES_API = "https://api.antares.noirlab.edu/v2"
+# Pitt-Google's BigQuery archive of the LSST alert stream; queries are billed to your own project
+PITTGOOGLE_TABLE = os.environ.get("PITTGOOGLE_TABLE", "pitt-alert-broker.lsst.alerts_v10_0")
+PITTGOOGLE_BILLING_PROJECT = os.environ.get("PITTGOOGLE_BILLING_PROJECT", "")
+PITTGOOGLE_MAX_BYTES = int(os.environ.get("PITTGOOGLE_MAX_BYTES", 20 * 10**9))  # refuse queries scanning more
+DATALAB_QUERY ="https://datalab.noirlab.edu/query/query"
 DATALAB_ANON_TOKEN = "anonymous.0.0.anon_access"
 
 HTTP_TIMEOUT = 60

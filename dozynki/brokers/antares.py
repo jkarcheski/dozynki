@@ -21,11 +21,9 @@ def _get(url, params=None):
     return r.json()
 
 
-def _search(es_query, limit):
-    return _get(
-        f"{ANTARES_API}/loci",
-        {"elasticsearch_query[locus_listing]": json.dumps(es_query), "page[limit]": limit},
-    )
+def _search(es_query, limit, offset=0):
+    # v2 silently ignores v1's elasticsearch_query[locus_listing] and page[...] names
+    return _get(f"{ANTARES_API}/loci", {"elasticsearch_query": json.dumps(es_query), "limit": limit, "offset": offset})
 
 
 def random_lsst_loci(n, seed, extra_filters=()):
@@ -67,28 +65,34 @@ def night_lsst_loci(mjd_lo, mjd_hi, seed, offset, n, extra_filters=()):
             }
         }
     }
-    resp = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
-                                         "page[limit]": n, "page[offset]": offset})
+    resp = _search(es_query, n, offset)
     return es_query, resp.get("meta", {}).get("count", 0), [_listing_summary(x) for x in resp.get("data", [])]
 
 
 def count_loci(filters):
     """How many loci match a bool filter; ANTARES stops counting at 10,000."""
     es_query = {"query": {"bool": {"filter": filters}}}
-    return _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
-                                         "page[limit]": 1}).get("meta", {}).get("count", 0)
+    return _search(es_query, 1).get("meta", {}).get("count", 0)
 
 
 def list_loci(filters, offset, n):
     """One page of loci matching a bool filter, as listing summaries (offset + n within 10,000)."""
     es_query = {"query": {"bool": {"filter": filters}}}
-    resp = _get(f"{ANTARES_API}/loci", {"elasticsearch_query[locus_listing]": json.dumps(es_query),
-                                         "page[limit]": n, "page[offset]": offset})
+    resp = _search(es_query, n, offset)
     return [_listing_summary(x) for x in resp.get("data", [])]
 
 
 def locus_summary(locus_id):
     return _listing_summary(_get(f"{ANTARES_API}/loci/{locus_id}")["data"])
+
+
+def _locus(x):
+    """One locus as {locus_id, ra, dec, properties, tags, catalogs}: a search hit wraps it in
+    {"locus": ...}; the detail endpoint gives it flat, with id and internal_properties."""
+    loc = x.get("locus", x)
+    return {"locus_id": loc.get("locus_id") or loc["id"], "ra": loc["ra"], "dec": loc["dec"],
+            "properties": loc.get("properties") or loc.get("internal_properties") or {},
+            "tags": loc.get("tags", []), "catalogs": loc.get("catalogs", [])}
 
 
 def locus_for_dia_object(dia_object_id):
@@ -98,20 +102,21 @@ def locus_for_dia_object(dia_object_id):
 
 
 def _listing_summary(x):
-    attr = x["attributes"]
-    survey = attr["properties"].get("survey", {})
+    loc = _locus(x)
+    props = loc["properties"]
+    survey = props.get("survey", {})
     dia_ids = survey.get("lsst", {}).get("dia_object_id", [])
     return {
-        "locus_id": x["id"],
-        "ra": attr["ra"],
-        "dec": attr["dec"],
+        "locus_id": loc["locus_id"],
+        "ra": loc["ra"],
+        "dec": loc["dec"],
         "dia_object_id": dia_ids[0] if dia_ids else None,
-        "num_alerts": attr["properties"].get("num_alerts"),
-        "n_det": attr["properties"].get("num_mag_values"),
-        "first_mjd": attr["properties"].get("oldest_alert_observation_time"),
-        "last_mjd": attr["properties"].get("newest_alert_observation_time"),
-        "tags": attr.get("tags", []),
-        "catalogs": attr.get("catalogs", []),
+        "num_alerts": props.get("num_alerts"),
+        "n_det": props.get("num_mag_values"),
+        "first_mjd": props.get("oldest_alert_observation_time"),
+        "last_mjd": props.get("newest_alert_observation_time"),
+        "tags": loc["tags"],
+        "catalogs": loc["catalogs"],
         "ss_ids": [s for s in survey.get("lsst", {}).get("ss_object_id", []) + survey.get("ztf", {}).get("ssnamenr", [])
                    if s not in (None, "null")],
     }
@@ -119,19 +124,19 @@ def _listing_summary(x):
 
 def get_locus(locus_id):
     """Locus attributes plus the full, normalized alert history."""
-    locus = _get(f"{ANTARES_API}/loci/{locus_id}")["data"]
-    attr = locus["attributes"]
-    props = attr.get("properties", {})
+    raw = _get(f"{ANTARES_API}/loci/{locus_id}")["data"]
+    loc = _locus(raw)
+    props = loc["properties"]
     alerts = _all_alerts(locus_id)
     return {
         "locus_id": locus_id,
-        "ra": attr["ra"],
-        "dec": attr["dec"],
+        "ra": loc["ra"],
+        "dec": loc["dec"],
         "survey": props.get("survey", {}),
         "ztf_object_id": props.get("ztf_object_id"),
-        "tags": attr.get("tags", []),
-        "catalogs": attr.get("catalogs", []),
-        "catalog_matches": attr.get("catalog_matches", []),
+        "tags": loc["tags"],
+        "catalogs": loc["catalogs"],
+        "catalog_matches": raw.get("catalog_matches", []),
         "num_alerts": props.get("num_alerts"),
         "points": [p for p in (_normalize(a) for a in alerts) if p],
         "lsst_details": _details(alerts),
@@ -151,9 +156,9 @@ def catalog_matches(locus_id):
     """{catalog: [{sep (arcsec), radius, ...CATALOG_FIELDS}]} from ANTARES's own crossmatch, nearest first."""
     out = {}
     for m in _get(f"{ANTARES_API}/loci/{locus_id}/catalog-matches").get("data", []):
-        meta, props = m.get("meta", {}), m["attributes"].get("properties", {})
-        name = meta.get("catalog_name")
-        out.setdefault(name, []).append({"sep": meta.get("separation"), "radius": meta.get("radius"),
+        props = m.get("properties", {})
+        name = m.get("catalog_name")
+        out.setdefault(name, []).append({"sep": (m.get("extra") or {}).get("separation"), "radius": m.get("radius"),
                                          **{k: props.get(k) for k in CATALOG_FIELDS.get(name, ())}})
     return {name: sorted(rows, key=lambda r: r["sep"] if r["sep"] is not None else 99) for name, rows in out.items()}
 
@@ -167,29 +172,27 @@ def tns_matches(locus_id):
     data = _get(f"{ANTARES_API}/loci/{locus_id}/catalog-matches").get("data", [])
     out = []
     for m in data:
-        if m.get("meta", {}).get("catalog_name") != "tns_public_objects":
+        if m.get("catalog_name") != "tns_public_objects":
             continue
-        p = m["attributes"].get("properties", {})
+        p = m.get("properties", {})
         out.append({
-            "name": f"{p.get('name_prefix') or 'AT'} {p.get('name') or m['attributes'].get('object_name')}",
+            "name": f"{p.get('name_prefix') or 'AT'} {p.get('name') or m.get('object_name')}",
             "type": p.get("type") or None,
             "discovered": p.get("discoverydate"),
             "reported": p.get("time_received") or p.get("creationdate"),
             "reporting_group": p.get("reporting_group"),
-            "sep": m["meta"].get("separation"),
+            "sep": (m.get("extra") or {}).get("separation"),
         })
     return out
 
 
 def _all_alerts(locus_id):
-    url = f"{ANTARES_API}/loci/{locus_id}/alerts"
-    params = {"page[limit]": 100}
-    out = []
+    """v2 returns a locus's whole alert history at once; follow a next link anyway in case it starts paging."""
+    url, out = f"{ANTARES_API}/loci/{locus_id}/alerts", []
     while url:
-        resp = _get(url, params)
+        resp = _get(url)
         out.extend(resp.get("data", []))
         url = (resp.get("links") or {}).get("next")
-        params = None  # the next link already carries paging params
     return out
 
 
@@ -225,7 +228,7 @@ def _details(alerts):
     """Rubin pipeline measurements per LSST detection, used by the rejection rules (not shown while vetting)."""
     out = {}
     for a in alerts:
-        p = a["attributes"]["properties"]
+        p = a["properties"]
         if p.get("ant_survey") != SURVEY_LSST:
             continue
         size, psf_size = (p.get("lsst_diaSource_ixx") or 0) + (p.get("lsst_diaSource_iyy") or 0), \
@@ -246,7 +249,7 @@ def _details(alerts):
 
 def _normalize(alert):
     """One light-curve point. Difference fluxes are put on a common nJy scale."""
-    p = alert["attributes"]["properties"]
+    p = alert["properties"]
     code = p.get("ant_survey")
     base = {"alert_id": alert["id"], "mjd": p.get("ant_mjd")}
 
@@ -324,4 +327,4 @@ def _normalize(alert):
 
 def thumbnails(alert_id):
     data = _get(f"{ANTARES_API}/alerts/{alert_id}/thumbnails").get("data", [])
-    return {d["attributes"]["thumbnail_type"]: d["attributes"]["src"] for d in data}
+    return {d["thumbnail_type"]: d["src"] for d in data}
