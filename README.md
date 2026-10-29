@@ -13,7 +13,7 @@ Current pages:
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
 
-![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
+
 
 ## Setup
 
@@ -24,6 +24,8 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 .venv/bin/python -m dozynki   # http://127.0.0.1:8765 (landing page; vetter at /vet)
 ```
 ## Vetter: identify transients and create labels
+
+![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
 
 1. **Sample** – "Sample random LSST" draws a uniform random set of ANTARES loci
    that have an LSST diaObject (Elasticsearch `random_score`). The seed and
