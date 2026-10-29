@@ -11,6 +11,7 @@ Current pages:
 - **[Filter lab](#filter-lab-filter-out-the-noise)** – build rejection filters by answering plain-language
   questions, and see what each one would throw away of the objects people have labeled.
 - **[Sky map](#sky-map)** – where the labeled classes and a filter's rejections fall on the sky.
+- **[Similar](#similar-objects)** – a map of objects by their features, and any object's nearest neighbors.
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
 
@@ -211,6 +212,27 @@ and the page follows your changes in the filter lab. Galactic and ecliptic latit
 and draw it on the map. Click a point to open it in the vetter. Like the filter lab, only the uniform random
 sample is shown unless "non-random objects too" is on. Code lives in `dozynki/sky.py`.
 
+## Similar objects
+
+`http://127.0.0.1:8765/similar` (or the "Similar" tab) shows which objects look alike, with no trained model.
+Each object is a vector of the filter lab's features (`rejection.features()`) plus a few light-curve shape
+numbers from the cached ANTARES points (peak flux, rise and fade time, last/peak flux, bands, difference minus
+science magnitude). Features are transformed by hand (log for heavy tails), scaled by median and IQR and clipped
+at 5σ, and never weighted or fit to labels, so "similar" means close in these features, not labeled the same.
+Toggle feature groups in the header; broker scores (reliability, drb, SCIMMA tag) are off by default.
+
+- **Feature map**: the first two principal components (numpy SVD, missing values at the median), colored by
+  class, with the features that make up each axis. Click a point to select it.
+- **Nearest neighbors**: the k closest labeled (or all) objects to the selected one, by the rms scaled
+  difference over the features both have, so an object without Rubin details is compared on what it has. Each
+  tile shows ANTARES's difference and science cutouts, the label, the distance, and the features it differs on
+  most. `/similar?object=<id>` opens with an object selected.
+- **Feature comparison**: the raw feature values of the selected object and its neighbors side by side.
+
+Rubin pipeline measurements and ANTARES catalog matches are missing until fetched ("Fetch them" in the
+filter lab), and neighbors are only as good as the features they share. Like the filter lab, only the uniform
+random sample is used unless "non-random objects too" is on. Code lives in `dozynki/similar.py`.
+
 ## Compare: labels against brokers and each other
 
 ![Confusion matrix between a labeler's blind labels and an ALeRCE classifier](docs/images/compare.png)
@@ -252,6 +274,7 @@ dozynki/
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
   sky.py            sky map data
+  similar.py        feature vectors, PCA map and nearest neighbors (similar-objects page)
   brokers/          antares.py, alerce.py, babamul_client.py
   db.py             SQLite (data/dozynki.sqlite): queue, cache, labels
   export.py         training-set export

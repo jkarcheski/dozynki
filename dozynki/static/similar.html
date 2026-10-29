@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI similar objects</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <link rel="stylesheet" href="/static/sky.css">
+  <link rel="stylesheet" href="/static/similar.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+  <div id="pop" class="stats"></div>
+  <div class="filterbar settings">
+    <span class="muted">Show</span>
+    <span id="show-classes" class="chips"></span>
+    <label title="Objects with no label yet, as small gray dots"><input type="checkbox" id="unlabeled"> unlabeled</label>
+    <span class="muted">· truth</span>
+    <span class="seg" id="truth"><button data-v="blind" class="on">first blind</button><button data-v="final">latest</button></span>
+    <label title="Also use objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+  </div>
+  <div class="filterbar settings">
+    <span class="muted" title="Which features make up the vector. They are scaled (median, IQR) but never weighted or fit to labels.">Features</span>
+    <span id="groups" class="chips"></span>
+  </div>
+</header>
+
+<main class="lab-main">
+  <section class="card wide">
+    <div class="card-head">
+      <h2>Feature map</h2>
+      <span class="find">
+        <input id="find" placeholder="object id" spellcheck="false" list="ids">
+        <datalist id="ids"></datalist>
+        <button id="find-go">Find</button>
+      </span>
+    </div>
+    <div id="map" class="featmap"></div>
+    <div class="hint">The first two principal components of the feature vectors (missing values at the median). Nearby points have similar features;
+      the axes are linear mixes of them, listed below. Click a point to list its nearest neighbors.</div>
+    <div id="axes" class="axes"></div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head">
+      <h2>Nearest neighbors <span id="query-name" class="muted"></span></h2>
+      <span class="nn-controls">
+        <span class="muted">from</span>
+        <span class="seg" id="pool"><button data-v="labeled" class="on">labeled</button><button data-v="all">all objects</button></span>
+        <span class="muted">k</span>
+        <select id="k"><option>4</option><option selected>8</option><option>12</option><option>16</option></select>
+      </span>
+    </div>
+    <div id="tiles" class="tiles"><span class="muted">Click a point on the map, or find an object by id.</span></div>
+    <div class="hint">Distance is the rms difference, in robust standard deviations, over the features both objects have.
+      "Differs on" names the features farthest apart. Cutouts are ANTARES's for the latest LSST detection: difference left, science right.</div>
+  </section>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Feature comparison</h2><span class="hint">raw values; — is missing</span></div>
+    <div class="tablewrap"><table id="compare-table"></table></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/static/similar.js"></script>
+</body>
+</html>

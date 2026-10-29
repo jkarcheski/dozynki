@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, rejection, sky, sources
+from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, rejection, similar, sky, sources
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, pittgoogle
@@ -35,6 +35,7 @@ PAGES = [
     ("/vet", "index.html", "Vetter"),
     ("/rejection", "rejection.html", "Filter lab"),
     ("/sky", "sky.html", "Sky map"),
+    ("/similar", "similar.html", "Similar"),
     ("/compare", "compare.html", "Compare"),
 ]
 OTHER_PAGES = [("/account", "account.html")]  # no tab
@@ -159,6 +160,11 @@ def compare_page(request: Request):
 @app.get("/sky")
 def sky_page(request: Request):
     return _page("/sky", request)
+
+
+@app.get("/similar")
+def similar_page(request: Request):
+    return _page("/similar", request)
 
 
 @app.get("/account")
@@ -784,6 +790,34 @@ def sky_objects(truth: str = "blind", all_sources: bool = False):
     if truth not in ("blind", "final"):
         raise HTTPException(400, "truth must be blind or final")
     return {"objects": sky.objects(truth, all_sources), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
+
+
+def _groups(groups):
+    return [g for g in groups.split(",") if g] if groups else similar.DEFAULT_GROUPS
+
+
+@app.get("/api/similar")
+def similar_map(truth: str = "blind", all_sources: bool = False, groups: str = ""):
+    """Every object's position on the first two principal components of its features, with its truth label."""
+    try:
+        out = similar.projection(truth, all_sources, _groups(groups))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {**out, "groups": similar.GROUPS, "default_groups": similar.DEFAULT_GROUPS, "classes": CLASSES}
+
+
+@app.get("/api/similar/{object_id}")
+def similar_neighbors(object_id: str, k: int = 8, truth: str = "blind", all_sources: bool = False, groups: str = "",
+                      pool: str = "labeled"):
+    """The k objects closest to one in feature space. Nothing is stored."""
+    if pool not in ("labeled", "all"):
+        raise HTTPException(400, "pool must be labeled or all")
+    try:
+        return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except KeyError:
+        raise HTTPException(404, "not in the population (not fetched, or not in the random sample)")
 
 
 @app.post("/api/export")
