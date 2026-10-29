@@ -1,5 +1,5 @@
 # DOZYNKI
-The name DOZYNKI (from the Polish *Dożynki*, pronounced "daw-ZHIN-kee", [dɔˈʐɨŋkʲi]) is inspired by the
+The name DOZYNKI ("daw-ZHIN-kee", [dɔˈʐɨŋkʲi]) is inspired by the
 [Polish/Slavic harvest festival](https://en.wikipedia.org/wiki/Do%C5%BCynki), reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
 
 Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
