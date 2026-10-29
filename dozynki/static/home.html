@@ -20,49 +20,6 @@
 <main class="home">
   <section class="intro">
     <div id="harvest"></div>
-    <h1>LSST alert vetting</h1>
-    <p class="muted">Label a uniform random sample of LSST objects from ANTARES, ALeRCE and Babamul blind first,
-      then see what the brokers say. The labels feed the filter lab, the sky map and the comparisons below.</p>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Progress</h2><span id="blind" class="hint"></span></div>
-    <div id="tiles" class="tiles"></div>
-    <div id="class-bar" class="class-bar"></div>
-    <div id="class-legend" class="legend-row"></div>
-    <div id="err" class="err"></div>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Coverage</h2><span class="hint">LSST objects by the night of their first ANTARES alert · hover a night</span></div>
-    <div id="cv-hero" class="cv-hero"></div>
-    <div id="cv-note" class="cv-note hint"></div>
-    <div id="cv-cal" class="cv-cal"></div>
-    <div id="cv-legend" class="cv-legend"></div>
-    <details class="cv-details"><summary>As a table</summary><div class="tablewrap"><table id="cv-table"></table></div></details>
-    <div id="cv-tip" class="cv-tip" hidden></div>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Farm</h2><span class="hint">unlocked by achievements</span></div>
-    <div id="unlocks" class="shop"></div>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Achievements</h2><span id="ach-count" class="hint"></span>
-      <span class="tns"><span id="tns-at" class="hint"></span>
-        <button id="tns-check" class="small" title="Ask ANTARES's copy of TNS about every object labeled transient: new reports and classifications">Check TNS</button></span></div>
-    <div id="achievements"></div>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Nights</h2><span class="hint">sampled with "Sample night" in the vetter, or filtered whole in filtered mode</span></div>
-    <div class="tablewrap"><table id="nights"></table></div>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Leaderboard</h2><span class="hint">objects labeled, by labeler</span></div>
-    <div class="tablewrap"><table id="leaderboard"></table></div>
   </section>
 
   <section class="pages">
@@ -86,6 +43,41 @@
       <p>Confusion matrices between labelers, blind and revealed passes, and ALeRCE classifiers, with agreement intervals.</p>
       <span class="go">Open →</span>
     </a>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Progress</h2><span id="blind" class="hint"></span></div>
+    <div id="tiles" class="tiles"></div>
+    <div id="class-bar" class="class-bar"></div>
+    <div id="class-legend" class="legend-row"></div>
+    <div id="err" class="err"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Leaderboard</h2><span class="hint">objects labeled, by labeler</span></div>
+    <div class="tablewrap"><table id="leaderboard"></table></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Coverage</h2><span class="hint">LSST objects by the night of their first ANTARES alert · hover a night</span></div>
+    <div id="cv-hero" class="cv-hero"></div>
+    <div id="cv-note" class="cv-note hint"></div>
+    <div id="cv-cal" class="cv-cal"></div>
+    <div id="cv-legend" class="cv-legend"></div>
+    <details class="cv-details"><summary>As a table</summary><div class="tablewrap"><table id="cv-table"></table></div></details>
+    <div id="cv-tip" class="cv-tip" hidden></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Achievements</h2><span id="ach-count" class="hint"></span>
+      <span class="tns"><span id="tns-at" class="hint"></span>
+        <button id="tns-check" class="small" title="Ask ANTARES's copy of TNS about every object labeled transient: new reports and classifications">Check TNS</button></span></div>
+    <div id="achievements"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Farm</h2><span class="hint">unlocked by achievements</span></div>
+    <div id="unlocks" class="shop"></div>
   </section>
 </main>
 <script src="/static/harvest.js"></script>

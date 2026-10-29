@@ -1,7 +1,5 @@
 /* Landing page; lab layout from rejection.css, class colors from sky.css. */
 .home { max-width: 1100px; margin: 0 auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
-.intro h1 { font-size: 20px; margin: 8px 0 4px; }
-.intro p { margin: 0; max-width: 70ch; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 6px 0 12px; }
 .tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
