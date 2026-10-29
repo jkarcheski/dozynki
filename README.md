@@ -1,9 +1,7 @@
 # DOZYNKI
+The name DOZYNKI is inspired by the Polish/Slavic harvest festival, reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
 
-DOZYNKI helps us pull needles from the haystack of LSST and ZTF alerts by bringing transient brokers
-(ANTARES, ALeRCE and Babamul) together in one place. Join the community in filtering out bogus alerts,
-identifying real objects and their hosts, and creating new human labels.
-
+Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
 ![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
 
 - **[Vetter](#vetter-identify-transients-and-create-labels)** – label each object blind from the evidence
@@ -14,13 +12,6 @@ identifying real objects and their hosts, and creating new human labels.
 - **[Sky map](#sky-map)** – where the labeled classes and a filter's rejections fall on the sky.
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
-
-It runs on a laptop for one person, or as a shared server where several people label the same objects
-independently.
-
-The name DOZYNKI is inspired by the Polish harvest festival, reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
-
-Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
 
 ## Setup
 
