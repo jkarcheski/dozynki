@@ -9,7 +9,7 @@ Current pages:
   (light curve, cutouts, field image, an independent crossmatch and host ranking), then see what the brokers
   think. Run it over a random sample or over a whole night, live.
 - **[Filter lab](#filter-lab-filter-out-the-noise)** – build rejection filters by answering plain-language
-  questions, and see what each one would throw away of the objects people have labeled.
+  questions, and see what each one would throw away.
 - **[Sky map](#sky-map)** – where the labeled classes and a filter's rejections fall on the sky.
 - **[Similar](#similar-objects)** – a map of objects by their features, and any object's nearest neighbors.
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
@@ -130,18 +130,7 @@ Label taxonomy, flags and hotkeys live in `dozynki/labels.py`.
 
 ![Building a filter with questions: each answer shows what it would drop, and the decision tree grows beside it](docs/images/filter-lab.webp)
 
-Rejection filters are cuts that *throw objects away*, scored against human labels. Rules live in
-`dozynki/rejection.py`. Each one reads only cached
-payloads and returns reject, keep, or "no data" (kept). A pipeline is an ordered JSON list;
-`cuts.example.json` is the default pipeline with every parameter spelled out, so copy it
-(`cp cuts.example.json cuts.json`) and edit:
-
-```json
-[{"rule": "gaia_star", "max_sep": 1.5}, {"rule": "min_nights", "n": 2}, {"rule": "lsst_reliability", "min_rel": 0.3}]
-```
-
-Rules draw on the light curve, broker scores, and data brokers already store, not on the slow
-independent crossmatch (Galactic and ecliptic latitude come from the position):
+Filter rules come from on the light curve, broker scores, and data brokers already store. Examples include:
 - **Rubin pipeline measurements** of each LSST detection: difference-image extendedness, dipole flag,
   glint-trail flag, PSF-fit χ²/N, size relative to the PSF (too sharp or too large), failed
   measurement flags, SNR and trail length. New fetches keep them (`antares.get_locus` "lsst_details");
