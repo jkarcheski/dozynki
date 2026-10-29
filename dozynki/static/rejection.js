@@ -665,20 +665,22 @@ function stepChip(step) {
 
 function renderSaved() {
   $("#saved").innerHTML = SAVED.length
-    ? `<tr><th>name</th><th>questions, in order</th><th>note</th><th>saved</th><th></th></tr>` + SAVED.map((s, i) => `<tr>
+    ? `<tr><th>name</th><th>questions, in order</th><th>note</th><th>by</th><th>saved</th><th></th></tr>` + SAVED.map((s, i) => `<tr>
         <td><b>${esc(s.name)}</b></td>
         <td class="wrap">${s.config.map(stepChip).join("") || '<span class="hint">none: keeps everything</span>'}</td>
         <td class="wrap hint">${esc(s.note || "")}</td>
+        <td class="hint">${esc(s.owner || "—")}</td>
         <td class="hint">${esc(s.updated_at.slice(0, 16).replace("T", " "))}</td>
         <td><button class="small" data-i="${i}" data-load>Load</button>
-          <button class="small" data-i="${i}" data-del title="Delete">✕</button></td></tr>`).join("")
+          ${s.mine ? `<button class="small" data-i="${i}" data-del title="Delete">✕</button>` : ""}</td></tr>`).join("")
     : `<tr><td class="hint wrap">Nothing saved yet. Save a pipeline from its card, or build one with questions.</td></tr>`;
   $("#saved").querySelectorAll("button[data-load]").forEach((b) => (b.onclick = () => loadSavedFilter(SAVED[+b.dataset.i])));
   $("#saved").querySelectorAll("button[data-del]").forEach((b) => (b.onclick = async () => {
     const s = SAVED[+b.dataset.i];
     if (!confirm(`Delete saved filter "${s.name}"?`)) return;
     try {
-      await fetch(`/api/rejection/saved/${encodeURIComponent(s.name)}`, { method: "DELETE" });
+      const r = await fetch(`/api/rejection/saved/${encodeURIComponent(s.name)}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(`${r.status}: ${(await r.text()).slice(0, 300)}`);
       if (state.name === s.name) state.name = null;
       saveState();
       await loadSaved();
@@ -696,7 +698,9 @@ function loadSavedFilter(saved) {
 }
 
 async function savePipeline(name, pipeline, note) {
-  if (SAVED.some((s) => s.name === name) && !confirm(`Overwrite saved filter "${name}"?`)) return false;
+  const same = SAVED.find((s) => s.name === name);
+  if (same && !same.mine) throw new Error(`"${name}" is ${same.owner}'s filter; save yours under another name`);
+  if (same && !confirm(`Overwrite saved filter "${name}"?`)) return false;
   await api("/api/rejection/saved", { name, pipeline, note });
   await loadSaved();
   toast(`Saved "${name}"`);

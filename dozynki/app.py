@@ -121,7 +121,8 @@ def _nav(active, request):
                if request.state.user else
                f'<a href="/account" class="who{" on" if active == "/account" else ""}" '
                'title="You are vetting as a guest. Make a profile to be on the leaderboard and share filters.">guest · sign in</a>')
-    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}{who}</nav>'
+    # the profile link sits outside the tab bar, so CSS can pin it to the header's right-hand end
+    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>{who}'
 
 
 def _page(path, request):
@@ -726,12 +727,24 @@ class SavedPipeline(BaseModel):
 
 
 @app.get("/api/rejection/saved")
-def saved_pipelines():
-    return db.saved_pipelines()
+def saved_pipelines(request: Request):
+    """Every saved filter, whoever saved it (anyone may use one); mine: this request may overwrite or delete it."""
+    who = _who(request)
+    return [p | {"mine": p["owner"] in (None, who)} for p in db.saved_pipelines()]
+
+
+def _may_edit_filter(request, name):
+    """Saving needs a profile when profiles are on, and only a filter's owner may change it."""
+    if ACCOUNTS and not request.state.user:
+        raise HTTPException(403, "sign in to save filters: they're kept under your profile")
+    exists, owner = db.saved_pipeline_owner(name)
+    if owner not in (None, _who(request)):
+        raise HTTPException(403, f'"{name}" is {owner}\'s filter; save yours under another name')
+    return exists
 
 
 @app.post("/api/rejection/saved")
-def save_pipeline(body: SavedPipeline):
+def save_pipeline(body: SavedPipeline, request: Request):
     """Store a named pipeline (overwrites one of the same name). Only enabled steps, in order."""
     name = body.name.strip()
     if not name or len(name) > 80:
@@ -740,13 +753,14 @@ def save_pipeline(body: SavedPipeline):
         rejection.resolve(body.pipeline)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, f"bad pipeline: {e}")
-    db.put_saved_pipeline(name, body.pipeline, (body.note or "").strip() or None)
+    _may_edit_filter(request, name)
+    db.put_saved_pipeline(name, body.pipeline, (body.note or "").strip() or None, _who(request))
     return {"ok": True, "name": name}
 
 
 @app.delete("/api/rejection/saved/{name}")
-def delete_saved_pipeline(name: str):
-    if not db.delete_saved_pipeline(name):
+def delete_saved_pipeline(name: str, request: Request):
+    if not _may_edit_filter(request, name) or not db.delete_saved_pipeline(name):
         raise HTTPException(404, "no saved pipeline by that name")
     return {"ok": True}
 

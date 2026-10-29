@@ -157,6 +157,8 @@ MIGRATIONS = {
               "screen": "TEXT", "screen_result": "TEXT"},
     # night batches: the random order (seed), where this batch starts in it, and the night's size then
     "night_pulls": {"seed": "INTEGER", "start": "INTEGER", "n_matching": "INTEGER"},
+    # labeler who saved the filter, the only one who may overwrite or delete it; NULL for filters from before
+    "saved_pipelines": {"owner": "TEXT"},
 }
 for _table, _cols in MIGRATIONS.items():
     _have = {r["name"] for r in _conn.execute(f"PRAGMA table_info({_table})")}
@@ -347,12 +349,19 @@ def get_saved_pipeline(name):
     return json.loads(rows[0]["config"]) if rows else None
 
 
-def put_saved_pipeline(name, config, note=None):
-    """Create or overwrite by name; overwriting keeps created_at."""
+def saved_pipeline_owner(name):
+    """(exists, owner) for a saved filter; owner is None for one saved before filters had owners."""
+    rows = query("SELECT owner FROM saved_pipelines WHERE name = ?", (name,))
+    return (True, rows[0]["owner"]) if rows else (False, None)
+
+
+def put_saved_pipeline(name, config, note=None, owner=None):
+    """Create or overwrite by name; overwriting keeps created_at, and the owner unless there was none."""
     t = now()
-    execute("INSERT INTO saved_pipelines (name, config, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(name) DO UPDATE SET config = excluded.config, note = excluded.note, updated_at = excluded.updated_at",
-            (name, json.dumps(config), note, t, t))
+    execute("INSERT INTO saved_pipelines (name, config, note, created_at, updated_at, owner) VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET config = excluded.config, note = excluded.note, updated_at = excluded.updated_at, "
+            "owner = COALESCE(saved_pipelines.owner, excluded.owner)",
+            (name, json.dumps(config), note, t, t, owner))
 
 
 def delete_saved_pipeline(name):

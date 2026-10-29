@@ -103,8 +103,6 @@ async function init() {
   const q = s.queue;
   pending = q.pending || 0;
   renderFarm(farm);
-  if (cfg.accounts && !cfg.signed_in) $("#labeler").innerHTML = `labeling as a <b>guest</b> · <a href="/account">make a profile</a> to be on the leaderboard`;
-  else if (cfg.labeler) $("#labeler").innerHTML = `labeling as <b>${esc(cfg.labeler)}</b>`;
   $("#blind").textContent = cfg.blind ? "blind mode on" : "blind mode off";
 
   const tiles = [
