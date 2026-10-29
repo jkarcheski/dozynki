@@ -1,11 +1,10 @@
 # DOZYNKI
+The name DOZYNKI (from the Polish *Dożynki*, pronounced "daw-ZHIN-kee", [dɔˈʐɨŋkʲi]) is inspired by the
+[Polish/Slavic harvest festival](https://en.wikipedia.org/wiki/Do%C5%BCynki), reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
 
-DOZYNKI helps us pull needles from the haystack of LSST and ZTF alerts by bringing transient brokers
-(ANTARES, ALeRCE and Babamul) together in one place. Join the community in filtering out bogus alerts,
-identifying real objects and their hosts, and creating new human labels.
+Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
 
-![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
-
+Current pages:
 - **[Vetter](#vetter-identify-transients-and-create-labels)** – label each object blind from the evidence
   (light curve, cutouts, field image, an independent crossmatch and host ranking), then see what the brokers
   think. Run it over a random sample or over a whole night, live.
@@ -15,13 +14,7 @@ identifying real objects and their hosts, and creating new human labels.
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
 
-It runs on a laptop for one person, or as a shared server where several people label the same objects
-independently.
 
-The name DOZYNKI (from the Polish *Dożynki*, pronounced "daw-ZHIN-kee", [dɔˈʐɨŋkʲi]) is inspired by the
-[Polish harvest festival](https://en.wikipedia.org/wiki/Do%C5%BCynki), reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
-
-Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
 
 ## Setup
 
@@ -31,8 +24,9 @@ python3 -m venv .venv
 cp .env.example .env    # add Babamul token (optional) and your labeler name
 .venv/bin/python -m dozynki   # http://127.0.0.1:8765 (landing page; vetter at /vet)
 ```
-
 ## Vetter: identify transients and create labels
+
+![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
 
 1. **Sample** – "Sample random LSST" draws a uniform random set of ANTARES loci
    that have an LSST diaObject (Elasticsearch `random_score`). The seed and
