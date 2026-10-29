@@ -263,5 +263,4 @@ dozynki/
 ## AI disclosure
 
 Much of DOZYNKI's code was written with Claude (Anthropic) through Claude Code, working from my design and
-direction. I review and test what goes in, and the science choices (what to show, how to label, what makes a
-good filter) are mine. All bugs and breaks are mine too.
+direction. I carefully and manually review and test everything that goes in. All bugs and breaks are my own.
