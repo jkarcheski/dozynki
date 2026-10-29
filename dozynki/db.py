@@ -120,6 +120,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at  TEXT NOT NULL,
     expires_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS night_sizes (
+    night       TEXT PRIMARY KEY,      -- Rubin dayObs, YYYY-MM-DD
+    n_objects   INTEGER NOT NULL,      -- LSST objects whose first ANTARES alert came that night (coverage.py)
+    counted_at  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS password_resets (
     token_hash  TEXT PRIMARY KEY,      -- sha256 of the emailed token
     user_id     INTEGER NOT NULL,

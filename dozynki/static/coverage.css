@@ -1,0 +1,34 @@
+/* Landing page Coverage card (coverage.js): one circle per night, shaded by the share vetted. */
+:root { --cv-0: color-mix(in srgb, var(--accent) 28%, var(--card)); --cv-1: color-mix(in srgb, var(--accent) 50%, var(--card));
+  --cv-2: color-mix(in srgb, var(--accent) 72%, var(--card)); --cv-3: color-mix(in srgb, var(--accent) 88%, var(--ink)); --cv-4: var(--accent); }
+.cv-hero { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 2px; }
+.cv-hero b { font-size: 28px; font-variant-numeric: tabular-nums; }
+.cv-hero span { color: var(--muted); }
+.cv-hero strong { color: var(--ink); font-weight: 600; }
+.cv-note { min-height: 16px; margin-bottom: 8px; }
+.cv-cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 18px; }
+.cv-mhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
+.cv-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; justify-items: center; }
+.cv-grid em { font-style: normal; font-size: 10px; color: var(--muted); }
+.cv-dot { position: relative; display: inline-block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 45%, var(--line)); background: transparent; cursor: default; }
+.cv-dot.s0 { background: var(--cv-0); border-color: var(--cv-0); }
+.cv-dot.s1 { background: var(--cv-1); border-color: var(--cv-1); }
+.cv-dot.s2 { background: var(--cv-2); border-color: var(--cv-2); }
+.cv-dot.s3 { background: var(--cv-3); border-color: var(--cv-3); }
+.cv-dot.s4 { background: var(--cv-4); border-color: var(--cv-4); }
+/* you vetted some of this night: a small dot in the middle, ringed so it shows on any shade */
+.cv-dot.mine::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 1px var(--card); }
+.cv-dot.empty { width: 4px; height: 4px; margin: 5px; border: 0; background: var(--line); }
+.cv-dot.uncounted { border-style: dashed; border-color: var(--muted); }
+.cv-dot:hover { outline: 2px solid var(--ink); outline-offset: 1px; }
+.cv-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.cv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cv-legend .cv-dot { width: 11px; height: 11px; }
+.cv-legend .cv-dot.empty { width: 4px; height: 4px; margin: 3px; }
+.cv-tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--card); font-size: 12px;
+  padding: 4px 8px; border-radius: 6px; max-width: 320px; }
+.cv-details { margin-top: 10px; font-size: 12px; }
+.cv-details summary { cursor: pointer; color: var(--muted); }
+.cv-details .tablewrap { max-height: 260px; overflow: auto; }

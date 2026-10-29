@@ -63,6 +63,16 @@ card shows each night's progress: sampled and vetted of the night's size, and wh
 with earlier ZTF alerts are not part of a later night. Night samples are left out of the filter lab and
 compare pages' default population, which is the uniform random sample.
 
+**Coverage.** The landing page's Coverage card shows the share of LSST objects vetted, by everyone and by you,
+overall and per Rubin night in a calendar (one circle per night, shaded on a log scale; a dot in the middle marks
+nights you vetted some of; hover for counts, or open the table). A night's objects are those whose first ANTARES
+alert came on it, as "Sample night" counts them; a vetted object counts toward the night of its `queue.first_mjd`,
+the same ANTARES field (the light curve's earliest point can be weeks off it). Night sizes are counted past ANTARES's
+10,000 cap in RA slices by a background thread (`coverage.py`, table `night_sizes`), newest first, and recounted
+until two days after the night. The first load of a fresh install counts every night, which takes a while; the card
+fills in as it goes. Objects whose first ANTARES alert is a ZTF one belong to no LSST night, in either count, and
+ANTARES currently lists no LSST object first alerting after mid-July 2026, so later nights show as empty.
+
 **Random and Filtered modes.** The vetter's mode switch picks what you see. *Random* is everything sampled,
 as drawn. *Filtered* runs a whole night through a saved filter from the filter lab ("Filter whole night"),
 like ANTARES's per-night filter counts, so on a live night you vet only what passes and never sample more.

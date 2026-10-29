@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, accounts, achievements, assemble, compare, db, details, evaluate, export, farm, rejection, sky, sources
+from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, rejection, sky, sources
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, pittgoogle
@@ -620,6 +620,12 @@ def stats(request: Request):
 @app.get("/api/leaderboard")
 def leaderboard(days: int = 7):
     return {"days": days, "labelers": db.leaderboard(days)}
+
+
+@app.get("/api/coverage")
+def get_coverage(request: Request):
+    """Per night: LSST objects first alerting then (counted in the background) and how many are vetted."""
+    return coverage.summary(_who(request))
 
 
 @app.get("/api/achievements")
