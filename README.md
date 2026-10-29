@@ -2,8 +2,8 @@
 The name DOZYNKI is inspired by the Polish/Slavic harvest festival, reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy: building a unified, flexible framework capable of efficiently searching immense datasets to identify rare and scientifically valuable transients.
 
 Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
-![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
 
+Current pages:
 - **[Vetter](#vetter-identify-transients-and-create-labels)** – label each object blind from the evidence
   (light curve, cutouts, field image, an independent crossmatch and host ranking), then see what the brokers
   think. Run it over a random sample or over a whole night, live.
@@ -13,6 +13,8 @@ Created and currently managed by UCSC PhD student Jenna Karcheski. Please contac
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
 
+![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
+
 ## Setup
 
 ```bash
@@ -21,7 +23,6 @@ python3 -m venv .venv
 cp .env.example .env    # add Babamul token (optional) and your labeler name
 .venv/bin/python -m dozynki   # http://127.0.0.1:8765 (landing page; vetter at /vet)
 ```
-Current pages:
 ## Vetter: identify transients and create labels
 
 1. **Sample** – "Sample random LSST" draws a uniform random set of ANTARES loci
