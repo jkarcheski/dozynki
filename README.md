@@ -21,7 +21,7 @@ python3 -m venv .venv
 cp .env.example .env    # add Babamul token (optional) and your labeler name
 .venv/bin/python -m dozynki   # http://127.0.0.1:8765 (landing page; vetter at /vet)
 ```
-
+Current pages:
 ## Vetter: identify transients and create labels
 
 1. **Sample** – "Sample random LSST" draws a uniform random set of ANTARES loci
