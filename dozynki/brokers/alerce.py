@@ -17,6 +17,19 @@ def _group(rows):
     return out
 
 
+def lsst_cone(ra, dec, radius_arcsec):
+    """LSST diaObjects within radius_arcsec, as [(dia_object_id, meanra, meandec)]. Only positions are kept:
+    ALeRCE's rows also carry a class, which is broker opinion."""
+    rows = _client.query_objects(survey="lsst", ra=ra, dec=dec, radius=radius_arcsec, format="json", page_size=100)
+    return list({str(r["oid"]): (str(r["oid"]), r["meanra"], r["meandec"]) for r in rows or []}.values())
+
+
+def lsst_position(dia_object_id):
+    """(meanra, meandec) of an LSST diaObject ALeRCE has processed."""
+    o = _client.query_object(survey="lsst", oid=int(dia_object_id), format="json")
+    return o["meanra"], o["meandec"]
+
+
 def fetch(dia_object_id, ztf_object_id=None):
     result = {"lsst": None, "ztf": None, "errors": {}}
     try:

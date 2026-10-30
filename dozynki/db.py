@@ -125,6 +125,22 @@ CREATE TABLE IF NOT EXISTS night_sizes (
     n_objects   INTEGER NOT NULL,      -- LSST objects whose first ANTARES alert came that night (coverage.py)
     counted_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS object_lists (
+    name        TEXT PRIMARY KEY,      -- chosen when the list is loaded (lists.py)
+    owner       TEXT,                  -- labeler who loaded it, the only one who may add to or delete it
+    note        TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS list_members (
+    list        TEXT NOT NULL,
+    object_id   TEXT NOT NULL,         -- LSST diaObjectId, also in queue
+    entry       TEXT NOT NULL,         -- the line it came from, as given
+    kind        TEXT NOT NULL,         -- how it was resolved: dia_object | lsst_alert | ztf_alert | locus | coords
+    sep_arcsec  REAL,                  -- coordinates (and ZTF alerts): distance to the object found
+    added_at    TEXT NOT NULL,
+    PRIMARY KEY (list, object_id)
+);
 CREATE TABLE IF NOT EXISTS password_resets (
     token_hash  TEXT PRIMARY KEY,      -- sha256 of the emailed token
     user_id     INTEGER NOT NULL,
@@ -264,20 +280,25 @@ def _not_done(labeler):
     return "NOT EXISTS (SELECT 1 FROM queue_status s WHERE s.object_id = queue.object_id AND s.labeler = ?)", (labeler,)
 
 
-def next_pending(labeler, limit=1, exclude=(), where="", params=()):
+# List mode vets every object on the list, including ones a filtered-mode run is screening or threw away.
+READY = "status = 'pending'"
+ANY_STATUS = "status IN ('pending', 'screening', 'filtered')"
+
+
+def next_pending(labeler, limit=1, exclude=(), where="", params=(), ready=READY):
     done, done_params = _not_done(labeler)
     marks = ",".join("?" * len(exclude))
     extra = f"AND object_id NOT IN ({marks})" if exclude else ""
     extra += f" AND {where}" if where else ""
     return query(
-        f"SELECT * FROM queue WHERE status = 'pending' AND {done} {extra} ORDER BY added_at, rowid LIMIT ?",
+        f"SELECT * FROM queue WHERE {ready} AND {done} {extra} ORDER BY added_at, rowid LIMIT ?",
         (*done_params, *exclude, *params, limit),
     )
 
 
-def count_pending(labeler, where="", params=()):
+def count_pending(labeler, where="", params=(), ready=READY):
     done, done_params = _not_done(labeler)
-    return query(f"SELECT COUNT(*) n FROM queue WHERE status = 'pending' AND {done}{' AND ' + where if where else ''}",
+    return query(f"SELECT COUNT(*) n FROM queue WHERE {ready} AND {done}{' AND ' + where if where else ''}",
                  (*done_params, *params))[0]["n"]
 
 
@@ -366,6 +387,54 @@ def put_saved_pipeline(name, config, note=None, owner=None):
 
 def delete_saved_pipeline(name):
     return execute("DELETE FROM saved_pipelines WHERE name = ?", (name,)).rowcount
+
+
+def object_lists():
+    """Every object list with its size, newest first."""
+    return query("SELECT l.*, (SELECT COUNT(*) FROM list_members m WHERE m.list = l.name) n "
+                 "FROM object_lists l ORDER BY updated_at DESC")
+
+
+def object_list_owner(name):
+    """(exists, owner) for an object list."""
+    rows = query("SELECT owner FROM object_lists WHERE name = ?", (name,))
+    return (True, rows[0]["owner"]) if rows else (False, None)
+
+
+def add_list_members(name, owner, note, members):
+    """Create the list if new, and add (queue_row, entry, kind, sep_arcsec) members, queue_row being
+    (object_id, antares_locus, ra, dec, source, source_params, summary). Objects already queued keep
+    their queue row (source, mode, status), so loading a list never moves an object out of another mode.
+    Returns how many objects were new to the list and how many new to the queue."""
+    t = now()
+    with _lock:
+        _conn.execute("INSERT INTO object_lists (name, owner, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?) "
+                      "ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at, note = COALESCE(excluded.note, note)",
+                      (name, owner, note, t, t))
+        before = _conn.total_changes
+        _conn.executemany(
+            "INSERT OR IGNORE INTO queue (object_id, antares_locus, ra, dec, source, source_params, added_at, "
+            "n_det, first_mjd, last_mjd, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+            [(str(oid), locus, ra, dec, source, json.dumps(params), t, sm.get("n_det"), sm.get("first_mjd"), sm.get("last_mjd"))
+             for (oid, locus, ra, dec, source, params, sm), *_ in members])
+        queued = _conn.total_changes - before
+        before = _conn.total_changes
+        _conn.executemany("INSERT OR IGNORE INTO list_members (list, object_id, entry, kind, sep_arcsec, added_at) "
+                          "VALUES (?, ?, ?, ?, ?, ?)",
+                          [(name, str(row[0]), entry, kind, sep, t) for row, entry, kind, sep in members])
+        added = _conn.total_changes - before
+        _conn.commit()
+    return added, queued
+
+
+def list_object_ids(name):
+    return {r["object_id"] for r in query("SELECT object_id FROM list_members WHERE list = ?", (name,))}
+
+
+def delete_object_list(name):
+    """The list and its membership; its objects stay queued, with any labels."""
+    execute("DELETE FROM list_members WHERE list = ?", (name,))
+    return execute("DELETE FROM object_lists WHERE name = ?", (name,)).rowcount
 
 
 def save_rejections(object_id, version, decisions):

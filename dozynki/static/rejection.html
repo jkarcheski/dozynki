@@ -18,7 +18,7 @@
     <label title="Also count an object as target when one of its 'could also be' classes is"><input type="checkbox" id="include-alt"> incl. could-also-be</label>
     <span class="muted">· truth</span>
     <span class="seg" id="truth"><button data-v="blind" class="on">first blind</button><button data-v="final">latest</button></span>
-    <label title="Also score objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+    <label>objects <select id="population" aria-label="Which objects"></select></label>
   </div>
 </header>
 
@@ -73,6 +73,7 @@
 
 </main>
 <div id="toast"></div>
+<script src="/static/population.js"></script>
 <script src="/static/rejection.js"></script>
 </body>
 </html>

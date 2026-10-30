@@ -7,7 +7,7 @@ Created and currently managed by UCSC PhD student Jenna Karcheski. Please contac
 Current pages:
 - **[Vetter](#vetter-identify-transients-and-create-labels)** – label each object blind from the evidence
   (light curve, cutouts, field image, an independent crossmatch and host ranking), then see what the brokers
-  think. Run it over a random sample or over a whole night, live.
+  think. Run it over a random sample, over a whole night, live, or over a list of objects you load.
 - **[Filter lab](#filter-lab-filter-out-the-noise)** – build rejection filters by answering plain-language
   questions, and see what each one would throw away of the objects people have labeled.
 - **[Sky map](#sky-map)** – where the labeled classes and a filter's rejections fall on the sky.
@@ -99,6 +99,19 @@ separate queues, so neither takes the other's objects; a random-mode sample that
 threw away takes it back into random mode, so Random stays random. The Nights card lists filtered nights
 with their pass counts.
 
+**Object lists.** "Load list" takes any objects, pasted or from a CSV/text file, one per line: an ANTARES alert
+ID (`lsst:<diaSourceId>`, or `ztf_candidate:<candid>`), an LSST diaObjectId or bare diaSourceId, an ANTARES locus,
+or RA and Dec (degrees or sexagesimal). Columns after the object are ignored. Coordinates and ZTF alerts take the
+nearest LSST diaObject within the radius (1″ by default) from ALeRCE's cone search, since ANTARES v2's
+`sky_distance` query currently fails on its side; when ANTARES's locus search is failing, an object's position comes
+from ALeRCE and its locus is looked up when it is opened. Lines that can't be resolved are listed with the reason,
+as are positions with more than one object in the radius and lines naming the same object. The *List* mode vets one
+list's objects, including ones a filtered-mode run threw away, and the filter lab, sky map, similar and compare
+pages can use a list as their population ("objects" picker). Lists are named and shared like saved filters
+(tables `object_lists` and `list_members`, code in `lists.py`); objects new to the queue get source `object_list`,
+and objects already queued keep their source and mode. Adding to a list you loaded keeps what is on it; deleting a
+list keeps its objects and labels.
+
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
 *star*, or *AGN* that could be a nuclear *transient*. `is_real`/`is_transient` follow the
@@ -189,8 +202,9 @@ Evaluating stores nothing in the database. Your other settings are remembered in
 
 - **Truth** is each object's first blind label (`--truth final` for the latest label of any phase).
   Rules marked `broker` read reliability or ALeRCE output, which revealed labels may have seen.
-- **Population** is the uniform random sample only (`--all-sources` to include everything),
-  so the rates estimate the LSST stream within the recorded sampling filters. `unsure` is excluded.
+- **Population** is the uniform random sample only (`--all-sources` to include everything, `--list <name>`
+  for one object list), so the rates estimate the LSST stream within the recorded sampling filters. `unsure` is excluded.
+  The pages' "objects" picker chooses the same: random sample, everything queued, or an object list.
 - **Metrics** (Wilson 95% intervals): completeness (target kept / target), purity (target
   kept / kept), false-positive rate (non-target kept / non-target), bogus leak (bogus kept /
   bogus), against a no-filter baseline. The target is `transient` by default, or `real`.
@@ -210,7 +224,7 @@ equatorial, Galactic or ecliptic coordinates, colored by class (first blind or l
 current pipeline can be overlaid, fading what it rejects or coloring each object by the step that rejects it,
 and the page follows your changes in the filter lab. Galactic and ecliptic latitude sliders try a latitude cut
 and draw it on the map. Click a point to open it in the vetter. Like the filter lab, only the uniform random
-sample is shown unless "non-random objects too" is on. Code lives in `dozynki/sky.py`.
+sample is shown unless the "objects" picker says otherwise (everything queued, or an object list). Code lives in `dozynki/sky.py`.
 
 ## Similar objects
 
@@ -231,7 +245,7 @@ Toggle feature groups in the header; broker scores (reliability, drb, SCIMMA tag
 
 Rubin pipeline measurements and ANTARES catalog matches are missing until fetched ("Fetch them" in the
 filter lab), and neighbors are only as good as the features they share. Like the filter lab, only the uniform
-random sample is used unless "non-random objects too" is on. Code lives in `dozynki/similar.py`.
+random sample is used unless the "objects" picker says otherwise (everything queued, or an object list). Code lives in `dozynki/similar.py`.
 
 ## Compare: labels against brokers and each other
 
@@ -250,7 +264,7 @@ classifier found in the cache (top class). Nothing is stored. Code lives in `doz
 - A table scores every source against the reference. Click a matrix cell to list its objects,
   most confident broker calls first, with links into the vetter.
 - Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
-- Like the filter lab, only the uniform random sample is used unless "non-random objects too" is on.
+- Like the filter lab, only the uniform random sample is used unless the "objects" picker says otherwise (everything queued, or an object list).
 
 ## Export
 
@@ -270,6 +284,7 @@ dozynki/
   compare.py        confusion matrices between label sources (labelers, ALeRCE)
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
+  lists.py          object lists: resolve alert IDs, diaObjectIds, loci and coordinates to LSST objects
   crossmatch.py     independent catalog crossmatch + DLR
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
@@ -284,7 +299,7 @@ dozynki/
 
 ## Planned
 
-- Babamul Kafka topics and CSV object lists as queue sources
+- Babamul Kafka topics as a queue source
 - ALeRCE LSST forced photometry in the light curve
 - Anomaly scoring stage for objects labeled real transients
 

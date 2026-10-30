@@ -39,7 +39,7 @@ function fmt(v) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null };
+  return { truth: "blind", all_sources: false, object_list: "", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null };
 }
 
 function loadState() {
@@ -54,7 +54,8 @@ function saveState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* not essential */ }
 }
 
-const query = () => `truth=${state.truth}&all_sources=${state.all_sources}&groups=${(state.groups || []).join(",")}`;
+const query = () => new URLSearchParams({ truth: state.truth, all_sources: state.all_sources, object_list: state.object_list || "",
+  groups: (state.groups || []).join(",") }).toString();
 
 // ---------- rendering ----------
 
@@ -82,7 +83,7 @@ function renderChips() {
     render();
   });
   const n = DATA.objects.length, nl = DATA.objects.filter((o) => o.klass).length;
-  $("#pop").innerHTML = `<b>${n}</b> objects with cached data ${state.all_sources ? "in the queue" : "in the random sample"}, <b>${nl}</b> labeled`
+  $("#pop").innerHTML = `<b>${n}</b> objects with cached data ${esc(Population.phrase(state))}, <b>${nl}</b> labeled`
     + ` · <b>${DATA.columns.length}</b> features`;
   $("#unlabeled").nextSibling.textContent = ` unlabeled (${n - nl})`;
 
@@ -247,8 +248,7 @@ async function init() {
   bindSeg("#pool", () => state.pool, (v) => { state.pool = v; select(state.selected); });
   $("#k").value = String(state.k);
   $("#k").onchange = (e) => { state.k = +e.target.value; select(state.selected); };
-  $("#all-sources").checked = state.all_sources;
-  $("#all-sources").onchange = (e) => { state.all_sources = e.target.checked; load(); };
+  Population.mount($("#population"), state, (p) => { Object.assign(state, p); load(); });
   $("#unlabeled").checked = state.unlabeled;
   $("#unlabeled").onchange = (e) => { state.unlabeled = e.target.checked; render(); };
   const find = () => select($("#find").value.trim());

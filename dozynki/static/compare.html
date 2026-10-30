@@ -24,7 +24,7 @@
     <span class="seg" id="norm"><button data-v="row">% of row</button><button data-v="col">% of column</button><button data-v="count">count</button></span>
     <label title="Leave out objects whose ALeRCE top class has a lower probability than this">ALeRCE top p ≥ <input id="min-prob" type="number" min="0" max="1" step="0.05"></label>
     <label title="Count a match with one of the 'could also be' classes as agreement (second accuracy row)"><input type="checkbox" id="include-alt"> incl. could-also-be</label>
-    <label title="Also compare objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+    <label>objects <select id="population" aria-label="Which objects"></select></label>
   </div>
 </header>
 
@@ -53,6 +53,7 @@
   </section>
 </main>
 <div id="toast"></div>
+<script src="/static/population.js"></script>
 <script src="/static/compare.js"></script>
 </body>
 </html>

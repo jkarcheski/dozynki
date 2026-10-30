@@ -62,7 +62,11 @@ async function init() {
   $("#fill").onclick = fillQueue;
   $("#pull-night").onclick = pullNight;
   $("#run-night").onclick = runNight;
-  $("#add-ids").onclick = addIds;
+  $("#load-list").onclick = openListDialog;
+  $("#list-submit").onclick = loadList;
+  $("#list-file").onchange = readListFile;
+  $("#list-delete").onclick = deleteList;
+  $("#list-name").onkeydown = (e) => { if (e.key === "Enter") e.preventDefault(); };  // not the dialog's submit
   $("#watch-recheck").onclick = recheckWatchlist;
   $("#xmatch-fill").onclick = fillMissingXmatch;
   $("#export").onclick = doExport;
@@ -150,6 +154,7 @@ function renderForm() {
 }
 
 function onKey(e) {
+  if ($("#list-dialog").open) return;
   if (e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") {
     if (e.key === "Enter" && e.target.id === "notes") commit();
@@ -184,12 +189,14 @@ async function refreshStats() {
   if (r.n_screening) watchScreening();
 }
 
-// ---------- mode: random, or filtered (samples screened with a saved filter first) ----------
+// ---------- mode: random, filtered (samples screened with a saved filter first), or one object list ----------
 
 const MODE_KEY = "dozynki.mode";
-let mode = { mode: "random", filter: "" };
+let mode = { mode: "random", filter: "", list: "" };
+let LISTS = [];
 
 const screenName = () => (mode.mode === "filtered" && mode.filter) || "";
+const listName = () => (mode.mode === "list" && mode.list) || "";
 
 async function initMode() {
   try { mode = { ...mode, ...JSON.parse(localStorage.getItem(MODE_KEY) || "{}") }; } catch {}
@@ -205,11 +212,23 @@ async function initMode() {
   if (!saved.length) filteredBtn.title = "Save a filter in the filter lab first";
   document.querySelectorAll("#mode button").forEach((b) => (b.onclick = () => setMode({ mode: b.dataset.v })));
   sel.onchange = () => setMode({ filter: sel.value });
+  await refreshLists();
+  if (mode.mode === "list" && !mode.list) mode.mode = "random";
+  $("#mode-list").onchange = (e) => setMode({ list: e.target.value });
   renderMode();
+}
+
+async function refreshLists() {
+  try { LISTS = await api("/api/lists"); } catch { LISTS = []; }
+  if (!LISTS.some((l) => l.name === mode.list)) mode.list = LISTS[0]?.name || "";
+  $("#mode-list").innerHTML = LISTS.map((l) => `<option value="${esc(l.name)}">${esc(l.name)} (${l.n})</option>`).join("");
+  $("#mode-list").value = mode.list;
+  $("#list-names").innerHTML = LISTS.filter((l) => l.mine).map((l) => `<option value="${esc(l.name)}">`).join("");
 }
 
 function setMode(change) {
   mode = { ...mode, ...change };
+  if (mode.mode === "list" && !mode.list) { mode.mode = "random"; openListDialog(); }
   try { localStorage.setItem(MODE_KEY, JSON.stringify(mode)); } catch {}
   renderMode();
   refreshStats();
@@ -220,12 +239,15 @@ function setMode(change) {
 }
 
 function renderMode() {
-  Harvest.useStack(screenName());
+  Harvest.useStack(listName() ? `list:${listName()}` : screenName());
   document.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.v === mode.mode));
   $("#mode-filter").hidden = mode.mode !== "filtered";
+  $("#mode-list").hidden = mode.mode !== "list";
+  $("#list-delete").disabled = !LISTS.find((l) => l.name === listName())?.mine;
   $(".filterbar").hidden = mode.mode !== "filtered";
   document.body.classList.toggle("filtered-mode", mode.mode === "filtered");
-  if (mode.mode !== "filtered") $("#mode-status").textContent = "";
+  document.body.classList.toggle("list-mode", mode.mode === "list");
+  if (mode.mode === "random") $("#mode-status").textContent = "";
   $("#mode-status").hidden = false;
   $("#run-status").textContent = "";
   watchRuns();
@@ -311,6 +333,7 @@ function watchScreening() {
 
 // counts from /api/next or /api/queue/matching for the filtered mode's queue
 function renderModeStatus(r) {
+  if (mode.mode === "list") $("#mode-status").textContent = `${r.n_pending} of ${r.n_list ?? 0} left to vet`;
   if (mode.mode !== "filtered") return;
   $("#mode-status").textContent = (r.n_screening ? `screening ${r.n_screening} · ` : "") + `filtered out ${r.n_filtered ?? 0}`;
 }
@@ -333,7 +356,7 @@ function getFilters() {
   };
 }
 
-const filterQuery = () => new URLSearchParams({ ...getFilters(), screen: screenName() }).toString();
+const filterQuery = () => new URLSearchParams({ ...getFilters(), screen: screenName(), object_list: listName() }).toString();
 const filtersActive = (f = getFilters()) => f.min_det > 1 || f.date_from || f.date_to;
 
 function initFilters() {
@@ -407,13 +430,60 @@ async function pullNight() {
   }
 }
 
-async function addIds() {
-  const s = prompt("LSST diaObjectIds (comma or space separated):");
-  if (!s) return;
-  const ids = s.split(/[\s,]+/).filter(Boolean);
-  const r = await api("/api/queue/add", { method: "POST", body: { object_ids: ids } });
-  toast(`Added ${r.added}` + (r.not_in_antares.length ? `; not found in ANTARES: ${r.not_in_antares.join(", ")}` : ""), 5000);
-  refreshStats();
+// ---------- object lists: any objects, by alert ID, diaObjectId, ANTARES locus or position (lists.py) ----------
+
+function openListDialog() {
+  $("#list-result").innerHTML = "";
+  if (!$("#list-name").value) $("#list-name").value = listName() && LISTS.find((l) => l.name === listName())?.mine ? listName() : "";
+  $("#list-dialog").showModal();
+  ($("#list-name").value ? $("#list-text") : $("#list-name")).focus();
+}
+
+async function readListFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  $("#list-text").value = await file.text();
+  if (!$("#list-name").value) $("#list-name").value = file.name.replace(/\.[^.]+$/, "");
+}
+
+async function loadList() {
+  const name = $("#list-name").value.trim(), text = $("#list-text").value;
+  if (!name) return $("#list-name").reportValidity();
+  if (!text.trim()) return ($("#list-result").textContent = "Paste or choose some objects first.");
+  const n = text.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#")).length;
+  $("#list-submit").disabled = true;
+  $("#list-result").textContent = `Looking up ${n} line${n === 1 ? "" : "s"}…`;
+  try {
+    const r = await api("/api/lists", { method: "POST", body: { name, text, radius: +$("#list-radius").value || 1 } });
+    const items = (xs, f) => `<ul>${xs.map(f).join("")}</ul>`;
+    $("#list-result").innerHTML = `<p>Found <b>${r.found}</b> of ${r.lines} lines: <b>${r.added}</b> new to "${esc(r.name)}"`
+      + ` (${r.queued} new to the queue).</p>`
+      + (r.missing.length ? `<details open><summary>Not found (${r.missing.length})</summary>`
+        + items(r.missing, (m) => `<li><code>${esc(m.entry)}</code>: ${esc(m.reason)}</li>`) + `</details>` : "")
+      + (r.crowded.length ? `<details><summary>More than one LSST object within the radius; the nearest was taken (${r.crowded.length})</summary>`
+        + items(r.crowded, (c) => `<li><code>${esc(c.entry)}</code>: ${c.n_within} objects, took ${esc(c.object_id)}</li>`) + `</details>` : "")
+      + (r.duplicates.length ? `<details><summary>Lines naming the same object (${r.duplicates.length})</summary>`
+        + items(r.duplicates, (d) => `<li>${esc(d.object_id)}: ${d.entries.map((x) => `<code>${esc(x)}</code>`).join(", ")}</li>`) + `</details>` : "");
+    if (!r.missing.length) $("#list-text").value = "";
+    await refreshLists();
+    if (r.found) setMode({ mode: "list", list: r.name });
+  } catch (e) {
+    $("#list-result").textContent = `Couldn't load the list: ${e.message}`;
+  } finally {
+    $("#list-submit").disabled = false;
+  }
+}
+
+async function deleteList() {
+  const name = listName();
+  if (!name || !confirm(`Forget the list "${name}"? Its objects stay queued, with their labels.`)) return;
+  try {
+    await api(`/api/lists/${encodeURIComponent(name)}`, { method: "DELETE" });
+  } catch (e) {
+    return toast(`Couldn't delete it: ${e.message}`, 5000);
+  }
+  await refreshLists();
+  setMode({ mode: LISTS.length ? "list" : "random" });
 }
 
 async function recheckWatchlist() {
@@ -477,6 +547,8 @@ async function next() {
       ? `<div class="loading">Screening ${r.n_screening} objects with "${esc(screenName())}"; the first one that passes comes up here.</div>`
       : r.n_pending && filtersActive()
       ? `<div class="loading">No pending objects match the filters (${r.n_pending} pending don't). Sample with these filters, or loosen them.</div>`
+      : listName()
+      ? `<div class="loading">You've vetted everything on "${esc(listName())}". Load more into it, or pick another list.</div>`
       : screenName()
       ? `<div class="loading">Nothing left that passed "${esc(screenName())}" (${r.n_filtered} filtered out). Filter another night above.</div>`
       : `<div class="loading">Queue is empty — use "Sample random LSST" above.</div>`;

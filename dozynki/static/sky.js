@@ -58,7 +58,7 @@ function wilson(k, n, z = 1.96) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, unlabeled: false, frame: "eq", hidden: [], cut_b: 0, cut_e: 0, pipe: "off", hist: { b: "count", e: "count" } };
+  return { truth: "blind", all_sources: false, object_list: "", unlabeled: false, frame: "eq", hidden: [], cut_b: 0, cut_e: 0, pipe: "off", hist: { b: "count", e: "count" } };
 }
 
 function loadState() {
@@ -152,7 +152,7 @@ function renderChips() {
     render();
   });
   const n = DATA.objects.length, nl = DATA.objects.filter((o) => o.klass).length;
-  $("#pop").innerHTML = `<b>${nl}</b> labeled · <b>${n - nl}</b> unlabeled ${state.all_sources ? "queued objects" : "in the random sample"}`;
+  $("#pop").innerHTML = `<b>${nl}</b> labeled · <b>${n - nl}</b> unlabeled ${esc(Population.phrase(state))}`;
   $("#unlabeled").nextSibling.textContent = ` unlabeled (${n - nl})`;
 }
 
@@ -328,7 +328,7 @@ async function loadPipe() {
   $("#pipe-info").textContent = "Evaluating the filter lab pipeline…";
   try {
     const { pipeline, saved } = await pipelineA();
-    const r = await post("/api/rejection/evaluate", { pipeline, truth: state.truth, all_sources: state.all_sources, target: ["transient"] });
+    const r = await post("/api/rejection/evaluate", { pipeline, truth: state.truth, all_sources: state.all_sources, object_list: state.object_list || null, target: ["transient"] });
     PIPE = { steps: Object.keys(r.steps), rejectedBy: Object.fromEntries(r.objects.map((o) => [o.object_id, o.rejected_by])) };
     $("#pipe-info").innerHTML = `Filter lab pipeline${saved ? "" : " (default; not yet edited in the Filter lab)"}: `
       + (PIPE.steps.map((s) => `<code>${esc(s)}</code>`).join(" → ") || "no rules enabled")
@@ -340,7 +340,7 @@ async function loadPipe() {
 
 async function load() {
   try {
-    [DATA] = await Promise.all([api(`/api/sky?truth=${state.truth}&all_sources=${state.all_sources}`), loadPipe()]);
+    [DATA] = await Promise.all([api(`/api/sky?${new URLSearchParams({ truth: state.truth, all_sources: state.all_sources, object_list: state.object_list || "" })}`), loadPipe()]);
     render();
   } catch (e) {
     toast(`Could not load objects: ${e.message}`, 6000);
@@ -355,8 +355,7 @@ async function init() {
   // the Filter lab in another tab saved a change to its pipeline
   window.addEventListener("storage", async (e) => { if (e.key === LAB_KEY && state.pipe !== "off") { await loadPipe(); render(); } });
   for (const w of ["b", "e"]) bindSeg(`[data-hist="${w}"]`, () => state.hist[w], (v) => { state.hist[w] = v; render(); });
-  $("#all-sources").checked = state.all_sources;
-  $("#all-sources").onchange = (e) => { state.all_sources = e.target.checked; load(); };
+  Population.mount($("#population"), state, (p) => { Object.assign(state, p); load(); });
   $("#unlabeled").checked = state.unlabeled;
   $("#unlabeled").onchange = (e) => { state.unlabeled = e.target.checked; render(); };
   for (const [id, k] of [["#cut-b", "cut_b"], ["#cut-e", "cut_e"]]) {

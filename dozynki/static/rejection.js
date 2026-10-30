@@ -51,7 +51,7 @@ function pipelineFrom(steps) {
 }
 
 function defaultState() {
-  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, pipeline: pipelineFrom(CFG.default_pipeline), name: null };
+  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, object_list: "", pipeline: pipelineFrom(CFG.default_pipeline), name: null };
 }
 
 function loadState() {
@@ -82,6 +82,7 @@ const requestFor = () => ({
   target: state.target,
   include_alt: state.include_alt,
   all_sources: state.all_sources,
+  object_list: state.object_list || null,
 });
 
 // ---------- settings ----------
@@ -103,7 +104,6 @@ function renderSettings() {
     changed(true);
   }));
   $("#include-alt").checked = state.include_alt;
-  $("#all-sources").checked = state.all_sources;
   document.querySelectorAll("#truth button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.truth));
 }
 
@@ -868,7 +868,7 @@ async function init() {
   renderPipeline();
   renderSweepParams();
   $("#include-alt").onchange = (e) => { state.include_alt = e.target.checked; changed(); };
-  $("#all-sources").onchange = (e) => { state.all_sources = e.target.checked; changed(); };
+  Population.mount($("#population"), state, (p) => { Object.assign(state, p); changed(); });
   document.querySelectorAll("#truth button").forEach((b) => (b.onclick = () => { state.truth = b.dataset.v; changed(true); }));
   $("#sweep-param").onchange = setSweepRange;
   $("#sweep-run").onclick = runSweep;

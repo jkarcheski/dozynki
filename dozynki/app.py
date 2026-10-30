@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, rejection, similar, sky, sources
+from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, similar, sky, sources
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, pittgoogle
@@ -381,21 +381,50 @@ def night_runs(request: Request, screen: str = ""):
     return {"runs": runs, "running": nightrun._running}
 
 
-class AddIds(BaseModel):
-    object_ids: list[str]
+@app.get("/api/lists")
+def object_lists(request: Request):
+    """Every object list, whoever loaded it (anyone may vet or score one); mine: this request may add to or delete it."""
+    who = _who(request)
+    return [l | {"mine": l["owner"] in (None, who)} for l in db.object_lists()]
 
 
-@app.post("/api/queue/add")
-def add_ids(body: AddIds):
-    """Queue specific LSST diaObjectIds (selection source recorded as manual_list)."""
-    added, missing = 0, []
-    for oid in body.object_ids:
-        loc = antares.locus_for_dia_object(oid.strip())
-        if not loc:
-            missing.append(oid)
-            continue
-        added += db.add_to_queue(loc["dia_object_id"], loc["locus_id"], loc["ra"], loc["dec"], "manual_list", {}, summary=loc)
-    return {"added": added, "not_in_antares": missing}
+class ObjectList(BaseModel):
+    name: str
+    text: str  # one object per line: alert ID, diaObjectId, ANTARES locus, or RA Dec (lists.py)
+    radius: float = lists.DEFAULT_RADIUS_ARCSEC
+    note: str | None = None
+
+
+def _may_edit_list(request, name):
+    exists, owner = db.object_list_owner(name)
+    if owner not in (None, _who(request)):
+        raise HTTPException(403, f'"{name}" is {owner}\'s list; load yours under another name')
+    return exists
+
+
+@app.post("/api/lists")
+def load_list(body: ObjectList, request: Request):
+    """Resolve each line to an LSST object and add it to the named list (made if new) and the queue."""
+    name = body.name.strip()
+    if not name or len(name) > 80:
+        raise HTTPException(400, "name must be 1-80 characters")
+    if not 0 < body.radius <= lists.MAX_RADIUS_ARCSEC:
+        raise HTTPException(400, f"radius must be in (0, {lists.MAX_RADIUS_ARCSEC:g}] arcsec")
+    _may_edit_list(request, name)
+    try:
+        out = lists.load(name, body.text, body.radius, _who(request), (body.note or "").strip() or None)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    assemble.prefetch(out["object_ids"][:PREFETCH])
+    return out
+
+
+@app.delete("/api/lists/{name}")
+def delete_list(name: str, request: Request):
+    """Forget the list; its objects stay queued, with their labels."""
+    if not _may_edit_list(request, name) or not db.delete_object_list(name):
+        raise HTTPException(404, "no list by that name")
+    return {"ok": True}
 
 
 def _backfill_summaries():
@@ -414,18 +443,27 @@ def _safe_summary(locus_id):
         return None
 
 
-def _queue_filter(min_det, date_from, date_to, date_mode, screen=""):
-    """WHERE over the filter bar and the mode: random (screen "") or one saved filter's screened pulls."""
+IN_LIST = "object_id IN (SELECT object_id FROM list_members WHERE list = ?)"
+
+
+def _queue_filter(min_det, date_from, date_to, date_mode, screen="", object_list=""):
+    """(WHERE, params, which statuses are ready) over the filter bar and the mode: random (screen ""), one
+    saved filter's screened pulls, or one object list's objects (every one, however it was queued)."""
+    if object_list:
+        return IN_LIST, [object_list], db.ANY_STATUS
     filters = FilterParams(min_det=min_det, date_from=date_from, date_to=date_to, date_mode=date_mode).build()
     if filters.active:
         _backfill_summaries()
     where, params = filters.sql()
     mode, mode_params = ("screen = ?", [screen]) if screen else ("screen IS NULL", [])
-    return " AND ".join(w for w in (mode, where) if w), mode_params + params
+    return " AND ".join(w for w in (mode, where) if w), mode_params + params, db.READY
 
 
-def _mode(screen, labeler):
+def _mode(screen, labeler, object_list=""):
     """Queue counts in this mode; in filtered mode, also how many wait for screening and were thrown away."""
+    if object_list:
+        return {"n_pending": db.count_pending(labeler, IN_LIST, [object_list], ready=db.ANY_STATUS),
+                "n_list": len(db.list_object_ids(object_list))}
     counts = db.mode_counts(screen or None, labeler)
     out = {"n_pending": counts.get("pending", 0)}
     if screen:
@@ -436,19 +474,20 @@ def _mode(screen, labeler):
 
 
 @app.get("/api/queue/matching")
-def queue_matching(request: Request, min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first", screen: str = ""):
-    where, params = _queue_filter(min_det, date_from, date_to, date_mode, screen)
-    return {"n_matching": db.count_pending(_who(request), where, params), **_mode(screen, _who(request))}
+def queue_matching(request: Request, min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first", screen: str = "",
+                   object_list: str = ""):
+    where, params, ready = _queue_filter(min_det, date_from, date_to, date_mode, screen, object_list)
+    return {"n_matching": db.count_pending(_who(request), where, params, ready), **_mode(screen, _who(request), object_list)}
 
 
 @app.get("/api/next")
 def next_object(request: Request, exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
-                screen: str = ""):
+                screen: str = "", object_list: str = ""):
     skip = tuple(x for x in exclude.split(",") if x)
-    where, params = _queue_filter(min_det, date_from, date_to, date_mode, screen)
+    where, params, ready = _queue_filter(min_det, date_from, date_to, date_mode, screen, object_list)
     who = _who(request)
-    rows = db.next_pending(who, PREFETCH + 1, exclude=skip, where=where, params=params)
-    out = {"n_matching": db.count_pending(who, where, params), **_mode(screen, who)}
+    rows = db.next_pending(who, PREFETCH + 1, exclude=skip, where=where, params=params, ready=ready)
+    out = {"n_matching": db.count_pending(who, where, params, ready), **_mode(screen, who, object_list)}
     if not rows:
         return {"object_id": None, **out}
     assemble.prefetch([r["object_id"] for r in rows[1:]])
@@ -671,11 +710,13 @@ class Evaluation(BaseModel):
     target: list[str] = ["transient"]
     include_alt: bool = False
     all_sources: bool = False
+    object_list: str | None = None  # score one object list's objects instead
 
 
 def _evaluate(body):
     try:
-        report, df = evaluate.evaluate(body.pipeline, body.truth, body.target, body.include_alt, body.all_sources, save=False)
+        report, df = evaluate.evaluate(body.pipeline, body.truth, body.target, body.include_alt, body.all_sources, save=False,
+                                       object_list=body.object_list)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     return report, df
@@ -703,7 +744,8 @@ def rejection_sweep(body: Sweep):
         raise HTTPException(400, "bad step or param")
     try:
         return evaluate.sweep(body.pipeline, body.step, body.param, body.values[:60], truth=body.truth,
-                              target=body.target, include_alt=body.include_alt, all_sources=body.all_sources)
+                              target=body.target, include_alt=body.include_alt, all_sources=body.all_sources,
+                              object_list=body.object_list)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
 
@@ -778,13 +820,15 @@ class Comparison(BaseModel):
     min_prob: float = 0.0
     include_alt: bool = False
     all_sources: bool = False
+    object_list: str | None = None
 
 
 @app.post("/api/compare")
 def compare_sources(body: Comparison):
     """Confusion matrix of two label sources. Nothing is stored."""
     try:
-        return compare.compare(body.ref, body.comp, body.view, body.min_prob, body.include_alt, body.all_sources)
+        return compare.compare(body.ref, body.comp, body.view, body.min_prob, body.include_alt, body.all_sources,
+                               body.object_list)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -793,17 +837,17 @@ def compare_sources(body: Comparison):
 def compare_summary(body: Comparison):
     try:
         return compare.summary(body.ref, view=body.view, min_prob=body.min_prob, include_alt=body.include_alt,
-                               all_sources=body.all_sources)
+                               all_sources=body.all_sources, object_list=body.object_list)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @app.get("/api/sky")
-def sky_objects(truth: str = "blind", all_sources: bool = False):
+def sky_objects(truth: str = "blind", all_sources: bool = False, object_list: str = ""):
     """Every queued object's position in three frames, with its truth label (None if unlabeled)."""
     if truth not in ("blind", "final"):
         raise HTTPException(400, "truth must be blind or final")
-    return {"objects": sky.objects(truth, all_sources), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
+    return {"objects": sky.objects(truth, all_sources, object_list or None), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
 
 
 def _groups(groups):
@@ -811,10 +855,10 @@ def _groups(groups):
 
 
 @app.get("/api/similar")
-def similar_map(truth: str = "blind", all_sources: bool = False, groups: str = ""):
+def similar_map(truth: str = "blind", all_sources: bool = False, groups: str = "", object_list: str = ""):
     """Every object's position on the first two principal components of its features, with its truth label."""
     try:
-        out = similar.projection(truth, all_sources, _groups(groups))
+        out = similar.projection(truth, all_sources, _groups(groups), object_list or None)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {**out, "groups": similar.GROUPS, "default_groups": similar.DEFAULT_GROUPS, "classes": CLASSES}
@@ -822,12 +866,12 @@ def similar_map(truth: str = "blind", all_sources: bool = False, groups: str = "
 
 @app.get("/api/similar/{object_id}")
 def similar_neighbors(object_id: str, k: int = 8, truth: str = "blind", all_sources: bool = False, groups: str = "",
-                      pool: str = "labeled"):
+                      pool: str = "labeled", object_list: str = ""):
     """The k objects closest to one in feature space. Nothing is stored."""
     if pool not in ("labeled", "all"):
         raise HTTPException(400, "pool must be labeled or all")
     try:
-        return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool)
+        return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool, object_list or None)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except KeyError:
