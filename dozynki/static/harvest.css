@@ -134,6 +134,15 @@
 .farm-item .tube { fill: #3b5b8f; }
 .farm-item .tube-end { fill: var(--line-ink); }
 
+/* Barn under construction (harvest.js barn) */
+.farm-item.barn .walls { fill: var(--barn); }
+.farm-item.barn .roof { fill: var(--hide); }
+.farm-item.barn .door { fill: color-mix(in srgb, var(--barn) 70%, var(--dark)); stroke: var(--white); stroke-width: 1.6; }
+.farm-item.barn .frame, .farm-item.barn .ladder { fill: none; stroke: var(--wood); stroke-width: 2; }
+.farm-item.barn .ladder { stroke-width: 1.6; }
+.farm-item.barn .sign { fill: var(--sun); stroke: var(--dark); stroke-width: 1; }
+.farm-item.barn .hazard { fill: none; stroke: var(--dark); stroke-width: 2.4; stroke-linecap: butt; }
+
 /* Farmer (harvest.js farmer) */
 .harvest-field .farmer { transform-box: fill-box; transform-origin: 50% 100%; animation: pop .6s 1s both; }
 .harvest-field .farmer-figure { animation: breathe 3.6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 100%; }

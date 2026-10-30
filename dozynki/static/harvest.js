@@ -94,6 +94,23 @@ const Harvest = (() => {
       + `<rect class="tube-end" x="18" y="-6" width="5" height="12" rx="1"/></g>`],
   };
 
+  // Always in the field, unlike the unlocks: half a barn, the rest still framing, because the project is
+  // under construction. Base center at the origin; [x, w] as for FARM.
+  const BARN = [650, 136];
+  function barn() {
+    const studs = [12, 24, 36, 48].map((x) => `M${x} 0 V-42`).join(" ");
+    const rafters = "M-52 -42 L-36 -64 L0 -78 L36 -64 L52 -42 M-36 -64 H36 M18 -71 V-42 M36 -64 V-42";
+    const rungs = [-10, -22, -34, -46].map((y) => `M${(56 + y * 0.25).toFixed(1)} ${y} h7`).join(" ");
+    return `<title>Under construction</title>`
+      + `<path class="roof" d="M-52 -42 L-36 -64 L0 -78 V-42 Z"/>`
+      + `<rect class="walls" x="-48" y="-42" width="50" height="42"/>`
+      + `<rect class="door" x="-32" y="-28" width="20" height="28"/><path class="trim" d="M-32 -28 L-12 0 M-12 -28 L-32 0"/>`
+      + `<path class="frame" d="${studs} M2 0 H48 M2 -42 H48 M2 -21 H48 ${rafters}"/>`
+      + `<path class="ladder" d="M54 0 L42 -56 M61 0 L49 -56 ${rungs}"/>`
+      + `<path class="spar" d="M-62 0 V-26"/><rect class="sign" x="-74" y="-40" width="24" height="14" rx="1.5"/>`
+      + `<path class="hazard" d="M-70 -40 l-4 6 M-62 -40 l-9.3 14 M-54 -40 l-9.3 14 M-50 -34 l-5.3 8"/>`;
+  }
+
   // A small picture of one unlock for the landing page's list, framed on a strip of ground.
   function farmIcon(key) {
     const [, w, draw] = FARM[key];
@@ -132,7 +149,7 @@ const Harvest = (() => {
     const rand = rng(1913);
     const sway = (x, r) => -(x / 180) - r() * 0.6; // a wave of wind from left to right
     const items = owned.filter((k) => FARM[k]);
-    const clear = items.map((k) => [FARM[k][0] - FARM[k][1] / 2, FARM[k][0] + FARM[k][1] / 2]);
+    const clear = [BARN, ...items.map((k) => FARM[k])].map(([x, w]) => [x - w / 2, x + w / 2]);
     const back = stalks(rand, 0, 1000, 118, 90, 46, 62, sway);
     // Front stalks are drawn from the same seed whatever is owned; the ones in an item's spot are left out.
     const front = stalks(rand, 0, pending ? 800 : 1000, 126, pending ? 60 : 75, 58, 82, sway)
@@ -144,7 +161,7 @@ const Harvest = (() => {
       <circle class="sun" cx="930" cy="34" r="20"/>
       <path class="ground" d="M0 120 Q500 108 1000 120 V130 H0 Z"/>
       <g class="wheat back">${back}</g>
-      <g class="farm">${items.map((k) => `<g transform="translate(${FARM[k][0]} 123)"><g class="farm-item ${k}">${FARM[k][2]()}</g></g>`).join("")}</g>
+      <g class="farm"><g transform="translate(${BARN[0]} 123)"><g class="farm-item barn">${barn()}</g></g>${items.map((k) => `<g transform="translate(${FARM[k][0]} 123)"><g class="farm-item ${k}">${FARM[k][2]()}</g></g>`).join("")}</g>
       <g class="wheat">${front}</g>
       <g transform="translate(535 128)"><g class="farmer">${farmer()}</g></g>
       ${pending ? `<g class="field-stack" transform="translate(905 124) scale(${(0.55 + 0.45 * Math.min(1, pending / 200)).toFixed(2)})">`
