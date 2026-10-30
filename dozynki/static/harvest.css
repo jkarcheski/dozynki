@@ -4,6 +4,7 @@
   --soil: #9b7a4c; --tractor: #c0392b; --tire: #2b2b2e; --sun: #f2c35a; --needle: #9aa3ad;
   --barn: #b23a2c; --wood: #7a5532; --stone: #a3a29c; --leafy: #5d8a3a; --poppy: #d6362b; --white: #f7f4ec;
   --hide: #8b5a34; --dark: #2b2b2e; --line-ink: #3a3a3e;
+  --sky-top: #5b9fd8; --sky-low: #cfe6f6; --mountain-far: #8fa6bf; --mountain-near: #6d8a6a; --snow: #f7f9fb;
   --skin: #e6b48c; --hair: #5b3a1e; --shirt: #7c8a4a; --trousers: #6b4f36; --denim: #3f5f8f; --navy: #1f2a4f;
 }
 @media (prefers-color-scheme: dark) {
@@ -12,6 +13,7 @@
     --soil: #6b5434; --tractor: #e0574a; --tire: #111113; --sun: #e9b949; --needle: #c4ccd5;
     --barn: #c9493a; --wood: #9a7048; --stone: #8b8a85; --leafy: #6fa047; --poppy: #ec4b3f; --white: #e8e4da;
     --hide: #a06a3e; --dark: #0f0f11; --line-ink: #cfcfd4;
+    --sky-top: #1c3a66; --sky-low: #4f7fae; --mountain-far: #3d5270; --mountain-near: #34503a; --snow: #c9d4e0;
     --skin: #e0ab82; --hair: #6e4826; --shirt: #8d9c56; --trousers: #7d5d40; --denim: #5476ad; --navy: #33427a;
   }
 }
@@ -31,10 +33,13 @@
 
 /* Landing field */
 .harvest-field { display: block; width: 100%; height: 130px; margin: -14px 0 4px; }
-.harvest-field .sun { fill: var(--sun); opacity: .55; }
+.harvest-field .sky-top { stop-color: var(--sky-top); }
+.harvest-field .sky-low { stop-color: var(--sky-low); }
+.harvest-field .mountains .far { fill: var(--mountain-far); }
+.harvest-field .mountains .near { fill: var(--mountain-near); }
+.harvest-field .mountains .snow { fill: var(--snow); }
 .harvest-field .wheat { transform-box: fill-box; transform-origin: 50% 100%; animation: rise 1.1s ease-out both; }
 .harvest-field .wheat.back { opacity: .55; animation-delay: .15s; }
-.harvest-field .field-stack { animation: pop .6s 1s both; }
 @keyframes rise { from { transform: scaleY(0); } }
 
 /* Vetter header haystack */
@@ -112,29 +117,10 @@
   .needle .sparkle { opacity: 1; }
 }
 
-/* Farm: achievement unlocks drawn into the landing field (harvest.js FARM) */
-.harvest-field .farm-item { transform-box: fill-box; transform-origin: 50% 100%; animation: pop .6s .8s both; }
-.farm-item path, .farm-item rect, .farm-item circle, .farm-item ellipse { stroke-linejoin: round; stroke-linecap: round; }
-.farm-item .spar, .farm-item .leg, .farm-item .rope { fill: none; stroke: var(--wood); stroke-width: 2.4; }
-.farm-item .rope { stroke-width: 1; }
-.farm-item .vane { fill: none; stroke: var(--line-ink); stroke-width: 1.6; }
-.farm-item .vane-tail { fill: var(--line-ink); }
-.farm-item .trim { fill: none; stroke: var(--white); stroke-width: 1.6; }
-.farm-item .nest { fill: var(--wood); }
-.farm-item .bird { fill: var(--white); stroke: var(--stone); stroke-width: .6; }
-.farm-item .bird-wing { fill: var(--dark); }
-.farm-item .neck { fill: none; stroke: var(--white); stroke-width: 2.6; }
-.farm-item .beak { fill: none; stroke: #e07b25; stroke-width: 1.6; }
-.farm-item .rock { fill: var(--stone); stroke: var(--line-ink); stroke-width: .4; }
-.farm-item .glow { fill: var(--sun); opacity: .25; animation: flicker 2.4s ease-in-out infinite alternate; }
-@keyframes flicker { to { opacity: .45; } }
-.farm-item .lamp { fill: var(--sun); stroke: var(--wood); }
-.farm-item.lantern .trim { stroke: var(--wood); }
-.farm-item.telescope .leg { stroke: var(--line-ink); stroke-width: 1.6; }
-.farm-item .tube { fill: #3b5b8f; }
-.farm-item .tube-end { fill: var(--line-ink); }
-
 /* Barn under construction (harvest.js barn) */
+.farm-item path, .farm-item rect { stroke-linejoin: round; stroke-linecap: round; }
+.farm-item .spar { fill: none; stroke: var(--wood); stroke-width: 2.4; }
+.farm-item .trim { fill: none; stroke: var(--white); stroke-width: 1.6; }
 .farm-item.barn .walls { fill: var(--barn); }
 .farm-item.barn .roof { fill: var(--hide); }
 .farm-item.barn .door { fill: color-mix(in srgb, var(--barn) 70%, var(--dark)); stroke: var(--white); stroke-width: 1.6; }
@@ -142,23 +128,3 @@
 .farm-item.barn .ladder { stroke-width: 1.6; }
 .farm-item.barn .sign { fill: var(--sun); stroke: var(--dark); stroke-width: 1; }
 .farm-item.barn .hazard { fill: none; stroke: var(--dark); stroke-width: 2.4; stroke-linecap: butt; }
-
-/* Farmer (harvest.js farmer) */
-.harvest-field .farmer { transform-box: fill-box; transform-origin: 50% 100%; animation: pop .6s 1s both; }
-.harvest-field .farmer-figure { animation: breathe 3.6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 100%; }
-@keyframes breathe { to { transform: scaleY(1.025); } }
-.farmer-figure path, .farmer-figure rect { stroke-linejoin: round; stroke-linecap: round; }
-.farmer-figure .skin { fill: var(--skin); }
-.farmer-figure .eye { fill: #2b2b2e; }
-.farmer-figure .cheek { fill: #e8786a; opacity: .45; }
-.farmer-figure .smile { fill: none; stroke: #6b3b2a; stroke-width: .8; }
-.farmer-figure .hair { fill: var(--hair); }
-.farmer-figure .shirt { fill: var(--shirt); }
-.farmer-figure .sleeve { fill: none; stroke: var(--shirt); stroke-width: 3.6; }
-.farmer-figure .trousers { fill: var(--trousers); }
-.farmer-figure .shoe { fill: #3a2a1c; }
-
-@media (prefers-reduced-motion: reduce) {
-  .farm-item, .farm-item .glow, .harvest-field .farmer,
-  .harvest-field .farmer-figure { animation: none !important; }
-}

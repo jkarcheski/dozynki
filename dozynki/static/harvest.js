@@ -1,4 +1,4 @@
-// Harvest-festival decorations: the wheat field on the landing page with the farm built in it, the haystack
+// Harvest-festival decorations: the wheat field on the landing page with its sky, mountains and barn, the haystack
 // in the vetter header (pending objects of the latest batch), the harvest played when
 // a batch is sampled, and the needle when a commit lands on a known transient.
 // Plain SVG + CSS (harvest.css); everything lives in this closure so it can sit next
@@ -73,30 +73,32 @@ const Harvest = (() => {
       </g>`;
   }
 
-  // ---------- farm (achievement unlocks, farm.py) ----------
+  // ---------- landscape ----------
 
-  // Each item with its base center at the origin; x is its spot in the 1000-wide field, w the
-  // width of front wheat it clears so it shows.
-  const FARM = {
-    weathervane: [135, 30, () => `<path class="spar" d="M0 0 V-96"/><path class="vane" d="M-16 -88 H14 M14 -88 l-6 -4 M14 -88 l-6 4"/>`
-      + `<path class="vane-tail" d="M-16 -88 l-6 -6 v12 Z"/><path class="vane" d="M-6 -78 H6 M0 -84 V-72"/>`],
-    stork: [290, 40, () => `<path class="spar" d="M0 0 V-90"/><ellipse class="nest" cx="0" cy="-92" rx="16" ry="5"/>`
-      + `<ellipse class="bird" cx="1" cy="-102" rx="10" ry="6"/><path class="bird-wing" d="M-8 -102 Q2 -96 10 -101 Q2 -104 -8 -102 Z"/>`
-      + `<path class="neck" d="M8 -105 Q12 -116 10 -122"/><circle class="bird" cx="10" cy="-123" r="3"/>`
-      + `<path class="beak" d="M12 -123 l9 3"/>`],
-    rocks: [338, 46, () => `<ellipse class="rock" cx="-11" cy="-5" rx="11" ry="7"/><ellipse class="rock" cx="9" cy="-4" rx="9" ry="5"/>`
-      + `<ellipse class="rock" cx="-1" cy="-10" rx="7" ry="6"/>`],
-    lantern: [800, 30, () => `<path class="spar" d="M0 0 V-80 H14"/><path class="rope" d="M12 -80 V-72"/>`
-      + `<circle class="glow" cx="12" cy="-62" r="12"/><rect class="lamp" x="7" y="-72" width="10" height="16" rx="2"/>`
-      + `<path class="trim" d="M7 -64 H17"/>`],
-    telescope: [838, 40, () => `<path class="leg" d="M0 -30 L-12 0 M0 -30 L12 0 M0 -30 V0"/>`
-      + `<g transform="translate(0 -32) rotate(-38)"><rect class="tube" x="-16" y="-5" width="36" height="10" rx="2"/>`
-      + `<rect class="tube-end" x="18" y="-6" width="5" height="12" rx="1"/></g>`],
-  };
+  // A range of peaks as [x, y] points across the 1000-wide field, closed down to y0; peaks above
+  // snowline get a cap reaching 9 down each slope.
+  function range(cls, pts, y0, snowline = 0) {
+    const d = `M0 ${y0} ` + pts.map(([x, y]) => `L${x} ${y}`).join(" ") + ` L1000 ${y0} Z`;
+    let caps = "";
+    pts.forEach(([x, y], i) => {
+      const [lx, ly] = pts[i - 1] || [], [rx, ry] = pts[i + 1] || [];
+      if (!(y < snowline && ly > y && ry > y)) return;
+      const a = x - (x - lx) * 9 / (ly - y), b = x + (rx - x) * 9 / (ry - y);
+      caps += `M${a.toFixed(1)} ${y + 9} L${x} ${y} L${b.toFixed(1)} ${y + 9} L${((x + b) / 2).toFixed(1)} ${y + 6} L${x} ${y + 10} L${((a + x) / 2).toFixed(1)} ${y + 6} Z`;
+    });
+    return `<path class="${cls}" d="${d}"/>` + (caps ? `<path class="snow" d="${caps}"/>` : "");
+  }
 
-  // Always in the field, unlike the unlocks: half a barn, the rest still framing, because the project is
-  // under construction. Base center at the origin; [x, w] as for FARM.
-  const BARN = [650, 136];
+  const FAR = [[0, 78], [70, 60], [130, 74], [210, 44], [290, 70], [360, 58], [440, 80], [520, 50], [600, 72],
+    [690, 42], [770, 68], [850, 58], [930, 74], [1000, 64]];
+  const NEAR = [[0, 92], [90, 72], [170, 90], [250, 68], [340, 92], [420, 78], [500, 96], [580, 76], [660, 90],
+    [740, 70], [830, 94], [910, 82], [1000, 92]];
+
+  // ---------- barn ----------
+
+  // Half a barn, the rest still framing, because the project is under construction. Base center at
+  // the origin; x is its spot in the 1000-wide field, w the width of front wheat it clears so it shows.
+  const BARN = [150, 136];
   function barn() {
     const studs = [12, 24, 36, 48].map((x) => `M${x} 0 V-42`).join(" ");
     const rafters = "M-52 -42 L-36 -64 L0 -78 L36 -64 L52 -42 M-36 -64 H36 M18 -71 V-42 M36 -64 V-42";
@@ -111,59 +113,27 @@ const Harvest = (() => {
       + `<path class="hazard" d="M-70 -40 l-4 6 M-62 -40 l-9.3 14 M-54 -40 l-9.3 14 M-50 -34 l-5.3 8"/>`;
   }
 
-  // A small picture of one unlock for the landing page's list, framed on a strip of ground.
-  function farmIcon(key) {
-    const [, w, draw] = FARM[key];
-    const half = Math.max(30, w / 2 + 6);
-    return `<svg class="farm-icon" viewBox="${-half} -128 ${2 * half} 134" aria-hidden="true">`
-      + `<path class="ground" d="M${-half} 0 H${half} V6 H${-half} Z"/><g class="farm-item ${key}">${draw()}</g></svg>`;
-  }
-
-  // Crop farm icons to what they draw, once they are on the page (short items would sit low in a tall frame).
-  function fitIcons(root) {
-    root.querySelectorAll(".farm-icon").forEach((svg) => {
-      const b = svg.getBBox(), pad = 4, w = Math.max(b.width, b.height) + 2 * pad;
-      svg.setAttribute("viewBox", `${(b.x + b.width / 2 - w / 2).toFixed(1)} ${(b.y + b.height - w + pad).toFixed(1)} ${w.toFixed(1)} ${w.toFixed(1)}`);
-    });
-  }
-
-  // ---------- farmer ----------
-
-  // Standing with the feet at the origin, about 66 tall: short hair, work clothes, shoes, no hat.
-  function farmer() {
-    return `<g class="farmer-figure"><path class="trousers" d="M-7 -27 H7 L6 -3 H1.6 L0 -20 L-1.6 -3 H-6 Z"/>`
-      + `<path class="shoe" d="M-6.2 -3 H-1.4 V0 H-7.4 Z M1.4 -3 H6.2 L7.4 0 H1.4 Z"/>`
-      + `<path class="shirt" d="M-8 -44.4 Q0 -46.2 8 -44.4 L7.2 -26 H-7.2 Z"/>`
-      + `<path class="sleeve shirt" d="M-7.6 -43.4 L-11 -30.6 M7.6 -43.4 L11 -30.6"/>`
-      + `<circle class="skin" cx="-11.4" cy="-29.2" r="1.9"/><circle class="skin" cx="11.4" cy="-29.2" r="1.9"/>`
-      + `<rect class="skin" x="-1.8" y="-47.4" width="3.6" height="3.4"/><circle class="skin" cx="0" cy="-53" r="7"/>`
-      + `<circle class="eye" cx="-2.5" cy="-53.4" r=".85"/><circle class="eye" cx="2.5" cy="-53.4" r=".85"/>`
-      + `<circle class="cheek" cx="-4.2" cy="-50.6" r="1.3"/><circle class="cheek" cx="4.2" cy="-50.6" r="1.3"/>`
-      + `<path class="smile" d="M-2 -50 Q0 -48.4 2 -50"/>`
-      + `<path class="hair" d="M-7.3 -52 C-8 -60 -3 -61.6 0 -61.6 C4 -61.6 8 -59 7.3 -52 C5 -56.5 -2 -57.5 -7.3 -52 Z"/></g>`;
-  }
-
   // ---------- landing page ----------
 
-  function field(el, pending = 0, owned = []) {
+  function field(el, pending = 0) {
     const rand = rng(1913);
     const sway = (x, r) => -(x / 180) - r() * 0.6; // a wave of wind from left to right
-    const items = owned.filter((k) => FARM[k]);
-    const clear = [BARN, ...items.map((k) => FARM[k])].map(([x, w]) => [x - w / 2, x + w / 2]);
+    const clear = [BARN[0] - BARN[1] / 2, BARN[0] + BARN[1] / 2];
     const back = stalks(rand, 0, 1000, 118, 90, 46, 62, sway);
-    // Front stalks are drawn from the same seed whatever is owned; the ones in an item's spot are left out.
+    // Front stalks in the barn's spot are left out.
     const front = stalks(rand, 0, pending ? 800 : 1000, 126, pending ? 60 : 75, 58, 82, sway)
       .split(/(?=<g transform="translate\()/).filter((g) => {
         const x = +g.match(/translate\(([\d.]+)/)?.[1];
-        return !clear.some(([a, b]) => x >= a && x <= b);
+        return !(x >= clear[0] && x <= clear[1]);
       }).join("");
     el.innerHTML = `<svg class="harvest-field" viewBox="0 0 1000 130" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-      <circle class="sun" cx="930" cy="34" r="20"/>
+      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop class="sky-top" offset="0"/><stop class="sky-low" offset="1"/></linearGradient></defs>
+      <rect class="sky" width="1000" height="122" fill="url(#sky)"/>
+      <g class="mountains">${range("far", FAR, 120, 56)}${range("near", NEAR, 120)}</g>
       <path class="ground" d="M0 120 Q500 108 1000 120 V130 H0 Z"/>
       <g class="wheat back">${back}</g>
-      <g class="farm"><g transform="translate(${BARN[0]} 123)"><g class="farm-item barn">${barn()}</g></g>${items.map((k) => `<g transform="translate(${FARM[k][0]} 123)"><g class="farm-item ${k}">${FARM[k][2]()}</g></g>`).join("")}</g>
+      <g transform="translate(${BARN[0]} 123)"><g class="farm-item barn">${barn()}</g></g>
       <g class="wheat">${front}</g>
-      <g transform="translate(535 128)"><g class="farmer">${farmer()}</g></g>
       ${pending ? `<g class="field-stack" transform="translate(905 124) scale(${(0.55 + 0.45 * Math.min(1, pending / 200)).toFixed(2)})">`
         + `<title>${pending} objects waiting in the haystack</title>${haystack()}</g>` : ""}
     </svg>`;
@@ -281,5 +251,5 @@ const Harvest = (() => {
     return overlay(`needle${rare ? " rare" : ""}${calm() ? " still" : ""}`, svg, caption, rare ? 6000 : 4800);
   }
 
-  return { field, farmIcon, fitIcons, mountStack, useStack, setStack, reap, needle };
+  return { field, mountStack, useStack, setStack, reap, needle };
 })();

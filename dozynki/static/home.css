@@ -21,10 +21,4 @@
 #leaderboard tr.me td { font-weight: 600; }
 .lb-bar { width: 40%; }
 .lb-bar i { display: block; height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
-.shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-.shop .item { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column;
-  align-items: center; gap: 4px; font-size: 12px; text-align: center; }
-.shop .item b { font-size: 13px; }
-.shop .item.owned { border-color: var(--accent); }
-.shop .item.locked .farm-icon { filter: grayscale(1); opacity: .35; }
 .farm-icon { width: 100%; height: 72px; }

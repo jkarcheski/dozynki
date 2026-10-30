@@ -1,4 +1,4 @@
-// Landing page: labeling progress from /api/stats, the farm, and links to the other pages.
+// Landing page: labeling progress from /api/stats, the wheat field, and links to the other pages.
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -7,17 +7,6 @@ async function api(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(`${r.status}: ${(await r.text()).slice(0, 300)}`);
   return r.json();
-}
-
-// Farm: achievement unlocks from /api/farm (farm.py), owned ones drawn into the wheat field.
-let pending = 0;
-
-function renderFarm(f) {
-  Harvest.field($("#harvest"), pending, f.unlocks.filter((i) => i.owned).map((i) => i.key));
-  $("#unlocks").innerHTML = f.unlocks.map((i) => `<div class="item${i.owned ? " owned" : " locked"}" title="${esc(i.what)}">`
-    + `${Harvest.farmIcon(i.key)}<b>${esc(i.name)}</b>`
-    + `<span class="muted">${i.owned ? "on your farm" : `earn ${esc(i.achievement)}`}</span></div>`).join("");
-  Harvest.fitIcons($("#unlocks"));
 }
 
 function renderLeaderboard(lb, me) {
@@ -34,12 +23,10 @@ function renderLeaderboard(lb, me) {
 }
 
 async function init() {
-  const [cfg, s, lb, farm] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
-    api("/api/farm")]);
+  const [cfg, s, lb] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard")]);
   renderLeaderboard(lb, cfg.labeler);
   const q = s.queue;
-  pending = q.pending || 0;
-  renderFarm(farm);
+  Harvest.field($("#harvest"), q.pending || 0);
   $("#blind").textContent = cfg.blind ? "blind mode on" : "blind mode off";
 
   const tiles = [
