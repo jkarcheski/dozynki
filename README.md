@@ -16,8 +16,6 @@ Current pages:
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
 
-
-
 ## Setup
 
 ```bash
@@ -30,58 +28,31 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 
 ![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
 
-1. **Sample** – "Sample random LSST" draws a uniform random set of ANTARES loci
-   that have an LSST diaObject (Elasticsearch `random_score`). The seed and
-   query are saved with every queued object, so the selection function of the
-   training set is known. The unit is the *object*, not the alert.
-2. **Blind pass** – you see only evidence: the combined ZTF+LSST light curve
-   (difference flux on a common nJy scale, plus Babamul forced photometry when
-   configured), ANTARES cutouts, a Legacy Survey DR10 field image, and an
+1. **Sample** - "Sample random LSST" draws a uniform random set of ANTARES loci
+   that have an LSST diaObject The seed and query are saved with every queued object.
+2. **Blind pass** - the combined ZTF+LSST light curve
+   (difference flux on a common nJy scale), ANTARES cutouts, a Legacy Survey DR10 field image, and an
    *independent* crossmatch (LS DR10 with photo-z and DLR host ranking, Gaia DR3,
-   PS1, Milliquas, SIMBAD, NED, optional SkyBoT). Pipeline SSO associations
-   (Rubin `ssObjectId`, ZTF `ssnamenr`) are shown because they are positional
-   facts, not classifier output.
-3. **Reveal** – committing a blind label reveals broker opinions: ALeRCE
+   PS1, Milliquas, SIMBAD, NED, optional SkyBoT).
+3. **Reveal** – committing a label reveals broker opinions: ALeRCE
    classifier probabilities (each classifier version separately), LSST
    reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and its
    ZTF association (flagged when it disagrees with ANTARES).
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 
-**Filters.** The bar under the header limits work to objects with at least N
-detections (LSST + ZTF, upper limits not counted) and/or whose first alert, latest
-alert, or alerting period falls in a date range. The same filters apply to "Sample
-random LSST" (as an ANTARES query, recorded in each object's selection parameters) and
-to which already-queued object comes up next. Note that ANTARES's "latest alert" includes
-ZTF alerts, and its LSST objects currently have first alerts only through mid-July 2026.
-
 **Sampling a night.** "Sample night" queues the next N random objects (the count box) whose first ANTARES
-alert came on one Rubin night (dayObs: noon to noon UTC), with at least the filter bar's detections; the bar's
-date range is ignored. The first sample of a night at a detection minimum fixes a random order (seeded on
-`locus_id`, which new alerts don't change); later samples continue it, so they never repeat and, given time,
-cover the whole night. ANTARES counts and pages only 10,000 matches, so a busier night can't be finished
-at that minimum; raise it. Batches are recorded in the `night_pulls` table, and the landing page's Nights
-card shows each night's progress: sampled and vetted of the night's size, and what is left. ANTARES's first alert includes ZTF, so objects
-with earlier ZTF alerts are not part of a later night. Night samples are left out of the filter lab and
+alert came on one Rubin night (dayObs: noon to noon UTC). Batches are recorded in the `night_pulls` table, and the landing page's Nights
+card shows each night's progress: sampled and vetted of the night's size, and what is left. Night samples are left out of the filter lab and
 compare pages' default population, which is the uniform random sample.
 
-**Coverage.** The landing page's Coverage card shows the share of LSST objects vetted, by everyone and by you,
-overall and per Rubin night in a calendar (one circle per night, shaded on a log scale; a dot in the middle marks
-nights you vetted some of; hover for counts, or open the table). A night's objects are those whose first ANTARES
-alert came on it, as "Sample night" counts them; a vetted object counts toward the night of its `queue.first_mjd`,
-the same ANTARES field (the light curve's earliest point can be weeks off it). Night sizes are counted past ANTARES's
-10,000 cap in RA slices by a background thread (`coverage.py`, table `night_sizes`), newest first, and recounted
-until two days after the night. The first load of a fresh install counts every night, which takes a while; the card
-fills in as it goes. Objects whose first ANTARES alert is a ZTF one belong to no LSST night, in either count, and
-ANTARES currently lists no LSST object first alerting after mid-July 2026, so later nights show as empty.
+**Coverage.** The landing page's Coverage card shows the share of LSST objects vetted. The first load of a fresh install counts every night, which takes a while; the card
+fills in as it goes.
 
 **Random and Filtered modes.** The vetter's mode switch picks what you see. *Random* is everything sampled,
-as drawn. *Filtered* runs a whole night through a saved filter from the filter lab ("Filter whole night"),
-like ANTARES's per-night filter counts, so on a live night you vet only what passes and never sample more.
-A night is every LSST object whose first or latest ANTARES alert came during it (the locus listing has no
-other alert times, so for a past night this misses objects that alerted on it and again later). The run
-(`nightrun.py`, table `night_runs`) has two stages:
+as drawn. *Filtered* runs a whole night through a saved filter from the filter lab, so on a live night you vet only what passes.
 
+To keep things running fast, the run (`nightrun.py`, table `night_runs`) has two stages:
 1. The rules the locus listing answers run over the whole night at once: ANTARES applies detections,
    LSST solar-system association, its catalog matches (bright stars, Gaia variables, Milliquas at
    `max_sep` ≥ 1″) and the SCIMMA tag in its query, and Galactic latitude,
@@ -90,15 +61,13 @@ other alert times, so for a past night this misses objects that alerted on it an
 2. Everything that passes is queued as `screening` in a random order, and a background thread (`screen.py`)
    fetches what the rules read, all of it stored by brokers: ANTARES's object, alerts and catalog matches,
    and ALeRCE only for a rule that reads it. Our own crossmatch (VizieR, SIMBAD, Legacy Survey, NED) waits
-   until you open the object. It applies the whole filter and moves the object to `pending` or `filtered`. It also drops objects with no detection on the night. The rejecting step goes in
+   until you open the object. It applies the whole filter and moves the object to `pending` or `filtered`. The rejecting step goes in
    `queue.screen_result` and every decision in `rejections`; an object that can't be fetched is kept
    (`screen_result` "error"). This runs at about 9 objects a second (8 workers), so a 30,000-object night is
-   checked in about an hour, ahead of you as you vet.
+   checked in ~1 hour, ahead of you as you vet.
 
-The filter as it was is stored with the run and each object (`source_params.screen`). The two modes have
-separate queues, so neither takes the other's objects; a random-mode sample that draws an object a filter
-threw away takes it back into random mode, so Random stays random. The Nights card lists filtered nights
-with their pass counts.
+The two modes have separate queues, so neither takes the other's objects; a random-mode sample that draws an object a filter
+threw away takes it back into random mode, so Random stays random.
 
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
@@ -108,12 +77,11 @@ primary class; the export adds `alt_labels`, `possibly_real` and `possibly_trans
 Keys: `1`–`6`, `0` class · Shift+digit alternative class · `w` watch · `Enter` commit · `n` next · `s` skip · `h` hostless · `f` cycle light-curve mode · `+`/`-` zoom.
 Click anywhere near a source in the field image (the nearest one is picked) or a row of the host table to record the host.
 
-**Detection offsets.** A polar plot (north up, east left) of each detection's position
+**Detection offsets.** A polar plot of each detection's position
 relative to the mean LSST position, colored by time, with the rms scatter and a same-night
-motion estimate. A stationary source clusters at the center; a mover makes a time-ordered
-line. Objects cached before positions were stored get them backfilled into a separate cache.
+motion estimate.
 
-**Source classes.** Catalog matches are colored by what the catalogs report (not a classifier):
+**Source classes.** Catalog matches are colored and could be:
 star, galaxy, AGN/QSO, known SN/transient, unclassified. LS DR10 `type` gives star (PSF) or
 galaxy (EXP/DEV/SER); a confident Gaia (significant parallax/proper motion), Milliquas, SIMBAD or
 NED class within 1″ confirms or overrides it. Dashed outlines and a "?" mark uncertain classes
@@ -153,9 +121,7 @@ Filter rules come from light curve, broker scores, and metadata brokers already 
 ```
 
 **Filter lab.** `http://127.0.0.1:8765/rejection` (or the "Filter lab" tab)
-does the same thing interactively for one pipeline, scored against no filter.
-- Pick the target from chips: any class or transient subclass, optionally counting
-  "could also be" classes.
+- Pick the target from any class or transient subclass, optionally counting "could also be" classes.
 - Toggle rules and edit thresholds; the metrics, the decision tree, the kept-by-class chart and
   the per-step table update as you type. Object IDs in the tree's lists open in the vetter
   (`/vet?object=<id>`).
@@ -175,18 +141,6 @@ does the same thing interactively for one pipeline, scored against no filter.
   runs whole nights through one. On the command line:
   `.venv/bin/python -m dozynki.evaluate --saved "<name>"`.
 
-Evaluating stores nothing in the database. Your other settings are remembered in the browser.
-
-- **Truth** is each object's first blind label (`--truth final` for the latest label of any phase).
-  Rules marked `broker` read reliability or ALeRCE output, which revealed labels may have seen.
-- **Population** is the uniform random sample only (`--all-sources` to include everything),
-  so the rates estimate the LSST stream within the recorded sampling filters. `unsure` is excluded.
-- **Metrics** (Wilson 95% intervals): completeness (target kept / target), purity (target
-  kept / kept), false-positive rate (non-target kept / non-target), bogus leak (bogus kept /
-  bogus), against a no-filter baseline. The target is `transient` by default, or `real`.
-- **Per step**: rejections by class with the step alone, rejections no other step makes,
-  and the pipeline's metrics with that step left out.
-
 Every step's decision is stored in the `rejections` table under the pipeline's version
 hash, and each run writes `exports/rejection/<timestamp>/` (`report.txt`, `metrics.json`,
 `decisions.csv` with the features behind each decision).
@@ -195,12 +149,11 @@ hash, and each run writes `exports/rejection/<timestamp>/` (`report.txt`, `metri
 
 ![Labeled classes in Galactic coordinates, with the filter lab pipeline's rejections faded](docs/images/sky-map.webp)
 
-`http://127.0.0.1:8765/sky` (or the "Sky map" tab) plots every labeled object on a Hammer–Aitoff map in
-equatorial, Galactic or ecliptic coordinates, colored by class (first blind or latest label). The filter lab's
+`http://127.0.0.1:8765/sky` (or the "Sky map" tab) plots every labeled object on a map in
+equatorial, Galactic or ecliptic coordinates, colored by class. The filter lab's
 current pipeline can be overlaid, fading what it rejects or coloring each object by the step that rejects it,
 and the page follows your changes in the filter lab. Galactic and ecliptic latitude sliders try a latitude cut
-and draw it on the map. Click a point to open it in the vetter. Like the filter lab, only the uniform random
-sample is shown unless "non-random objects too" is on. Code lives in `dozynki/sky.py`.
+and draw it on the map. Click a point to open it in the vetter. Code lives in `dozynki/sky.py`.
 
 ## Similar objects
 
@@ -230,11 +183,7 @@ random sample is used unless "non-random objects too" is on. Code lives in `dozy
 `http://127.0.0.1:8765/compare` (or the "Compare" tab) draws a confusion matrix between
 any two label sources: each labeler's first blind or latest labels, and every ALeRCE
 classifier found in the cache (top class). Nothing is stored. Code lives in `dozynki/compare.py`.
-- Each source keeps its own class names (ALeRCE "SN", "VS", …), so the matrix need not be
-  square. Agreement maps both sides onto the DOZYNKI classes with `ALERCE_CLASSES`; outlined
-  cells count as agreement. "unsure" and unmapped classes (e.g. ALeRCE "Stochastic") are left out and counted.
 - View all classes, or collapse to real vs not real, or transient vs not transient.
-- Accuracy (Wilson 95%), Cohen's κ, and per-class recall / precision / F1. The reference is the rows.
 - "ALeRCE top p ≥" drops low-confidence broker calls; "incl. could-also-be" adds an accuracy
   that also accepts a match with an alternative class.
 - A table scores every source against the reference. Click a matrix cell to list its objects,
@@ -276,7 +225,7 @@ dozynki/
 
 - ALeRCE LSST forced photometry in the light curve
 - Anomaly scoring stage for objects labeled real transients
-- Import lists of objects/coordinates to crossmatch on
+- Import lists of objects/coordinates to crossmatch, filter, visualize
 
 ## AI disclosure
 
