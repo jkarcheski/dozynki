@@ -1,5 +1,5 @@
 # DOZYNKI
-DOZYNKI is planned to be a unified, flexible, and fast tool for identify rare and scientifically valuable transients in immense alert streams.
+DOZYNKI is planned to be a unified, flexible, and fast tool for identifying scientifically valuable transients in immense alert streams.
 The name DOZYNKI ("doh-ZHIN-kee", [dɔˈʐɨŋkʲi]) is inspired by the
 [Polish/Slavic harvest festival](https://en.wikipedia.org/wiki/Do%C5%BCynki), reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy. 
 
