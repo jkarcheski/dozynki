@@ -4,7 +4,7 @@ const BAND_COLORS = { u: "#7b3fc4", g: "#2a9d4b", r: "#d1352b", i: "#e08a1e", z:
 const LS_SIZE = 256;            // cutout size in pixels (pixscale follows the zoom level)
 const FIELD_PX = 320;           // displayed size
 const FOV_LEVELS = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360]; // field width, arcsec
-const DEFAULT_FOV = 30;
+const DEFAULT_FOV = 10;
 
 let CFG = null;
 let cur = null;                 // current /api/object payload
