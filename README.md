@@ -273,9 +273,9 @@ dozynki/
 
 ## Planned
 
-- Babamul Kafka topics and CSV object lists as queue sources
 - ALeRCE LSST forced photometry in the light curve
 - Anomaly scoring stage for objects labeled real transients
+- Import lists of objects/coordinates to crossmatch on
 
 ## AI disclosure
 
