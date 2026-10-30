@@ -302,12 +302,6 @@ def count_pending(labeler, where="", params=(), ready=READY):
                  (*done_params, *params))[0]["n"]
 
 
-def pending_missing_summary():
-    return query("SELECT object_id, antares_locus FROM queue WHERE status = 'pending' AND n_det IS NULL")
-
-
-def set_summary(object_id, summary):
-    execute("UPDATE queue SET n_det = ?, first_mjd = ?, last_mjd = ? WHERE object_id = ?",
 def clear_pending(labeler, where="", params=(), ready=READY):
     """Take everything waiting for this labeler out of their queue (status 'cleared', theirs only);
     returns how many. Nothing is deleted, so other labelers and the filter lab keep the objects."""
@@ -317,6 +311,12 @@ def clear_pending(labeler, where="", params=(), ready=READY):
                    (labeler, *done_params, *params)).rowcount
 
 
+def pending_missing_summary():
+    return query("SELECT object_id, antares_locus FROM queue WHERE status = 'pending' AND n_det IS NULL")
+
+
+def set_summary(object_id, summary):
+    execute("UPDATE queue SET n_det = ?, first_mjd = ?, last_mjd = ? WHERE object_id = ?",
             (summary.get("n_det"), summary.get("first_mjd"), summary.get("last_mjd"), object_id))
 
 
