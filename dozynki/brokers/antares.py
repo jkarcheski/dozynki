@@ -252,6 +252,9 @@ def _details(alerts):
             "size_ratio": size / psf_size if size > 0 and psf_size > 0 else None,
             "measurement_flagged": any(p.get(f"lsst_diaSource_{k}") for k in
                                        ("psfFlux_flag", "centroid_flag", "shape_flag", "apFlux_flag")),
+            # forced PSF flux at the source in the template (nJy): what was there before
+            "template_flux": p.get("lsst_diaSource_templateFlux"),
+            "template_flux_err": p.get("lsst_diaSource_templateFluxErr"),
         }
     return out
 

@@ -531,6 +531,27 @@ const QUESTIONS = {
     why: "Drops everything that isn't within this offset of a Legacy Survey host galaxy's center, hostless objects included. Needs one Legacy Survey query per object.",
     choices: [{ label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "Yes, within 1″", params: { max_sep: 1 } }, { label: "No", params: null }],
   },
+  in_template: {
+    node: (p) => `Template flux over ${p.max_ratio}× the change?`,
+    ask: "Drop sources already in the template that vary a little?",
+    why: "Rubin's forced flux at the source in the template image, over the brightest difference flux. AGN and variable stars are bright in the template and change by a fraction; a new transient on empty sky has almost nothing there. A transient on a bright galaxy core can also trip it.",
+    choices: [{ label: "Yes, over 1×", params: { max_ratio: 1 } }, { label: "Yes, over 3×", params: { max_ratio: 3 } },
+      { label: "Yes, over 10×", params: { max_ratio: 10 } }, { label: "No", params: null }],
+  },
+  long_history: {
+    node: (p) => `Detected over more than ${p.max_days} days?`,
+    ask: "Drop objects that keep alerting for months?",
+    why: "First to last detection, LSST and ZTF. Supernovae fade within months; AGN and variable stars keep coming back.",
+    choices: [{ label: "Yes, over 60 days", params: { max_days: 60 } }, { label: "Yes, over 100 days", params: { max_days: 100 } },
+      { label: "Yes, over 200 days", params: { max_days: 200 } }, { label: "No", params: null }],
+  },
+  alerce_stamp_agn: {
+    node: (p) => `ALeRCE P(AGN) above ${p.max_p}?`,
+    ask: "Use ALeRCE's stamp classifier to drop AGN?",
+    why: "Broker output: ALeRCE's LSST stamp classifier probability that the object is an AGN.",
+    choices: [{ label: "Yes, P(AGN) > 0.3", params: { max_p: 0.3 } }, { label: "Yes, P(AGN) > 0.5", params: { max_p: 0.5 } },
+      { label: "Yes, P(AGN) > 0.8", params: { max_p: 0.8 } }, { label: "No", params: null }],
+  },
   antares_nuclear: {
     node: (p) => `On a cataloged galaxy within ${arcsec(p.max_sep)}?`,
     ask: "Drop objects on a galaxy that ANTARES or ZTF already knows?",
@@ -565,15 +586,15 @@ const QUESTIONS = {
     choices: [{ label: "Yes, brighter than 14", params: { min_mag: 14 } }, { label: "Yes, brighter than 16", params: { min_mag: 16 } }, { label: "No", params: null }],
   },
   red: {
-    node: (p) => `g − r redder than ${p.max_gr}?`,
+    node: (p) => `Redder than g − r = ${p.max_gr}?`,
     ask: "Drop very red objects?",
-    why: "g − r of the latest LSST g and r detections taken within a day of each other (difference magnitudes). Young supernovae are blue; only objects with such a pair have a color.",
+    why: "Color from the latest LSST detections in any two bands taken within a day of each other (difference magnitudes), scaled to the g − r it would be, so i − z and r − z count too. Young supernovae are blue.",
     choices: [{ label: "Yes, g − r > 0.5", params: { max_gr: 0.5 } }, { label: "Yes, g − r > 1", params: { max_gr: 1 } }, { label: "No", params: null }],
   },
   blue: {
-    node: (p) => `g − r bluer than ${p.min_gr}?`,
+    node: (p) => `Bluer than g − r = ${p.min_gr}?`,
     ask: "Drop very blue objects?",
-    why: "g − r of the latest LSST g and r detections taken within a day of each other (difference magnitudes).",
+    why: "Color from the latest LSST detections in any two bands taken within a day of each other (difference magnitudes), scaled to the g − r it would be.",
     choices: [{ label: "Yes, g − r < −0.5", params: { min_gr: -0.5 } }, { label: "Yes, g − r < 0", params: { min_gr: 0 } }, { label: "No", params: null }],
   },
   long_rise: {
@@ -625,10 +646,10 @@ const QUESTIONS = {
 };
 // Questionnaire order, which is also the built pipeline's order: catalog facts, then data quality, then broker scores.
 const QUESTION_ORDER = ["declination", "faint_now", "faint", "bright", "sso_association", "trailed", "glint", "gaia_star", "antares_bright_star", "antares_gaia_variable", "ztf_ps1_star",
-  "milliquas_agn", "antares_nuclear", "nuclear", "not_nuclear", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
+  "milliquas_agn", "antares_nuclear", "nuclear", "not_nuclear", "in_template", "long_history", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
   "low_snr", "position_scatter", "min_detections", "min_lsst_detections", "min_nights", "min_span",
   "red", "blue", "long_rise", "fast_rise",
-  "lsst_reliability", "alerce_stamp_bogus", "scimma_quality"];
+  "lsst_reliability", "alerce_stamp_bogus", "alerce_stamp_agn", "scimma_quality"];
 
 function questionFor(name) {
   const rule = CFG.rules.find((r) => r.name === name);

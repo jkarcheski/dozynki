@@ -10,6 +10,7 @@
   them; objects with the full crossmatch read its host candidates instead.
 """
 
+import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -24,11 +25,17 @@ _lock = threading.Lock()
 _state = {"running": False, "done": 0, "total": 0, "errors": 0}
 
 
+def _current(det):
+    """Whether details carry every field kept now (template flux came later); empty ones count."""
+    return not det or "template_flux" in next(iter(det.values()))
+
+
 def get(object_id, ant):
-    """Details for one object from its cached ANTARES payload or the backfill cache; None if neither has them."""
-    if "lsst_details" in ant:
-        return ant["lsst_details"]
+    """Details for one object: the backfill cache when the ANTARES payload's copy predates a field,
+    else the payload's; None if neither has them."""
     hit = db.cache_get(object_id, KIND)
+    if "lsst_details" in ant and (_current(ant["lsst_details"]) or not hit):
+        return ant["lsst_details"]
     return hit["data"] if hit else None
 
 
@@ -54,15 +61,19 @@ def _fetch_hosts(object_id, ra, dec):
 
 
 def missing():
-    """Objects with a cached ANTARES payload lacking details or catalog matches, as (object_id, locus_id, kinds)."""
-    return [(r["object_id"], r["locus"], [k for k, gone in ((KIND, r["no_details"]), (CATALOGS, r["no_catalogs"])) if gone])
-            for r in db.query(
-        "SELECT c.object_id, json_extract(c.payload, '$.locus_id') locus, "
-        "json_type(c.payload, '$.lsst_details') IS NULL AND NOT EXISTS "
-        "  (SELECT 1 FROM cache d WHERE d.object_id = c.object_id AND d.kind = ?) no_details, "
+    """Objects with a cached ANTARES payload lacking current details or catalog matches, as (object_id, locus_id, kinds)."""
+    rows = db.query(
+        "SELECT c.object_id, json_extract(c.payload, '$.locus_id') locus, json_extract(c.payload, '$.lsst_details') payload_det, "
+        "(SELECT d.payload FROM cache d WHERE d.object_id = c.object_id AND d.kind = ?) cached_det, "
         "NOT EXISTS (SELECT 1 FROM cache d WHERE d.object_id = c.object_id AND d.kind = ?) no_catalogs "
         "FROM cache c WHERE c.kind = 'antares'", (KIND, CATALOGS))
-            if r["no_details"] or r["no_catalogs"]]
+    out = []
+    for r in rows:
+        dets = [json.loads(d) for d in (r["payload_det"], r["cached_det"]) if d is not None]
+        kinds = ([] if any(_current(d) for d in dets) else [KIND]) + ([CATALOGS] if r["no_catalogs"] else [])
+        if kinds:
+            out.append((r["object_id"], r["locus"], kinds))
+    return out
 
 
 def _fetch(object_id, locus_id, kinds):
@@ -78,7 +89,8 @@ def ensure(object_id, with_hosts=False):
     ant = (db.cache_get(object_id, "antares") or {}).get("data")
     if not ant:
         return
-    kinds = ([KIND] if get(object_id, ant) is None else []) + ([CATALOGS] if catalogs(object_id) is None else [])
+    det = get(object_id, ant)
+    kinds = ([KIND] if det is None or not _current(det) else []) + ([CATALOGS] if catalogs(object_id) is None else [])
     _fetch(object_id, ant["locus_id"], kinds)
     if with_hosts and hosts(object_id) is None:
         try:

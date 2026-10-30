@@ -19,7 +19,7 @@ from . import assemble, db, details, rejection
 from .brokers import alerce
 
 WORKERS = 8
-FETCH_FOR = {"alerce_stamp_bogus": "alerce", "nuclear": "ls_hosts", "not_nuclear": "ls_hosts"}  # fetched only for these rules
+FETCH_FOR = {"alerce_stamp_bogus": "alerce", "alerce_stamp_agn": "alerce", "nuclear": "ls_hosts", "not_nuclear": "ls_hosts"}  # fetched only for these rules
 _lock = threading.Lock()
 _running = False
 

@@ -64,16 +64,34 @@ def _likely_star(g):
 
 
 GALAXY_CATALOGS = ("sdss_gals", "2mass_xsc", "RC3")  # ANTARES catalogs whose entries are galaxies
-COLOR_PAIR_DAYS = 1.0  # g and r detections this close in time make a color
+COLOR_PAIR_DAYS = 1.0  # detections in two bands this close in time make a color
+LSST_WAVELENGTH = {"u": 3671, "g": 4827, "r": 6223, "i": 7546, "z": 8691, "y": 9712}  # effective, Angstrom
+GR_GAP = LSST_WAVELENGTH["r"] - LSST_WAVELENGTH["g"]
 
 
-def _gr_color(lsst):
-    """g - r of the latest LSST g and r difference-image detections within COLOR_PAIR_DAYS of each other."""
-    pos = [p for p in lsst if p.get("mag") is not None]
-    g = [p for p in pos if p.get("band") == "g"]
-    r = [p for p in pos if p.get("band") == "r"]
-    pairs = [(max(a["mjd"], b["mjd"]), a["mag"] - b["mag"]) for a in g for b in r if abs(a["mjd"] - b["mjd"]) <= COLOR_PAIR_DAYS]
-    return max(pairs)[1] if pairs else None
+def _color(lsst):
+    """Color of the latest pair of LSST difference-image detections in two bands within COLOR_PAIR_DAYS,
+    as the g - r it would be: (blue mag - red mag) scaled by g-r's wavelength gap over the pair's, so
+    i - z or r - z read on one scale with g - r. Returns (color, "i-z"), or (None, None)."""
+    pos = [p for p in lsst if p.get("mag") is not None and p.get("band") in LSST_WAVELENGTH]
+    pairs = []
+    for a in pos:
+        for b in pos:
+            gap = LSST_WAVELENGTH[b["band"]] - LSST_WAVELENGTH[a["band"]]
+            if gap > 0 and abs(a["mjd"] - b["mjd"]) <= COLOR_PAIR_DAYS:
+                pairs.append((max(a["mjd"], b["mjd"]), (a["mag"] - b["mag"]) * GR_GAP / gap, f"{a['band']}-{b['band']}"))
+    if not pairs:
+        return None, None
+    _, color, bands = max(pairs)
+    return color, bands
+
+
+def _template_ratio(lsst, det):
+    """Median Rubin template flux at the source over the brightest difference flux: above 1, the
+    change is smaller than what was already there (a variable source in the template)."""
+    peak = max((p["diff_flux"] for p in lsst if (p.get("diff_flux") or 0) > 0), default=None)
+    tmpl = _median(det[p["alert_id"]].get("template_flux") for p in lsst if p.get("alert_id") in det)
+    return tmpl / peak if peak and tmpl is not None else None
 
 
 def _rise(dets):
@@ -116,6 +134,7 @@ def features(object_id):
     rise_days, rise_rate = _rise(dets)
     det = details.get(object_id, ant)
     lsst_details = [det[p["alert_id"]] for p in lsst if p.get("alert_id") in det] if det is not None else []
+    color, color_bands = _color(lsst)
     ztf_ps1 = [p for p in dets if p["survey"] == "ztf" and p.get("distpsnr1") is not None and p["distpsnr1"] >= 0]
     nearest_ps1 = min(ztf_ps1, key=lambda p: p["distpsnr1"]) if ztf_ps1 else {}
     return {
@@ -141,7 +160,9 @@ def features(object_id):
         # difference magnitudes of positive LSST and ZTF detections
         "mag_peak": min((p["mag"] for p in dets if p.get("mag") is not None), default=None),
         "mag_latest": max(((p["mjd"], p["mag"]) for p in dets if p.get("mag") is not None), default=(None, None))[1],
-        "gr_color": _gr_color(lsst),
+        "color_gr_equiv": color,
+        "color_bands": color_bands,
+        "template_ratio": _template_ratio(lsst, det or {}),
         "rise_days": rise_days,
         "rise_rate_mag_per_day": rise_rate,
         "abs_gal_b": abs(sky["gal_b"]),
@@ -247,10 +268,17 @@ RULES = {r.name: r for r in [
          {"max_mag": 22.0}, lambda f, max_mag: None if f["mag_latest"] is None else f["mag_latest"] > max_mag),
     Rule("bright", "brightest detection brighter than min_mag (difference magnitude)", {"min_mag": 15.0},
          lambda f, min_mag: _below(f["mag_peak"], min_mag)),
-    Rule("red", "g - r of the latest LSST g and r detections within a day of each other above max_gr (difference mags)",
-         {"max_gr": 1.0}, lambda f, max_gr: None if f["gr_color"] is None else f["gr_color"] > max_gr),
-    Rule("blue", "g - r of the latest LSST g and r detections within a day of each other below min_gr (difference mags)",
-         {"min_gr": -0.5}, lambda f, min_gr: _below(f["gr_color"], min_gr)),
+    Rule("red", "color redder than max_gr, as g - r: the latest LSST detections in any two bands within a day, "
+         "scaled to g - r's wavelength gap (difference mags)",
+         {"max_gr": 1.0}, lambda f, max_gr: None if f["color_gr_equiv"] is None else f["color_gr_equiv"] > max_gr),
+    Rule("blue", "color bluer than min_gr, as g - r: the latest LSST detections in any two bands within a day, "
+         "scaled to g - r's wavelength gap (difference mags)",
+         {"min_gr": -0.5}, lambda f, min_gr: _below(f["color_gr_equiv"], min_gr)),
+    Rule("in_template", "Rubin's template flux at the source is more than max_ratio times the brightest difference "
+         "flux: a source already there that varies (AGN, variable stars; also transients on a bright galaxy core)",
+         {"max_ratio": 3.0}, lambda f, max_ratio: None if f["template_ratio"] is None else f["template_ratio"] > max_ratio),
+    Rule("long_history", "first to last detection spans more than max_days (AGN and variables keep alerting)",
+         {"max_days": 100.0}, lambda f, max_days: None if f["span_days"] is None else f["span_days"] > max_days),
     Rule("long_rise", "more than max_days from the first detection to the brightest (slow risers: AGN, variables)",
          {"max_days": 50.0}, lambda f, max_days: None if f["rise_days"] is None else f["rise_days"] > max_days),
     Rule("fast_rise", "brightens faster than max_rate mag/day between detections in one band (flares)",
@@ -270,6 +298,9 @@ RULES = {r.name: r for r in [
          lambda f: not f["scimma_quality"], broker=True),
     Rule("lsst_reliability", "highest per-alert LSST reliability below min_rel", {"min_rel": 0.5},
          lambda f, min_rel: _below(f["lsst_reliability_max"], min_rel), broker=True),
+    Rule("alerce_stamp_agn", "ALeRCE LSST stamp classifier P(AGN) above max_p", {"max_p": 0.5},
+         lambda f, max_p: None if "AGN" not in f["alerce_stamp_probs"] else f["alerce_stamp_probs"]["AGN"] > max_p,
+         broker=True),
     Rule("alerce_stamp_bogus", "ALeRCE LSST stamp classifier P(bogus) above max_p", {"max_p": 0.5},
          lambda f, max_p: None if "bogus" not in f["alerce_stamp_probs"] else f["alerce_stamp_probs"]["bogus"] > max_p,
          broker=True),
@@ -306,7 +337,7 @@ LISTING_ES = {
 }
 # Not the magnitude cuts: ANTARES's brightest/newest alert magnitudes mix ZTF and LSST total
 # magnitudes (18.25 where the LSST difference magnitude is 23.05), so those wait for the full fetch.
-LISTING_LOCAL = {"min_span", "galactic_plane", "ecliptic"}
+LISTING_LOCAL = {"min_span", "long_history", "galactic_plane", "ecliptic"}
 
 
 def listing_split(pipeline):

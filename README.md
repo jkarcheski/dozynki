@@ -125,9 +125,15 @@ Filter rules come from light curve, broker scores, and metadata brokers already 
   further than ANTARES's match. Objects cached earlier get them from "Fetch them" in the filter lab.
 - **Position, brightness, color and rise**: declination limits for your site (`declination`, applied by
   ANTARES in the night query); brightest and latest difference magnitude (`faint`, `faint_now`, `bright`;
-  not in the night query, since ANTARES's stored magnitudes mix in ZTF and total magnitudes); g − r of the latest
-  LSST g and r detections within a day (`red`, `blue`); days from first detection to the brightest
+  not in the night query, since ANTARES's stored magnitudes mix in ZTF and total magnitudes); color from the latest LSST
+  detections in any two bands within a day, scaled to the g − r it would be by the bands' wavelength gap
+  (`red`, `blue`); days from first detection to the brightest
   (`long_rise`) and the fastest brightening in one band (`fast_rise`).
+- **Already in the template** (`in_template`): Rubin's forced flux at the source in the template
+  (`templateFlux`) over the brightest difference flux. AGN and variable stars are bright in the template
+  and change by a fraction. Together with `long_history` (detected over more than 100 days) and
+  `alerce_stamp_agn` (ALeRCE's stamp classifier, broker output), these are the AGN cuts beyond Milliquas.
+  Objects cached before template flux was kept get it from "Fetch them".
 - **Nuclearity**: offset from the Legacy Survey host galaxy (lowest DLR within 10″) for `nuclear` and
   `not_nuclear` (keep only nuclear). Not broker data, but one quick Data Lab query (cache kind `ls_hosts`),
   made only when a filter uses these rules; objects with the full crossmatch use its host candidates.
