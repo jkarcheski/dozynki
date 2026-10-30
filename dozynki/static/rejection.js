@@ -386,15 +386,15 @@ const QUESTIONS = {
   gaia_star: {
     node: (p) => `Gaia star within ${arcsec(p.max_sep)}?`,
     ask: "Drop objects sitting on a Gaia star?",
-    why: "A Gaia DR3 source with significant parallax or proper motion. A wider radius drops more variable stars, and more transients near stars.",
-    choices: [{ label: "Yes, within 2″", params: { max_sep: 2 } }, { label: "Yes, within 1″", params: { max_sep: 1 } },
+    why: "A Gaia DR3 source with significant parallax or proper motion, from ANTARES's matches, which reach about 1″.",
+    choices: [{ label: "Yes, within 1″", params: { max_sep: 1 } },
       { label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "No", params: null }],
   },
   milliquas_agn: {
     node: (p) => `Milliquas AGN/QSO within ${arcsec(p.max_sep)}?`,
     ask: "Drop objects on a known AGN or quasar?",
-    why: "A Milliquas QSO/AGN nearby. Answer no if AGN flares or nuclear transients are what you want.",
-    choices: [{ label: "Yes, within 2″", params: { max_sep: 2 } }, { label: "Yes, within 1″", params: { max_sep: 1 } },
+    why: "A Milliquas QSO/AGN nearby, from ANTARES's matches, which reach about 1″. Answer no if AGN flares or nuclear transients are what you want.",
+    choices: [{ label: "Yes, within 1″", params: { max_sep: 1 } },
       { label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "No", params: null }],
   },
   galactic_plane: {
@@ -518,6 +518,78 @@ const QUESTIONS = {
       { label: "Yes, within 1″, likely star", params: { max_dist: 1, min_sg: 0.5 } },
       { label: "Yes, within 1″, surely star", params: { max_dist: 1, min_sg: 0.8 } }, { label: "No", params: null }],
   },
+  nuclear: {
+    node: (p) => `Within ${arcsec(p.max_sep)} of its host's center?`,
+    ask: "Drop objects sitting on the center of a galaxy?",
+    why: "Offset from the Legacy Survey host galaxy (lowest DLR within 10″). Nuclear sources are often AGN; answer no if you want TDEs or nuclear transients. Needs one Legacy Survey query per object.",
+    choices: [{ label: "Yes, within 0.3″", params: { max_sep: 0.3 } }, { label: "Yes, within 0.5″", params: { max_sep: 0.5 } },
+      { label: "Yes, within 1″", params: { max_sep: 1 } }, { label: "No", params: null }],
+  },
+  not_nuclear: {
+    node: (p) => `Not within ${arcsec(p.max_sep)} of a host's center?`,
+    ask: "Keep only nuclear objects (looking for TDEs or AGN)?",
+    why: "Drops everything that isn't within this offset of a Legacy Survey host galaxy's center, hostless objects included. Needs one Legacy Survey query per object.",
+    choices: [{ label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "Yes, within 1″", params: { max_sep: 1 } }, { label: "No", params: null }],
+  },
+  antares_nuclear: {
+    node: (p) => `On a cataloged galaxy within ${arcsec(p.max_sep)}?`,
+    ask: "Drop objects on a galaxy that ANTARES or ZTF already knows?",
+    why: "ANTARES's SDSS galaxy, 2MASS extended source or RC3 match (within about 1″), or ZTF's nearest PS1 source being a galaxy. Broker data only, so it's fast, but these catalogs are sparse in the south.",
+    choices: [{ label: "Yes, within 1″", params: { max_sep: 1 } }, { label: "Yes, within 0.5″", params: { max_sep: 0.5 } }, { label: "No", params: null }],
+  },
+  declination: {
+    node: (p) => `Outside Dec ${p.min_dec}° to ${p.max_dec}°?`,
+    ask: "Only objects you can follow up from your site?",
+    why: "Declination limits for your telescope. ANTARES applies this cut itself, so it costs nothing.",
+    choices: [{ label: "Dec ≥ −35°", params: { min_dec: -35, max_dec: 90 } }, { label: "Dec ≥ −30°", params: { min_dec: -30, max_dec: 90 } },
+      { label: "Dec ≥ −20°", params: { min_dec: -20, max_dec: 90 } }, { label: "Anywhere", params: null }],
+  },
+  faint: {
+    node: (p) => `Peak fainter than ${p.max_mag} mag?`,
+    ask: "How bright does an object have to get?",
+    why: "Brightest detection, in difference magnitudes (the transient's own flux, without its host).",
+    choices: [{ label: "Brighter than 21", params: { max_mag: 21 } }, { label: "Brighter than 22", params: { max_mag: 22 } },
+      { label: "Brighter than 23", params: { max_mag: 23 } }, { label: "Any", params: null }],
+  },
+  faint_now: {
+    node: (p) => `Latest detection fainter than ${p.max_mag} mag?`,
+    ask: "Only objects bright enough to follow up now?",
+    why: "Latest detection, in difference magnitudes. Use your telescope's limit.",
+    choices: [{ label: "Brighter than 20", params: { max_mag: 20 } }, { label: "Brighter than 21", params: { max_mag: 21 } },
+      { label: "Brighter than 22", params: { max_mag: 22 } }, { label: "Any", params: null }],
+  },
+  bright: {
+    node: (p) => `Peak brighter than ${p.min_mag} mag?`,
+    ask: "Drop very bright detections?",
+    why: "Brightest detection, in difference magnitudes. Very bright residuals are often saturated stars.",
+    choices: [{ label: "Yes, brighter than 14", params: { min_mag: 14 } }, { label: "Yes, brighter than 16", params: { min_mag: 16 } }, { label: "No", params: null }],
+  },
+  red: {
+    node: (p) => `g − r redder than ${p.max_gr}?`,
+    ask: "Drop very red objects?",
+    why: "g − r of the latest LSST g and r detections taken within a day of each other (difference magnitudes). Young supernovae are blue; only objects with such a pair have a color.",
+    choices: [{ label: "Yes, g − r > 0.5", params: { max_gr: 0.5 } }, { label: "Yes, g − r > 1", params: { max_gr: 1 } }, { label: "No", params: null }],
+  },
+  blue: {
+    node: (p) => `g − r bluer than ${p.min_gr}?`,
+    ask: "Drop very blue objects?",
+    why: "g − r of the latest LSST g and r detections taken within a day of each other (difference magnitudes).",
+    choices: [{ label: "Yes, g − r < −0.5", params: { min_gr: -0.5 } }, { label: "Yes, g − r < 0", params: { min_gr: 0 } }, { label: "No", params: null }],
+  },
+  long_rise: {
+    node: (p) => `Rising longer than ${p.max_days} days?`,
+    ask: "Drop objects that take a long time to rise?",
+    why: "Days from the first detection to the brightest. Supernovae rise in weeks; AGN and long-period variables wander for months.",
+    choices: [{ label: "Yes, over 30 days", params: { max_days: 30 } }, { label: "Yes, over 50 days", params: { max_days: 50 } },
+      { label: "Yes, over 100 days", params: { max_days: 100 } }, { label: "No", params: null }],
+  },
+  fast_rise: {
+    node: (p) => `Brightening faster than ${p.max_rate} mag/day?`,
+    ask: "Drop objects that brighten very fast?",
+    why: "Fastest brightening between detections in one band at least half a day apart. Stellar flares jump magnitudes within hours; supernovae rise at a few tenths of a magnitude a day.",
+    choices: [{ label: "Yes, over 0.5 mag/day", params: { max_rate: 0.5 } }, { label: "Yes, over 1 mag/day", params: { max_rate: 1 } },
+      { label: "Yes, over 2 mag/day", params: { max_rate: 2 } }, { label: "No", params: null }],
+  },
   antares_bright_star: {
     node: () => "ANTARES: near a bright guide star?",
     ask: "Drop objects ANTARES matched to a bright star?",
@@ -552,9 +624,10 @@ const QUESTIONS = {
   },
 };
 // Questionnaire order, which is also the built pipeline's order: catalog facts, then data quality, then broker scores.
-const QUESTION_ORDER = ["sso_association", "trailed", "glint", "gaia_star", "antares_bright_star", "antares_gaia_variable", "ztf_ps1_star",
-  "milliquas_agn", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
+const QUESTION_ORDER = ["declination", "faint_now", "faint", "bright", "sso_association", "trailed", "glint", "gaia_star", "antares_bright_star", "antares_gaia_variable", "ztf_ps1_star",
+  "milliquas_agn", "antares_nuclear", "nuclear", "not_nuclear", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
   "low_snr", "position_scatter", "min_detections", "min_lsst_detections", "min_nights", "min_span",
+  "red", "blue", "long_rise", "fast_rise",
   "lsst_reliability", "alerce_stamp_bogus", "scimma_quality"];
 
 function questionFor(name) {

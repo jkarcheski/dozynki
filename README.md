@@ -54,8 +54,8 @@ as drawn. *Filtered* runs a whole night through a saved filter from the filter l
 
 To keep things running fast, the run (`nightrun.py`, table `night_runs`) has two stages:
 1. The rules the locus listing answers run over the whole night at once: ANTARES applies detections,
-   LSST solar-system association, its catalog matches (bright stars, Gaia variables, Milliquas at
-   `max_sep` ≥ 1″) and the SCIMMA tag in its query, and Galactic latitude,
+   LSST solar-system association, declination, its catalog matches (bright stars, Gaia variables,
+   Milliquas and galaxies at `max_sep` ≥ 1″) and the SCIMMA tag in its query, and Galactic latitude,
    ecliptic latitude and span run here on each listing (`rejection.LISTING_ES` / `LISTING_LOCAL`). This
    takes about 40 s for a 50,000-object night and gives "N of M pass".
 2. Everything that passes is queued as `screening` in a random order, and a background thread (`screen.py`)
@@ -123,6 +123,16 @@ Filter rules come from light curve, broker scores, and metadata brokers already 
   about 1 arcsec): Gaia DR3 with parallax and proper motion for `gaia_star` (significant at 5σ, the same
   cut the crossmatch makes) and Milliquas for `milliquas_agn`, so a `max_sep` above about 1″ reaches no
   further than ANTARES's match. Objects cached earlier get them from "Fetch them" in the filter lab.
+- **Position, brightness, color and rise**: declination limits for your site (`declination`, applied by
+  ANTARES in the night query); brightest and latest difference magnitude (`faint`, `faint_now`, `bright`;
+  not in the night query, since ANTARES's stored magnitudes mix in ZTF and total magnitudes); g − r of the latest
+  LSST g and r detections within a day (`red`, `blue`); days from first detection to the brightest
+  (`long_rise`) and the fastest brightening in one band (`fast_rise`).
+- **Nuclearity**: offset from the Legacy Survey host galaxy (lowest DLR within 10″) for `nuclear` and
+  `not_nuclear` (keep only nuclear). Not broker data, but one quick Data Lab query (cache kind `ls_hosts`),
+  made only when a filter uses these rules; objects with the full crossmatch use its host candidates.
+  `antares_nuclear` is broker-only: ANTARES's SDSS galaxy, 2MASS extended or RC3 match (about 1″), or
+  ZTF's nearest PS1 source being a galaxy. It's fast but sparse in the south.
 - **ANTARES locus metadata**: its bright guide star and Gaia DR3 variability catalog matches (yes/no)
   and the SCIMMA quality-transient filter tag (broker output).
 

@@ -3,8 +3,8 @@
 A filtered-mode pull queues objects as 'screening', with the pipeline stored in their
 source_params (so later edits to the saved filter don't change what a pull meant). A
 background thread fetches what the rules read, all of it stored by brokers (ANTARES's object,
-alerts and catalog matches, and ALeRCE only for a rule that reads it; not our own slow
-crossmatch, which waits until the object is opened), applies the pipeline, and moves it
+alerts and catalog matches; ALeRCE, and Legacy Survey hosts, only for a rule that reads them;
+not the rest of our crossmatch, which waits until the object is opened), applies the pipeline, and moves it
 to 'pending' (kept) or 'filtered' (rejected; screen_result names the step). An object that can't be fetched goes to 'pending' with screen_result 'error',
 so a broker outage hides nothing. Random mode never serves screened objects.
 Objects from a whole-night run (nightrun.py) are also filtered out when none of their
@@ -19,7 +19,7 @@ from . import assemble, db, details, rejection
 from .brokers import alerce
 
 WORKERS = 8
-BROKER_RULES = {"alerce_stamp_bogus": "alerce"}  # rules reading a broker fetched only for them
+FETCH_FOR = {"alerce_stamp_bogus": "alerce", "nuclear": "ls_hosts", "not_nuclear": "ls_hosts"}  # fetched only for these rules
 _lock = threading.Lock()
 _running = False
 
@@ -37,8 +37,9 @@ def _fetch(object_id, pipeline):
     """Cache what the pipeline's rules read; the vetter's assemble.load fetches the rest later."""
     item = db.get_queue_item(object_id)
     ant = assemble._cached(object_id, "antares", lambda: assemble._fetch_antares(item))["data"]
-    details.ensure(object_id)
-    if "alerce" in {BROKER_RULES.get(s["rule"]) for s in pipeline}:
+    needs = {FETCH_FOR.get(s["rule"]) for s in pipeline}
+    details.ensure(object_id, with_hosts="ls_hosts" in needs)
+    if "alerce" in needs:
         assemble._cached(object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")))
     return assemble._gather(object_id)
 
