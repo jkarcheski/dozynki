@@ -9,12 +9,6 @@ async function api(path) {
   return r.json();
 }
 
-async function post(path, body) {
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || `${r.status}`);
-  return r.json();
-}
-
 // Farm: achievement unlocks from /api/farm (farm.py), owned ones drawn into the wheat field.
 let pending = 0;
 
@@ -39,67 +33,10 @@ function renderLeaderboard(lb, me) {
     || `<tr><td class="muted">No labels yet.</td></tr>`;
 }
 
-// The filter lab keeps its pipelines in the browser (rejection.js), so filter
-// achievements are checked here: a pipeline counts once it differs from its default.
-const FILTERLAB_KEY = "dozynki.filterlab.v1";
-
-function filtersMade(rc) {
-  let saved;
-  try { saved = JSON.parse(localStorage.getItem(FILTERLAB_KEY)); } catch { return 0; }
-  if (!saved) return 0;
-  const byName = Object.fromEntries(rc.rules.map((r) => [r.name, r]));
-  const norm = (steps) => JSON.stringify((steps || []).filter((s) => byName[s.rule] && s.on)
-    .map((s) => [s.rule, { ...byName[s.rule].defaults, ...s.params }]));
-  const dflt = rc.default_pipeline.map(({ rule, ...params }) => ({ rule, on: true, params }));
-  return Number(norm(saved.pipeline || saved.A) !== norm(dflt));
-}
-
-function renderAchievements(ach, rc) {
-  for (const a of ach.achievements) {
-    if (a.category !== "filtering") continue;
-    a.count = filtersMade(rc);
-    a.earned = a.tiers.filter((t) => a.count >= t).length;
-    a.next = a.tiers[a.earned] ?? null;
-  }
-  const tiers = ach.achievements.reduce((n, a) => n + a.tiers.length, 0);
-  const won = ach.achievements.reduce((n, a) => n + a.earned, 0);
-  $("#ach-count").textContent = `${won} of ${tiers} tiers`;
-  $("#tns-at").textContent = ach.tns_checked_at ? `TNS checked ${ach.tns_checked_at.slice(0, 16).replace("T", " ")} UTC` : "TNS not checked yet";
-  $("#achievements").innerHTML = ach.categories.map((cat) => `<h3>${esc(cat)}</h3><div class="badges">`
-    + ach.achievements.filter((a) => a.category === cat).map((a) => {
-      const goal = a.next ?? a.tiers[a.tiers.length - 1];
-      const pips = a.tiers.map((t, i) => `<i class="${i < a.earned ? "on" : ""}" title="${t}"></i>`).join("");
-      return `<div class="badge${a.earned ? " won" : ""}${a.next === null ? " done" : ""}">`
-        + `<b>${esc(a.name)}</b><span class="pips">${pips}</span>`
-        + `<span class="what">${esc(a.what)}</span>`
-        + `<span class="prog"><i style="width:${Math.min(100, 100 * a.count / goal).toFixed(1)}%"></i></span>`
-        + `<span class="muted">${a.count} / ${a.next === null ? "all tiers" : a.next}</span></div>`;
-    }).join("") + `</div>`).join("");
-}
-
-async function checkTns(rc) {
-  const btn = $("#tns-check");
-  btn.disabled = true;
-  btn.textContent = "Checking…";
-  try {
-    const r = await post("/api/tns/check", {});
-    const failed = Object.keys(r.errors).length;
-    renderAchievements(await api("/api/achievements"), rc);
-    $("#tns-at").textContent = `${r.matched} of ${r.checked} transients on TNS` + (failed ? `, ${failed} failed` : "");
-  } catch (e) {
-    $("#err").textContent = e.message;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Check TNS";
-  }
-}
-
 async function init() {
-  const [cfg, s, lb, ach, rc, farm] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
-    api("/api/achievements"), api("/api/rejection/config"), api("/api/farm")]);
+  const [cfg, s, lb, farm] = await Promise.all([api("/api/config"), api("/api/stats"), api("/api/leaderboard"),
+    api("/api/farm")]);
   renderLeaderboard(lb, cfg.labeler);
-  renderAchievements(ach, rc);
-  $("#tns-check").onclick = () => checkTns(rc);
   const q = s.queue;
   pending = q.pending || 0;
   renderFarm(farm);
