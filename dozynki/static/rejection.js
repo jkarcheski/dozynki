@@ -603,6 +603,13 @@ const QUESTIONS = {
     choices: [{ label: "Yes, over 30 days", params: { max_days: 30 } }, { label: "Yes, over 50 days", params: { max_days: 50 } },
       { label: "Yes, over 100 days", params: { max_days: 100 } }, { label: "No", params: null }],
   },
+  not_fast_rise: {
+    node: (p) => `Not rising faster than ${p.min_rate} mag/day?`,
+    ask: "Keep only fast risers?",
+    why: "Fastest brightening between detections in one band at least half a day apart. Young supernovae and fast transients rise by tenths of a magnitude a day or more. Objects without two such detections have no rate and are dropped too.",
+    choices: [{ label: "Yes, over 0.1 mag/day", params: { min_rate: 0.1 } }, { label: "Yes, over 0.2 mag/day", params: { min_rate: 0.2 } },
+      { label: "Yes, over 0.5 mag/day", params: { min_rate: 0.5 } }, { label: "No", params: null }],
+  },
   fast_rise: {
     node: (p) => `Brightening faster than ${p.max_rate} mag/day?`,
     ask: "Drop objects that brighten very fast?",
@@ -647,7 +654,7 @@ const QUESTIONS = {
 const QUESTION_ORDER = ["declination", "faint_now", "faint", "bright", "sso_association", "trailed", "glint", "gaia_star", "antares_bright_star", "antares_gaia_variable", "ztf_ps1_star",
   "milliquas_agn", "antares_nuclear", "nuclear", "not_nuclear", "in_template", "long_history", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
   "low_snr", "position_scatter", "min_detections", "min_lsst_detections", "min_nights", "min_span",
-  "red", "blue", "long_rise", "fast_rise",
+  "red", "blue", "long_rise", "fast_rise", "not_fast_rise",
   "lsst_reliability", "alerce_stamp_bogus", "alerce_stamp_agn", "scimma_quality"];
 
 function questionFor(name) {

@@ -128,7 +128,8 @@ Filter rules come from light curve, broker scores, and metadata brokers already 
   not in the night query, since ANTARES's stored magnitudes mix in ZTF and total magnitudes); color from the latest LSST
   detections in any two bands within a day, scaled to the g − r it would be by the bands' wavelength gap
   (`red`, `blue`); days from first detection to the brightest
-  (`long_rise`) and the fastest brightening in one band (`fast_rise`).
+  (`long_rise`) and the fastest brightening in one band (`fast_rise` drops flares; `not_fast_rise` keeps only fast
+  risers, dropping objects with no rate too).
 - **Already in the template** (`in_template`): Rubin's forced flux at the source in the template
   (`templateFlux`) over the brightest difference flux. AGN and variable stars are bright in the template
   and change by a fraction. Together with `long_history` (detected over more than 100 days) and

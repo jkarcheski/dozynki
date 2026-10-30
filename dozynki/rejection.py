@@ -283,6 +283,9 @@ RULES = {r.name: r for r in [
          {"max_days": 50.0}, lambda f, max_days: None if f["rise_days"] is None else f["rise_days"] > max_days),
     Rule("fast_rise", "brightens faster than max_rate mag/day between detections in one band (flares)",
          {"max_rate": 1.0}, lambda f, max_rate: None if f["rise_rate_mag_per_day"] is None else f["rise_rate_mag_per_day"] > max_rate),
+    Rule("not_fast_rise", "brightens no faster than min_rate mag/day, or has no rate (fewer than two good detections "
+         "in one band half a day apart): keeps only fast risers (young SNe, fast transients)",
+         {"min_rate": 0.2}, lambda f, min_rate: f["rise_rate_mag_per_day"] is None or f["rise_rate_mag_per_day"] < min_rate),
     Rule("nuclear", "within max_sep arcsec of its Legacy Survey host galaxy's center (AGN, nuclear variability)",
          {"max_sep": 0.5}, lambda f, max_sep: _within(f["ls_host_sep"], max_sep) if f["ls_hosts_fetched"] else None),
     Rule("not_nuclear", "not within max_sep arcsec of a Legacy Survey host galaxy's center, or no host (keeps only nuclear: TDEs, AGN)",
