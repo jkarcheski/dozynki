@@ -39,7 +39,7 @@ function fmt(v) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, object_list: "", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null };
+  return { truth: "blind", all_sources: false, object_list: "", vetted: "", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null };
 }
 
 function loadState() {
@@ -54,7 +54,7 @@ function saveState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* not essential */ }
 }
 
-const query = () => new URLSearchParams({ truth: state.truth, all_sources: state.all_sources, object_list: state.object_list || "",
+const query = () => new URLSearchParams({ truth: state.truth, ...Population.params(state),
   groups: (state.groups || []).join(",") }).toString();
 
 // ---------- rendering ----------

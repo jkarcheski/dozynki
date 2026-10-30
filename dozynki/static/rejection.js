@@ -51,7 +51,7 @@ function pipelineFrom(steps) {
 }
 
 function defaultState() {
-  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, object_list: "", pipeline: pipelineFrom(CFG.default_pipeline), name: null };
+  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, object_list: "", vetted: "", pipeline: pipelineFrom(CFG.default_pipeline), name: null };
 }
 
 function loadState() {
@@ -81,8 +81,7 @@ const requestFor = () => ({
   truth: state.truth,
   target: state.target,
   include_alt: state.include_alt,
-  all_sources: state.all_sources,
-  object_list: state.object_list || null,
+  ...Population.params(state),
 });
 
 // ---------- settings ----------

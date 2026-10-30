@@ -42,10 +42,20 @@ from .labels import CLASS_BY_KEY, CLASSES, TRANSIENT_SUBCLASSES
 RANDOM_SOURCES = ("antares_random_lsst",)
 
 
-def population_ids(all_sources=False, object_list=None):
-    """Object ids to use: one object list's members (lists.py), every queued object, or the uniform random sample."""
+def population_ids(all_sources=False, object_list=None, vetted=None):
+    """Object ids to use: one object list's members (lists.py), the objects one labeler vetted in a date range,
+    every queued object, or the uniform random sample.
+
+    vetted is (labeler, date_from, date_to): objects whose first label by labeler falls on those UTC dates,
+    inclusive; either date may be empty for an open end.
+    """
     if object_list:
         return db.list_object_ids(object_list)
+    if vetted:
+        who, lo, hi = vetted
+        return {r["object_id"] for r in db.query("SELECT object_id, MIN(created_at) AS first FROM labels "
+                                                 "WHERE labeler = ? GROUP BY object_id", (who,))
+                if (not lo or r["first"][:10] >= lo) and (not hi or r["first"][:10] <= hi)}
     return {r["object_id"] for r in db.query("SELECT object_id, source FROM queue")
             if all_sources or r["source"] in RANDOM_SOURCES}
 SHORTHANDS = {"real": [c["key"] for c in CLASSES if c["real"]],
@@ -121,13 +131,13 @@ def metrics(classes, pos, kept):
 
 
 def evaluate(pipeline=rejection.DEFAULT_PIPELINE, truth="blind", target="transient", include_alt=False,
-             all_sources=False, save=True, object_list=None):
+             all_sources=False, save=True, object_list=None, vetted=None):
     pipeline = rejection.resolve(pipeline)
     target_keys = parse_target(target)
     steps = [rejection.step_key(s) for s in pipeline]
     labels = truth_labels(truth)
     queue = {r["object_id"]: r for r in db.query("SELECT object_id, source, source_params FROM queue")}
-    ids = population_ids(all_sources, object_list)
+    ids = population_ids(all_sources, object_list, vetted)
     population ={oid: lab for oid, lab in labels.items() if oid in ids}
     ver, results = rejection.run(population, pipeline, save=save)
 
@@ -160,6 +170,7 @@ def evaluate(pipeline=rejection.DEFAULT_PIPELINE, truth="blind", target="transie
         "target": sorted(target_keys),
         "include_alt": include_alt,
         "object_list": object_list,
+        "vetted": list(vetted) if vetted else None,
         "population": {"scored": len(df), "n_target": int(df["target"].sum()),
                        "by_class": df["truth"].value_counts().to_dict(),
                        "excluded": dict(excluded),

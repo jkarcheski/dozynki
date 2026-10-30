@@ -5,7 +5,8 @@ frames crossmatch.context() uses, so |b| here is what the galactic_plane rule se
 and its truth label as in evaluate.py: first blind label, or latest of any phase.
 Unlabeled queue entries come back with klass None, so the page can show how the
 sample covers the sky. Like evaluate.py, only the uniform random sample is
-returned unless all_sources is set, or one object list's objects with object_list.
+returned unless all_sources is set, or one object list's objects with object_list, or
+one labeler's vetted objects with vetted (see population_ids).
 """
 
 import astropy.units as u
@@ -15,9 +16,9 @@ from . import db
 from .evaluate import population_ids, truth_labels
 
 
-def objects(truth="blind", all_sources=False, object_list=None):
+def objects(truth="blind", all_sources=False, object_list=None, vetted=None):
     labels = truth_labels(truth)
-    ids = population_ids(all_sources, object_list)
+    ids = population_ids(all_sources, object_list, vetted)
     rows = [r for r in db.query("SELECT object_id, ra, dec, source, status FROM queue WHERE ra IS NOT NULL")
             if r["object_id"] in ids]
     if not rows:

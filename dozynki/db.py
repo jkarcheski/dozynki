@@ -308,6 +308,15 @@ def pending_missing_summary():
 
 def set_summary(object_id, summary):
     execute("UPDATE queue SET n_det = ?, first_mjd = ?, last_mjd = ? WHERE object_id = ?",
+def clear_pending(labeler, where="", params=(), ready=READY):
+    """Take everything waiting for this labeler out of their queue (status 'cleared', theirs only);
+    returns how many. Nothing is deleted, so other labelers and the filter lab keep the objects."""
+    done, done_params = _not_done(labeler)
+    return execute(f"INSERT OR IGNORE INTO queue_status (object_id, labeler, status) SELECT object_id, ?, 'cleared' "
+                   f"FROM queue WHERE {ready} AND {done}{' AND ' + where if where else ''}",
+                   (labeler, *done_params, *params)).rowcount
+
+
             (summary.get("n_det"), summary.get("first_mjd"), summary.get("last_mjd"), object_id))
 
 
@@ -317,7 +326,7 @@ def get_queue_item(object_id):
 
 
 def set_status(object_id, labeler, status):
-    """This labeler's own status for an object (labeled | skipped | watch); None puts it back in their queue."""
+    """This labeler's own status for an object (labeled | skipped | watch | cleared); None puts it back in their queue."""
     if status is None:
         execute("DELETE FROM queue_status WHERE object_id = ? AND labeler = ?", (object_id, labeler))
     else:

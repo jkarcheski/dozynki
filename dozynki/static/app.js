@@ -62,6 +62,7 @@ async function init() {
   $("#fill").onclick = fillQueue;
   $("#pull-night").onclick = pullNight;
   $("#run-night").onclick = runNight;
+  $("#clear-stack").onclick = clearStack;
   $("#load-list").onclick = openListDialog;
   $("#list-submit").onclick = loadList;
   $("#list-file").onchange = readListFile;
@@ -405,6 +406,24 @@ async function fillQueue() {
     toast("Fill failed: " + e.message, 5000);
   } finally {
     $("#fill").disabled = false;
+  }
+}
+
+async function clearStack() {
+  const r = await api("/api/queue/matching?" + filterQuery());
+  const n = r.n_pending + (r.n_screening || 0);
+  if (!n) return toast("The haystack is already empty");
+  const what = r.n_screening ? `${r.n_pending} waiting and ${r.n_screening} still being checked` : `${r.n_pending} waiting`;
+  if (!confirm(`Clear this haystack (${what})? They leave your queue only; nothing is deleted.`)) return;
+  try {
+    const c = await api("/api/queue/clear?" + filterQuery(), { method: "POST" });
+    toast(`Cleared ${c.cleared} object${c.cleared === 1 ? "" : "s"} from the haystack`, 4000);
+    Harvest.setStack(0, true);
+    skipped.length = 0;
+    cur = null;
+    next();
+  } catch (e) {
+    toast("Couldn't clear: " + e.message, 6000);
   }
 }
 

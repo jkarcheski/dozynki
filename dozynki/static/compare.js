@@ -34,7 +34,7 @@ function defaultState() {
   const alerce = CFG.sources.filter((s) => s.kind === "alerce").sort((a, b) => b.n - a.n || b.id.localeCompare(a.id));
   const ref = labels[0]?.id ?? CFG.sources[0]?.id;
   const comp = alerce[0]?.id ?? CFG.sources.find((s) => s.id !== ref)?.id;
-  return { ref, comp, view: "class", norm: "row", min_prob: 0, include_alt: false, all_sources: false, object_list: "" };
+  return { ref, comp, view: "class", norm: "row", min_prob: 0, include_alt: false, all_sources: false, object_list: "", vetted: "" };
 }
 
 function loadState() {
@@ -55,7 +55,7 @@ function saveState() {
 
 const request = () => ({
   ref: state.ref, comp: state.comp, view: state.view, min_prob: state.min_prob,
-  include_alt: state.include_alt, all_sources: state.all_sources, object_list: state.object_list || null,
+  include_alt: state.include_alt, ...Population.params(state),
 });
 
 // ---------- settings ----------

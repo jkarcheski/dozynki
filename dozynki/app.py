@@ -3,6 +3,7 @@ import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -480,6 +481,16 @@ def queue_matching(request: Request, min_det: int = 1, date_from: str = "", date
     return {"n_matching": db.count_pending(_who(request), where, params, ready), **_mode(screen, _who(request), object_list)}
 
 
+@app.post("/api/queue/clear")
+def clear_queue(request: Request, min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
+                screen: str = "", object_list: str = ""):
+    """Empty your current haystack: what's waiting in this mode, and in filtered mode what's still being screened."""
+    where, params, ready = _queue_filter(min_det, date_from, date_to, date_mode, screen, object_list)
+    if ready == db.READY:
+        ready = "status IN ('pending', 'screening')"
+    return {"cleared": db.clear_pending(_who(request), where, params, ready)}
+
+
 @app.get("/api/next")
 def next_object(request: Request, exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
                 screen: str = "", object_list: str = ""):
@@ -574,7 +585,7 @@ def post_label(body: Label, request: Request):
     db.set_status(body.object_id, who, "watch" if WATCH_FLAG in body.flags else "labeled")
     # A transient label on a known SN / TNS object (or a TDE or nova) is a needle in the haystack.
     found = None
-    if body.klass == "transient":
+    if body.klass == "transient" and not any(l["klass"] == "transient" for l in previous):  # once per object
         try:
             tns = achievements.tns_for(body.object_id, raw["antares"]["data"]["locus_id"])
         except Exception:
@@ -704,6 +715,21 @@ def rejection_config():
     }
 
 
+def _vetted(request, vetted):
+    """The vetted-by-me population, as evaluate.population_ids takes it, from "FROM..TO" (UTC dates, either may be
+    empty), or None when vetted is empty."""
+    if not vetted:
+        return None
+    lo, sep, hi = vetted.partition("..")
+    try:
+        for d in (lo, hi):
+            if d:
+                date.fromisoformat(d)
+    except ValueError:
+        raise HTTPException(400, "vetted must be FROM..TO, dates as YYYY-MM-DD")
+    return _who(request), lo, (hi if sep else lo)  # one date alone is that day
+
+
 class Evaluation(BaseModel):
     pipeline: list[dict]
     truth: str = "blind"
@@ -711,21 +737,22 @@ class Evaluation(BaseModel):
     include_alt: bool = False
     all_sources: bool = False
     object_list: str | None = None  # score one object list's objects instead
+    vetted: str | None = None  # or the objects I first vetted on these dates, "FROM..TO"
 
 
-def _evaluate(body):
+def _evaluate(body, request):
     try:
         report, df = evaluate.evaluate(body.pipeline, body.truth, body.target, body.include_alt, body.all_sources, save=False,
-                                       object_list=body.object_list)
+                                       object_list=body.object_list, vetted=_vetted(request, body.vetted))
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     return report, df
 
 
 @app.post("/api/rejection/evaluate")
-def rejection_evaluate(body: Evaluation):
+def rejection_evaluate(body: Evaluation, request: Request):
     """Metrics for a pipeline, plus each scored object's outcome. Nothing is stored."""
-    report, df = _evaluate(body)
+    report, df = _evaluate(body, request)
     # step:* columns are each step's own decision (1 reject, 0 keep, null no data), for the decision tree
     objects = df[["object_id", "truth", "subclass", "alt_classes", "target", "kept", "rejected_by",
                   *[c for c in df.columns if c.startswith("step:")]]]
@@ -739,13 +766,13 @@ class Sweep(Evaluation):
 
 
 @app.post("/api/rejection/sweep")
-def rejection_sweep(body: Sweep):
+def rejection_sweep(body: Sweep, request: Request):
     if not 0 <= body.step < len(body.pipeline) or body.param == "rule":
         raise HTTPException(400, "bad step or param")
     try:
         return evaluate.sweep(body.pipeline, body.step, body.param, body.values[:60], truth=body.truth,
                               target=body.target, include_alt=body.include_alt, all_sources=body.all_sources,
-                              object_list=body.object_list)
+                              object_list=body.object_list, vetted=_vetted(request, body.vetted))
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
 
@@ -821,33 +848,34 @@ class Comparison(BaseModel):
     include_alt: bool = False
     all_sources: bool = False
     object_list: str | None = None
+    vetted: str | None = None
 
 
 @app.post("/api/compare")
-def compare_sources(body: Comparison):
+def compare_sources(body: Comparison, request: Request):
     """Confusion matrix of two label sources. Nothing is stored."""
     try:
         return compare.compare(body.ref, body.comp, body.view, body.min_prob, body.include_alt, body.all_sources,
-                               body.object_list)
+                               body.object_list, _vetted(request, body.vetted))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @app.post("/api/compare/summary")
-def compare_summary(body: Comparison):
+def compare_summary(body: Comparison, request: Request):
     try:
         return compare.summary(body.ref, view=body.view, min_prob=body.min_prob, include_alt=body.include_alt,
-                               all_sources=body.all_sources, object_list=body.object_list)
+                               all_sources=body.all_sources, object_list=body.object_list, vetted=_vetted(request, body.vetted))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @app.get("/api/sky")
-def sky_objects(truth: str = "blind", all_sources: bool = False, object_list: str = ""):
+def sky_objects(request: Request, truth: str = "blind", all_sources: bool = False, object_list: str = "", vetted: str = ""):
     """Every queued object's position in three frames, with its truth label (None if unlabeled)."""
     if truth not in ("blind", "final"):
         raise HTTPException(400, "truth must be blind or final")
-    return {"objects": sky.objects(truth, all_sources, object_list or None), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
+    return {"objects": sky.objects(truth, all_sources, object_list or None, _vetted(request, vetted)), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
 
 
 def _groups(groups):
@@ -855,23 +883,25 @@ def _groups(groups):
 
 
 @app.get("/api/similar")
-def similar_map(truth: str = "blind", all_sources: bool = False, groups: str = "", object_list: str = ""):
+def similar_map(request: Request, truth: str = "blind", all_sources: bool = False, groups: str = "", object_list: str = "",
+                vetted: str = ""):
     """Every object's position on the first two principal components of its features, with its truth label."""
     try:
-        out = similar.projection(truth, all_sources, _groups(groups), object_list or None)
+        out = similar.projection(truth, all_sources, _groups(groups), object_list or None, _vetted(request, vetted))
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {**out, "groups": similar.GROUPS, "default_groups": similar.DEFAULT_GROUPS, "classes": CLASSES}
 
 
 @app.get("/api/similar/{object_id}")
-def similar_neighbors(object_id: str, k: int = 8, truth: str = "blind", all_sources: bool = False, groups: str = "",
-                      pool: str = "labeled", object_list: str = ""):
+def similar_neighbors(object_id: str, request: Request, k: int = 8, truth: str = "blind", all_sources: bool = False,
+                      groups: str = "", pool: str = "labeled", object_list: str = "", vetted: str = ""):
     """The k objects closest to one in feature space. Nothing is stored."""
     if pool not in ("labeled", "all"):
         raise HTTPException(400, "pool must be labeled or all")
     try:
-        return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool, object_list or None)
+        return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool, object_list or None,
+                                 _vetted(request, vetted))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except KeyError:

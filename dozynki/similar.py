@@ -10,7 +10,7 @@ close in these features, not "labeled the same".
 - neighbors(): the k nearest objects to one, by rms difference over the features both have,
   so an object without Rubin details is compared on what it does have.
 
-Like evaluate.py, only the uniform random sample is used unless all_sources or object_list is set.
+Like evaluate.py, only the uniform random sample is used unless all_sources, object_list or vetted is set.
 """
 
 import json
@@ -125,12 +125,12 @@ def _value(raw, name, transform):
     return v if v is not None and math.isfinite(v) else None
 
 
-def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None):
+def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None):
     """Scaled matrix (NaN where missing) over the population and the features with any spread."""
     unknown = set(groups) - set(GROUPS)
     if unknown:
         raise ValueError(f"unknown feature groups {sorted(unknown)}")
-    ids = sorted(population_ids(all_sources, object_list))
+    ids = sorted(population_ids(all_sources, object_list, vetted))
     raw = _raw(ids)
     ids = sorted(raw)
     feats = [f for f in FEATURES if f[1] in groups]
@@ -158,9 +158,9 @@ def _label(labels, oid):
             "alt_classes": lab["alt_classes"] if lab else []}
 
 
-def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None):
+def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None):
     """Every object's first two principal components, with the loadings that explain the axes."""
-    m = build(truth, all_sources, groups, object_list)
+    m = build(truth, all_sources, groups, object_list, vetted)
     ids, X, cols = m["ids"], m["X"], m["columns"]
     if len(ids) < 3 or X.shape[1] < 2:
         return {"objects": [], "columns": cols, "explained": [], "loadings": []}
@@ -190,9 +190,9 @@ def _display(raw):
     return {name: raw.get(name) for name, *_ in FEATURES}
 
 
-def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_GROUPS, pool="labeled", object_list=None):
+def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_GROUPS, pool="labeled", object_list=None, vetted=None):
     """The k nearest objects to one: rms of scaled differences over the features both objects have."""
-    m = build(truth, all_sources, groups, object_list)
+    m = build(truth, all_sources, groups, object_list, vetted)
     ids, X, labels = m["ids"], m["X"], m["labels"]
     if object_id not in ids:
         raise KeyError(object_id)

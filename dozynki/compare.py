@@ -107,12 +107,12 @@ def kappa(pairs):
     return None if pe == 1 else (po - pe) / (1 - pe)
 
 
-def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_sources=False, object_list=None):
+def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_sources=False, object_list=None, vetted=None):
     if view not in VIEWS:
         raise ValueError(f"view must be one of {list(VIEWS)}")
     group = VIEWS[view]
     R, C = load(ref), load(comp)
-    ids = population_ids(all_sources, object_list)
+    ids = population_ids(all_sources, object_list, vetted)
     in_pop = lambda oid: oid in ids
     excluded = Counter()
     excluded["only in reference"] = sum(1 for o in R if o not in C and in_pop(o))
