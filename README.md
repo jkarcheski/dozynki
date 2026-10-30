@@ -1,7 +1,7 @@
 # DOZYNKI
 DOZYNKI is planned to be a unified, flexible, and fast tool for identifying scientifically valuable transients in immense alert streams.
 The name DOZYNKI ("doh-ZHIN-kee", [dɔˈʐɨŋkʲi]) is inspired by the
-[Polish/Slavic harvest festival](https://en.wikipedia.org/wiki/Do%C5%BCynki), reflecting the goal of harvesting scientific discoveries from the unprecedented abundance of modern surveys. It is also a nod to the never-ending “needle in the haystack” problem in astronomy. 
+[Polish/Slavic harvest festival](https://en.wikipedia.org/wiki/Do%C5%BCynki), reflecting the goal of harvesting scientific discoveries from the unprecedentedly large datasets provided by modern surveys like LSST and ZTF. By filtering and vetting, we will be able to find the "needle in the haystack" 
 
 Created and currently managed by UCSC PhD student Jenna Karcheski. Please contact me at jkarches@ucsc.edu with any feedback or if you want to join the development team! 
 
