@@ -71,6 +71,12 @@ def load(object_id, refresh=False):
     return _gather(object_id)
 
 
+def load_antares(object_id):
+    """Only the ANTARES payload (light curve, cutouts, catalogs), cached as load() caches it."""
+    item = db.get_queue_item(object_id)
+    return _cached(object_id, "antares", lambda: _fetch_antares(item))["data"]
+
+
 def _gather(object_id):
     return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot", "positions")}
 

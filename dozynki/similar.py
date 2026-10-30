@@ -10,6 +10,9 @@ close in these features, not "labeled the same".
 - neighbors(): the k nearest objects to one, by rms difference over the features both have,
   so an object without Rubin details is compared on what it does have.
 
+Each object also carries its TNS match (tns.py, ANTARES's match, when cached), for the page to show
+where TNS objects fall; it plays no part in the features or distances.
+
 Like evaluate.py, only the uniform random sample is used unless all_sources, object_list or vetted is set.
 """
 
@@ -18,7 +21,7 @@ import math
 
 import numpy as np
 
-from . import db, rejection
+from . import db, rejection, tns
 from .evaluate import population_ids, truth_labels
 
 CLIP = 5.0  # scaled values beyond this many robust sigmas are clipped
@@ -152,6 +155,11 @@ def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=N
     return {"ids": ids, "X": X[:, keep], "columns": columns, "raw": raw, "labels": truth_labels(truth)}
 
 
+def _tns(matched, oid):
+    m = matched.get(oid)
+    return tns.summary(m) if m else None
+
+
 def _label(labels, oid):
     lab = labels.get(oid)
     return {"klass": lab["klass"] if lab else None, "subclass": lab["subclass"] if lab else None,
@@ -169,11 +177,12 @@ def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_l
     _, s, vt = np.linalg.svd(Z, full_matrices=False)
     pcs = Z @ vt[:2].T
     explained = (s ** 2 / (s ** 2).sum())[:2]
+    matched = tns.cached()
     loadings = [sorted(({"feature": c["name"], "label": c["label"], "weight": float(w)} for c, w in zip(cols, vt[i])),
                        key=lambda d: -abs(d["weight"])) for i in range(2)]
     return {
-        "objects": [{"object_id": oid, "x": float(pcs[i, 0]), "y": float(pcs[i, 1]),
-                     "n_features": int((~np.isnan(X[i])).sum()), **_label(m["labels"], oid)} for i, oid in enumerate(ids)],
+        "objects": [{"object_id": oid, "x": float(pcs[i, 0]), "y": float(pcs[i, 1]), "n_features": int((~np.isnan(X[i])).sum()),
+                     **_label(m["labels"], oid), "tns": _tns(matched, oid)} for i, oid in enumerate(ids)],
         "columns": cols, "explained": [float(e) for e in explained], "loadings": loadings,
     }
 
@@ -208,17 +217,18 @@ def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_G
     if pool == "labeled":
         ok &= np.array([oid in labels for oid in ids])
     order = [j for j in np.argsort(np.where(ok, dist, np.inf)) if ok[j]][:k]
+    matched = tns.cached()
 
     def entry(j):
         oid = ids[j]
         # the features this object differs most on from the query, in robust sigmas
         diffs = sorted(((m["columns"][c]["name"], float(X[j, c] - q[c])) for c in np.flatnonzero(shared[j])),
                        key=lambda d: -abs(d[1]))
-        return {"object_id": oid, **_label(labels, oid), "thumbs": _thumbs(oid), "values": _display(m["raw"][oid]),
+        return {"object_id": oid, **_label(labels, oid), "tns": _tns(matched, oid), "thumbs": _thumbs(oid), "values": _display(m["raw"][oid]),
                 "distance": float(dist[j]), "shared": int(n_shared[j]), "differs": diffs[:3]}
 
     return {
-        "query": {"object_id": object_id, **_label(labels, object_id), "thumbs": _thumbs(object_id),
+        "query": {"object_id": object_id, **_label(labels, object_id), "tns": _tns(matched, object_id), "thumbs": _thumbs(object_id),
                   "values": _display(m["raw"][object_id]), "n_features": int((~np.isnan(q)).sum())},
         "neighbors": [entry(j) for j in order],
         "columns": m["columns"],

@@ -66,6 +66,7 @@ async function init() {
   $("#load-list").onclick = openListDialog;
   $("#list-submit").onclick = loadList;
   $("#list-file").onchange = readListFile;
+  $("#tns-build").onclick = buildTnsList;
   $("#list-delete").onclick = deleteList;
   $("#list-name").onkeydown = (e) => { if (e.key === "Enter") e.preventDefault(); };  // not the dialog's submit
   $("#watch-recheck").onclick = recheckWatchlist;
@@ -279,7 +280,10 @@ function runText(r) {
   if (r.state === "listing") return `${r.night}: ${fmtN(r.n_night)} objects, going through ${r.n_listed == null ? "them" : fmtN(r.n_listed)}…`;
   const pass = r.screening ? `${fmtN(r.kept)} to ${fmtN(r.kept + r.screening)}` : fmtN(r.kept);
   return `${r.night}: ${pass} of ${fmtN(r.n_night)} pass` + (r.screening ? ` · checking ${fmtN(r.screening)}` : "")
-    + ` · ${fmtN(r.left)} left to vet`;
+    + (r.vetted ? ` · ${fmtN(r.vetted)} already vetted` : "")
+    + ` · ${fmtN(r.left)} left to vet`
+    + (r.set_aside ? ` · ${fmtN(r.set_aside)} skipped, watched or cleared` : "")
+    + (r.elsewhere ? ` · ${fmtN(r.elsewhere)} never checked (held by another filter; run the night again)` : "");
 }
 
 const runTitle = (r) => r.state === "done"
@@ -490,6 +494,40 @@ async function loadList() {
     $("#list-result").textContent = `Couldn't load the list: ${e.message}`;
   } finally {
     $("#list-submit").disabled = false;
+  }
+}
+
+// The TNS list is built on the server from ANTARES's TNS match (tns.py); this starts it and follows its progress.
+function tnsProgress(s) {
+  if (s.phase === "error") return `Couldn't build it: ${s.error}`;
+  if (s.phase === "listing") return "Listing the LSST objects ANTARES matched to TNS…";
+  if (s.phase === "matching") return `Reading their TNS matches: ${s.checked} of ${s.listed}…`;
+  const got = `${s.found} on "${s.list}" (${s.added} new to the list, ${s.queued} new to the queue)`
+    + (s.match_errors ? `; ${s.match_errors} couldn't be read from ANTARES` : "");
+  if (s.phase === "fetching") return `${got}. Fetching light curves: ${s.fetched} of ${s.to_fetch}…`;
+  return `${got}.` + (s.to_fetch > s.fetched ? ` ${s.to_fetch - s.fetched} light curves failed to fetch; they load when opened.` : "");
+}
+
+async function buildTnsList() {
+  $("#tns-build").disabled = true;
+  let shownList = false;
+  try {
+    let s = await api("/api/tns/list", { method: "POST", body: { classified_only: $("#tns-classified").checked } });
+    while (true) {
+      $("#tns-status").textContent = tnsProgress(s);
+      if (s.list && !shownList) {  // the list exists once matching is done: offer it while light curves fetch
+        shownList = true;
+        await refreshLists();
+      }
+      if (!s.running) break;
+      await new Promise((r) => setTimeout(r, 2000));
+      s = await api("/api/tns/list");
+    }
+    if (s.phase === "done" && s.found) setMode({ mode: "list", list: s.list });
+  } catch (e) {
+    $("#tns-status").textContent = `Couldn't build it: ${e.message}`;
+  } finally {
+    $("#tns-build").disabled = false;
   }
 }
 

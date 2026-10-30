@@ -210,8 +210,10 @@ def query(sql, params=()):
 def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summary=None, screen=None):
     """Queue an object; with screen (a saved filter name) it waits as 'screening' for screen.py.
 
-    An object already queued by a filtered-mode pull and not yet labeled is taken over by a
-    random-mode pull, so random mode stays random even for objects a filter threw away.
+    An object already queued by a filtered-mode pull is taken over by a random-mode pull, so random
+    mode stays random even for objects a filter threw away. One already labeled keeps its labels and
+    joins the random sample anyway (dropping it would bias the sample against what filters keep);
+    source_params records the filter it was first vetted under.
     """
     summary = summary or {}
     row = (str(object_id), antares_locus, ra, dec, source, json.dumps(source_params), now(),
@@ -222,25 +224,42 @@ def add_to_queue(object_id, antares_locus, ra, dec, source, source_params, summa
         "n_det, first_mjd, last_mjd, screen, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
     if cur.rowcount or screen:
         return cur.rowcount
+    old = query("SELECT screen FROM queue WHERE object_id = ? AND screen IS NOT NULL", (str(object_id),))
+    if not old:
+        return 0
+    if query("SELECT 1 FROM labels WHERE object_id = ? LIMIT 1", (str(object_id),)):
+        source_params = {**source_params, "first_vetted_in_screen": old[0]["screen"]}
     return execute("UPDATE queue SET source = ?, source_params = ?, added_at = ?, screen = NULL, screen_result = NULL, "
-                   "status = 'pending' WHERE object_id = ? AND screen IS NOT NULL AND status IN ('screening', 'filtered', 'pending') "
-                   "AND object_id NOT IN (SELECT object_id FROM queue_status)",
+                   "status = 'pending' WHERE object_id = ? AND screen IS NOT NULL",
                    (source, json.dumps(source_params), now(), str(object_id))).rowcount
 
 
 def add_many_screening(rows, screen):
     """Queue (object_id, antares_locus, ra, dec, source, source_params, summary) rows as 'screening'
-    in one transaction, keeping their order; objects already queued are left as they are."""
+    in one transaction, keeping their order; returns how many were new.
+
+    An object another filter pulled earlier is taken over and screened again with this one, so a
+    run's counts are this filter's verdicts; one cleared from that filter's haystack comes back,
+    while labels, skips and the watchlist stay. Random-mode objects are left as they are."""
     t = now()
+    rows = [(str(oid), locus, ra, dec, source, params, sm) for oid, locus, ra, dec, source, params, sm in rows]
     with _lock:
         before = _conn.total_changes
         _conn.executemany(
             "INSERT OR IGNORE INTO queue (object_id, antares_locus, ra, dec, source, source_params, added_at, "
             "n_det, first_mjd, last_mjd, screen, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'screening')",
-            [(str(oid), locus, ra, dec, source, json.dumps(params), t, sm.get("n_det"), sm.get("first_mjd"),
+            [(oid, locus, ra, dec, source, json.dumps(params), t, sm.get("n_det"), sm.get("first_mjd"),
               sm.get("last_mjd"), screen) for oid, locus, ra, dec, source, params, sm in rows])
+        added = _conn.total_changes - before
+        held = {r[0]: r[1] for r in _conn.execute(
+            "SELECT object_id, screen FROM queue WHERE screen IS NOT NULL AND screen != ?", (screen,))}
+        moved = [(source, json.dumps({**params, "taken_from_screen": held[oid]}), t, screen, oid)
+                 for oid, locus, ra, dec, source, params, sm in rows if oid in held]
+        _conn.executemany("UPDATE queue SET source = ?, source_params = ?, added_at = ?, screen = ?, screen_result = NULL, "
+                          "status = 'screening' WHERE object_id = ?", moved)
+        _conn.executemany("DELETE FROM queue_status WHERE object_id = ? AND status = 'cleared'", [(m[-1],) for m in moved])
         _conn.commit()
-        return _conn.total_changes - before
+        return added
 
 
 def add_night_run(night, screen, version, pipeline, seed):

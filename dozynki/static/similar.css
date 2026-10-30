@@ -24,6 +24,7 @@
 .tile .cls { font-weight: 600; }
 .tile .meta { color: var(--muted); }
 .tile .differs { color: var(--muted); font-size: 11px; }
+.tile .tns { font-size: 11px; }
 #compare-table th, #compare-table td { white-space: nowrap; }
 #compare-table th.q, #compare-table td.q { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 #compare-table td.grp { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 8px; }

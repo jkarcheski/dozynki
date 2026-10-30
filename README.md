@@ -82,6 +82,15 @@ pages can use a list as their population ("objects" picker). Lists are named and
 and objects already queued keep their source and mode. Adding to a list you loaded keeps what is on it; deleting a
 list keeps its objects and labels.
 
+**TNS list.** "Build TNS list" in the same dialog lists every LSST object ANTARES has matched to a TNS public
+object (its own crossmatch; nothing is downloaded from TNS), reads each match, and makes the shared list
+"TNS classified (ANTARES match)", or "TNS (ANTARES match)" with "classified only" off. It then fetches each new
+object's ANTARES payload, so it shows up on the similar page and in the filter rules right away. On
+2026-10-30 that was 2,744 LSST objects, of which 232 had a TNS type (about half SN Ia), in about 4 minutes.
+TNS reports skew bright and toward supernovae, so the list is a sample of TNS, not of the LSST stream; it stays
+out of the random sample like any list. Vetting it blind still works (the blind view never shows ANTARES's
+catalog matches), but the list's name says what it is. Code in `dozynki/tns.py`.
+
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
 *star*, or *AGN* that could be a nuclear *transient*. `is_real`/`is_transient` follow the
@@ -203,6 +212,11 @@ Toggle feature groups in the header; broker scores (reliability, drb, SCIMMA tag
   tile shows ANTARES's difference and science cutouts, the label, the distance, and the features it differs on
   most. `/similar?object=<id>` opens with an object selected.
 - **Feature comparison**: the raw feature values of the selected object and its neighbors side by side.
+- **TNS objects**: "color by TNS type" colors objects by the TNS type of the object ANTARES matched them to
+  (SN-like, TDE, CV/nova, AGN, ... as `tns.py` maps them; unclassified TNS objects in gray), with unmatched
+  objects as small gray dots; "Show" still picks objects by label. Colored by label, TNS objects are ringed.
+  Tiles name the TNS object, linked to its TNS page. Matches are cached when an object is labeled, by "Check
+  TNS", or by building the TNS list; they never enter the features.
 
 Rubin pipeline measurements and ANTARES catalog matches are missing until fetched ("Fetch them" in the
 filter lab), and neighbors are only as good as the features they share. Like the filter lab, only the uniform
@@ -213,9 +227,13 @@ random sample is used unless the "objects" picker says otherwise (everything que
 ![Confusion matrix between a labeler's blind labels and an ALeRCE classifier](docs/images/compare.png)
 
 `http://127.0.0.1:8765/compare` (or the "Compare" tab) draws a confusion matrix between
-any two label sources: each labeler's first blind or latest labels, and every ALeRCE
-classifier found in the cache (top class). Nothing is stored. Code lives in `dozynki/compare.py`.
-- View all classes, or collapse to real vs not real, or transient vs not transient.
+any two label sources: each labeler's first blind or latest labels, every ALeRCE
+classifier found in the cache (top class), and TNS: the type of the TNS object ANTARES matched an object to,
+mapped onto DOZYNKI classes and transient subclasses by `TNS_TYPES` in `dozynki/tns.py` (unclassified TNS
+objects are left out and counted). Nothing is stored. Code lives in `dozynki/compare.py`.
+- View all classes, or collapse to real vs not real, or transient vs not transient, or compare transient
+  subclasses (SN-like, nuclear, CV/nova, fast) of objects both sources call transient. ALeRCE's transient
+  classes map to subclasses too (`ALERCE_SUBCLASSES`); its generic "SN" and "Transient" don't.
 - "ALeRCE top p ≥" drops low-confidence broker calls; "incl. could-also-be" adds an accuracy
   that also accepts a match with an alternative class.
 - A table scores every source against the reference. Click a matrix cell to list its objects,
@@ -238,7 +256,8 @@ The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/
 ```
 dozynki/
   app.py            FastAPI endpoints
-  compare.py        confusion matrices between label sources (labelers, ALeRCE)
+  compare.py        confusion matrices between label sources (labelers, ALeRCE, TNS)
+  tns.py            TNS via ANTARES's match: type mapping, cached matches, the TNS object list
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
   lists.py          object lists: resolve alert IDs, diaObjectIds, loci and coordinates to LSST objects

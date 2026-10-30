@@ -4,12 +4,14 @@ A *source* assigns at most one class to each object:
   label:blind:<labeler>          that labeler's first blind label
   label:final:<labeler>          that labeler's latest label (any phase)
   alerce:<survey>:<classifier>   ALeRCE's top class from the cached payload
+  tns                            the TNS type of the object ANTARES matched it to (tns.py), when TNS has one
 
 Each source keeps its own class names (ALeRCE says "SN", not "transient"), so the
 matrix need not be square. Agreement is decided after mapping both sides onto the
-DOZYNKI taxonomy (labels.py) with ALERCE_CLASSES, or onto a coarser grouping:
-real vs not real, or transient vs not transient. Classes that do not map
-("unsure", unknown ALeRCE classes) are left out and counted.
+DOZYNKI taxonomy (labels.py) with ALERCE_CLASSES or tns.TNS_TYPES, or onto a coarser
+grouping: real vs not real, or transient vs not transient. The subclass view compares
+transient subclasses of objects both sources call transient. Classes that do not map
+("unsure", unknown ALeRCE classes, unclassified TNS objects) are left out and counted.
 
 Only objects both sources classify are compared. Like evaluate.py, only the
 uniform random sample is used unless all_sources is set, so agreement rates
@@ -19,9 +21,9 @@ estimate the LSST stream within the sampling filters.
 import json
 from collections import Counter
 
-from . import db
+from . import db, tns
 from .evaluate import population_ids, wilson
-from .labels import CLASS_BY_KEY, CLASSES
+from .labels import CLASS_BY_KEY, CLASSES, TRANSIENT_SUBCLASSES
 
 # ALeRCE classes -> DOZYNKI classes. Stamp classifiers first; satellites are not
 # astrophysical, so for real/bogus purposes they count with the artifacts. Then the
@@ -33,13 +35,20 @@ ALERCE_CLASSES = {
     **dict.fromkeys(["QSO", "Blazar"], "agn"),
     **dict.fromkeys(["CEP", "DSCT", "E", "EA", "EB/EW", "LPV", "RRL", "RRLab", "RRLc", "RSCVn", "Periodic-Other", "Periodic", "YSO"], "star"),
 }
+# ALeRCE transient classes -> DOZYNKI transient subclasses; the generic "SN" and "Transient" say nothing finer.
+ALERCE_SUBCLASSES = {
+    **dict.fromkeys(["SNIa", "SNIbc", "SNII", "SNIIn", "SESN", "SLSN"], "sn_like"),
+    "TDE": "nuclear", "CV/Nova": "cv_nova", "Microlensing": "fast",
+}
 
 VIEWS = {
     "class": None,
     "real": lambda k: {True: "real", False: "not real"}.get(CLASS_BY_KEY[k]["real"]),
     "transient": lambda k: {True: "transient", False: "not transient"}.get(CLASS_BY_KEY[k]["transient"]),
+    "subclass": None,  # the entry's transient subclass, not a function of its class (_category)
 }
-VIEW_ORDER = {"real": ["real", "not real"], "transient": ["transient", "not transient"]}
+VIEW_ORDER = {"real": ["real", "not real"], "transient": ["transient", "not transient"],
+              "subclass": [s["key"] for s in TRANSIENT_SUBCLASSES]}
 CLASS_ORDER = [c["key"] for c in CLASSES]
 # "unsure" is a label but not a class anything can agree with
 MAPPABLE = {c["key"] for c in CLASSES if c["real"] is not None}
@@ -62,6 +71,10 @@ def sources():
     for (survey, clf), n in sorted(seen.items()):
         out.append({"id": f"alerce:{survey}:{clf}", "label": f"ALeRCE {survey.upper()} · {clf}", "kind": "alerce", "n": n,
                     "versions": sorted(versions[(survey, clf)])})
+    matched = tns.cached()
+    if matched:
+        n = sum(bool(m.get("type")) for m in matched.values())
+        out.append({"id": "tns", "label": "TNS type (ANTARES match)", "kind": "tns", "n": n, "n_matched": len(matched)})
     return out
 
 
@@ -84,8 +97,15 @@ def load(source):
             entry = (json.loads(r["payload"]).get(a) or {}).get(b)
             if entry and entry.get("top"):
                 top = entry["top"]
-                out[r["object_id"]] = {"cls": top, "mapped": ALERCE_CLASSES.get(top), "subclass": None, "alt": [],
-                                       "p": entry["probs"].get(top), "probs": entry["probs"]}
+                out[r["object_id"]] = {"cls": top, "mapped": ALERCE_CLASSES.get(top), "subclass": ALERCE_SUBCLASSES.get(top),
+                                       "alt": [], "p": entry["probs"].get(top), "probs": entry["probs"]}
+        return out
+    if kind == "tns":
+        out = {}
+        for oid, m in tns.cached().items():
+            klass, subclass = tns.tns_class(m.get("type"))
+            out[oid] = {"cls": m.get("type") or "unclassified", "mapped": klass if klass in MAPPABLE else None,
+                        "subclass": subclass, "alt": [], "p": None, "tns": m["name"]}
         return out
     raise ValueError(f"unknown source {source!r}")
 
@@ -94,6 +114,17 @@ def _order(keys, mapped):
     """Native classes in taxonomy order of what they map to, unmapped last."""
     rank = lambda k: (CLASS_ORDER.index(mapped[k]) if mapped.get(k) in CLASS_ORDER else len(CLASS_ORDER), k)
     return sorted(keys, key=rank)
+
+
+def _category(view, entry):
+    """What an entry counts as in a view: its DOZYNKI class, a coarser group of it, or its transient subclass."""
+    if entry["mapped"] is None:
+        return None
+    if view == "class":
+        return entry["mapped"]
+    if view == "subclass":
+        return entry["subclass"] if entry["mapped"] == "transient" else None
+    return VIEWS[view](entry["mapped"])
 
 
 def kappa(pairs):
@@ -110,7 +141,6 @@ def kappa(pairs):
 def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_sources=False, object_list=None, vetted=None):
     if view not in VIEWS:
         raise ValueError(f"view must be one of {list(VIEWS)}")
-    group = VIEWS[view]
     R, C = load(ref), load(comp)
     ids = population_ids(all_sources, object_list, vetted)
     in_pop = lambda oid: oid in ids
@@ -120,12 +150,8 @@ def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_source
 
     def key(entry):
         """Matrix row/column key and the category agreement is judged on."""
-        if entry["mapped"] is None:
-            return None, None
-        if group is None:
-            return entry["cls"], entry["mapped"]
-        g = group(entry["mapped"])
-        return g, g
+        cat = _category(view, entry)
+        return (entry["cls"] if view == "class" else cat), cat
 
     objects = []
     for oid in sorted(set(R) & set(C)):
@@ -133,18 +159,22 @@ def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_source
             continue
         r, c = R[oid], C[oid]
         for side, e in (("reference", r), ("compared", c)):
-            if e["mapped"] is None or (group and group(e["mapped"]) is None):
-                excluded[f"{e['cls']} ({side})"] += 1
+            if _category(view, e) is None:
+                why = "transient, no subclass" if view == "subclass" and e["mapped"] == "transient" else e["cls"]
+                excluded[f"{why} ({side})"] += 1
                 break
         else:
             if any(e["p"] is not None and e["p"] < min_prob for e in (r, c)):
                 excluded[f"top probability < {min_prob:g}"] += 1
                 continue
             (rk, rcat), (ck, ccat) = key(r), key(c)
-            alts = {r["mapped"], *r["alt"]} & MAPPABLE if include_alt else {r["mapped"]}
-            calt = {c["mapped"], *c["alt"]} & MAPPABLE if include_alt else {c["mapped"]}
-            if group:
-                alts, calt = {group(a) for a in alts}, {group(a) for a in calt}
+            if view == "subclass":
+                alts, calt = {rcat}, {ccat}  # "could also be" names classes, not subclasses
+            else:
+                alts = {r["mapped"], *r["alt"]} & MAPPABLE if include_alt else {r["mapped"]}
+                calt = {c["mapped"], *c["alt"]} & MAPPABLE if include_alt else {c["mapped"]}
+                if view != "class":
+                    alts, calt = {VIEWS[view](a) for a in alts}, {VIEWS[view](a) for a in calt}
             objects.append({"object_id": oid, "row": rk, "col": ck, "ref_cat": rcat, "comp_cat": ccat,
                             "agree": rcat == ccat, "agree_alt": bool(alts & calt),
                             "ref_subclass": r["subclass"], "ref_alt": r["alt"], "comp_alt": c["alt"],
@@ -152,7 +182,7 @@ def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_source
     if not objects:
         raise ValueError("no objects classified by both sources")
 
-    if group is None:
+    if view == "class":
         rmap = {o["row"]: o["ref_cat"] for o in objects}
         cmap = {o["col"]: o["comp_cat"] for o in objects}
         rows, cols = _order(rmap, rmap), _order(cmap, cmap)

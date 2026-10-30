@@ -69,6 +69,12 @@
     <div class="row"><label>or a file <input id="list-file" type="file" accept=".csv,.tsv,.txt,text/plain,text/csv"></label>
       <span class="muted">Adding to a list you loaded before keeps what is on it.</span></div>
     <div id="list-result" aria-live="polite"></div>
+    <div class="row tns-row">
+      <span class="muted">Or every LSST object ANTARES matched to a TNS object, as its own list:</span>
+      <label title="Only objects TNS has a type for (mostly spectroscopic classifications)"><input type="checkbox" id="tns-classified" checked> classified only</label>
+      <button id="tns-build" type="button">Build TNS list</button>
+    </div>
+    <div id="tns-status" class="muted" aria-live="polite"></div>
     <div class="row actions">
       <button value="close" formnovalidate>Close</button>
       <button id="list-submit" type="button" class="primary">Load</button>

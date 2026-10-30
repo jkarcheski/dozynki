@@ -2,6 +2,19 @@
 
 const STORE_KEY = "dozynki.similar.v1";
 const SYMBOLS = { bogus: "x", sso: "triangle-up", star: "star", agn: "diamond", transient: "circle", other: "square", unsure: "circle-open" };
+// Color by TNS type: what the type maps to (tns.py), in the class colors; transient subclasses differ by symbol.
+const TNS_GROUPS = [
+  { key: "sn_like", name: "TNS SN-like", color: "transient", symbol: "circle", is: (t) => t.subclass === "sn_like" },
+  { key: "nuclear", name: "TNS TDE", color: "transient", symbol: "hexagon", is: (t) => t.subclass === "nuclear" },
+  { key: "cv_nova", name: "TNS CV / nova / flare", color: "transient", symbol: "triangle-down", is: (t) => t.subclass === "cv_nova" },
+  { key: "fast", name: "TNS fast / other transient", color: "transient", symbol: "cross", is: (t) => t.klass === "transient" },
+  { key: "agn", name: "TNS AGN / QSO", color: "agn", symbol: "diamond", is: (t) => t.klass === "agn" },
+  { key: "star", name: "TNS variable star", color: "star", symbol: "star", is: (t) => t.klass === "star" },
+  { key: "other", name: "TNS other type", color: "other", symbol: "square", is: (t) => !!t.type },
+  { key: "unclassified", name: "TNS unclassified", color: "unsure", symbol: "circle", is: () => true },
+];
+const tnsGroup = (t) => TNS_GROUPS.find((g) => g.is(t));
+const tnsUrl = (name) => `https://www.wis-tns.org/object/${encodeURIComponent(String(name).replace(/^\S+\s+/, ""))}`;
 
 let DATA = null;  // /api/similar
 let NN = null;    // /api/similar/{id} for the selected object
@@ -39,7 +52,8 @@ function fmt(v) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, object_list: "", vetted: "", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null };
+  return { truth: "blind", all_sources: false, object_list: "", vetted: "", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null,
+           colorby: "label" };
 }
 
 function loadState() {
@@ -83,8 +97,9 @@ function renderChips() {
     render();
   });
   const n = DATA.objects.length, nl = DATA.objects.filter((o) => o.klass).length;
+  const nt = DATA.objects.filter((o) => o.tns).length, nc = DATA.objects.filter((o) => o.tns?.type).length;
   $("#pop").innerHTML = `<b>${n}</b> objects with cached data ${esc(Population.phrase(state))}, <b>${nl}</b> labeled`
-    + ` · <b>${DATA.columns.length}</b> features`;
+    + `, <b>${nt}</b> matched to TNS (${nc} classified) · <b>${DATA.columns.length}</b> features`;
   $("#unlabeled").nextSibling.textContent = ` unlabeled (${n - nl})`;
 
   // feature groups, with how many of their features have any spread here
@@ -105,7 +120,10 @@ function renderChips() {
 
 function renderMap() {
   const hover = (o) => `<b>${esc(o.object_id)}</b><br>${esc(o.klass ?? "unlabeled")}${o.subclass ? ` · ${esc(o.subclass)}` : ""}`
-    + `${o.alt_classes.length ? ` (could be ${esc(o.alt_classes.join(", "))})` : ""}<br>${o.n_features} of ${DATA.columns.length} features`;
+    + `${o.alt_classes.length ? ` (could be ${esc(o.alt_classes.join(", "))})` : ""}`
+    + `${o.tns ? `<br>TNS ${esc(o.tns.name)} · ${esc(o.tns.type ?? "unclassified")}` : ""}<br>${o.n_features} of ${DATA.columns.length} features`;
+  const points = (objs) => ({ x: objs.map((o) => o.x), y: objs.map((o) => o.y), customdata: objs.map((o) => o.object_id),
+                              text: objs.map(hover), hovertemplate: "%{text}<extra></extra>" });
   const trace = (objs, k, name) => ({
     type: "scatter", mode: "markers", name,
     x: objs.map((o) => o.x), y: objs.map((o) => o.y), customdata: objs.map((o) => o.object_id),
@@ -116,11 +134,27 @@ function renderMap() {
     },
   });
   const traces = [];
-  if (state.unlabeled) traces.push(trace(DATA.objects.filter((o) => !o.klass), null, "unlabeled"));
-  for (const c of DATA.classes) {
-    if (state.hidden.includes(c.key)) continue;
-    const objs = DATA.objects.filter((o) => o.klass === c.key);
-    if (objs.length) traces.push(trace(objs, c.key, c.key));
+  // Show picks objects by label in either coloring
+  const shown = DATA.objects.filter((o) => (o.klass ? !state.hidden.includes(o.klass) : state.unlabeled));
+  if (state.colorby === "tns") {
+    const none = shown.filter((o) => !o.tns);
+    if (none.length) traces.push({ type: "scatter", mode: "markers", name: "no TNS match", ...points(none),
+                                   marker: { color: color(null), size: 4, opacity: 0.5 } });
+    for (const g of TNS_GROUPS) {
+      const objs = shown.filter((o) => o.tns && tnsGroup(o.tns) === g);
+      if (objs.length) traces.push({ type: "scatter", mode: "markers", name: `${g.name} (${objs.length})`, ...points(objs),
+        marker: { color: color(g.color), symbol: g.symbol, size: 10, opacity: 0.9, line: { color: cssVar("--card"), width: 0.5 } } });
+    }
+  } else {
+    if (state.unlabeled) traces.push(trace(DATA.objects.filter((o) => !o.klass), null, "unlabeled"));
+    for (const c of DATA.classes) {
+      if (state.hidden.includes(c.key)) continue;
+      const objs = DATA.objects.filter((o) => o.klass === c.key);
+      if (objs.length) traces.push(trace(objs, c.key, c.key));
+    }
+    const ringed = shown.filter((o) => o.tns);
+    if (ringed.length) traces.push({ type: "scatter", mode: "markers", name: `TNS match (${ringed.length})`, ...points(ringed),
+                                     marker: { size: 14, color: "rgba(0,0,0,0)", line: { color: cssVar("--ink"), width: 1 } } });
   }
 
   // the selected object, with lines to its neighbors
@@ -171,6 +205,7 @@ function tile(o, isQuery) {
     <div class="cuts2">${img("difference")}${img("science")}</div>
     <div class="cls">${label}${o.alt_classes.length ? ` <span class="muted">/ ${esc(o.alt_classes.join(", "))}</span>` : ""}</div>
     <a href="${vetLink(o.object_id)}" target="_blank">${esc(o.object_id)}</a>
+    ${o.tns ? `<div class="tns">TNS <a href="${tnsUrl(o.tns.name)}" target="_blank" rel="noopener">${esc(o.tns.name)}</a> · ${esc(o.tns.type ?? "unclassified")}</div>` : ""}
     <div class="meta">${isQuery ? `selected · ${o.n_features} features` : `distance ${o.distance.toFixed(2)} · ${o.shared} shared`}</div>
     ${isQuery ? "" : `<div class="differs">differs on ${o.differs.map(([f, d]) => `${esc(names[f] || f)} (${d >= 0 ? "+" : ""}${d.toFixed(1)})`).join(", ") || "nothing"}</div>`}
   </div>`;
@@ -245,6 +280,7 @@ async function init() {
   const fromUrl = new URLSearchParams(location.search).get("object");
   if (fromUrl) state.selected = fromUrl;
   bindSeg("#truth", () => state.truth, (v) => { state.truth = v; load(); });
+  bindSeg("#colorby", () => state.colorby, (v) => { state.colorby = v; render(); });
   bindSeg("#pool", () => state.pool, (v) => { state.pool = v; select(state.selected); });
   $("#k").value = String(state.k);
   $("#k").onchange = (e) => { state.k = +e.target.value; select(state.selected); };

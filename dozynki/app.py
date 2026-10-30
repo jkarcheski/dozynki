@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, similar, sky, sources
+from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, similar, sky, sources, tns
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, pittgoogle
@@ -584,13 +584,16 @@ def post_label(body: Label, request: Request):
     )
     db.set_status(body.object_id, who, "watch" if WATCH_FLAG in body.flags else "labeled")
     # A transient label on a known SN / TNS object (or a TDE or nova) is a needle in the haystack.
+    # Any other label on an object ANTARES matched to TNS caches the match too, for the compare page's TNS source.
     found = None
-    if body.klass == "transient" and not any(l["klass"] == "transient" for l in previous):  # once per object
+    first_transient = body.klass == "transient" and not any(l["klass"] == "transient" for l in previous)  # once per object
+    if first_transient or (tns.listed(raw["antares"]["data"]) and db.cache_get(body.object_id, "tns") is None):
         try:
-            tns = achievements.tns_for(body.object_id, raw["antares"]["data"]["locus_id"])
+            matches = achievements.tns_for(body.object_id, raw["antares"]["data"]["locus_id"])
         except Exception:
-            tns = []  # the next "Check TNS" picks it up
-        found = achievements.needle((raw["xmatch"] or {}).get("data") or {}, tns)
+            matches = []  # the next "Check TNS" picks it up
+        if first_transient:
+            found = achievements.needle((raw["xmatch"] or {}).get("data") or {}, matches)
     return {"id": label_id, "phase": phase, "needle": found,
             "achievements": achievements.newly_earned(before, achievements.summary(who))}
 
@@ -694,8 +697,24 @@ def get_achievements(request: Request, labeler: str | None = None):
 
 @app.post("/api/tns/check")
 def tns_check():
-    """Re-check TNS (through ANTARES) for every object labeled transient."""
+    """Re-check TNS (through ANTARES) for every object labeled transient or matched to TNS."""
     return achievements.check_tns()
+
+
+class TnsList(BaseModel):
+    classified_only: bool = True
+
+
+@app.post("/api/tns/list")
+def tns_list_build(body: TnsList):
+    """Build, or add to, the object list of LSST objects ANTARES matched to TNS, in the background (tns.py)."""
+    tns.start(body.classified_only)
+    return tns.status()
+
+
+@app.get("/api/tns/list")
+def tns_list_status():
+    return tns.status()
 
 
 @app.get("/api/farm")

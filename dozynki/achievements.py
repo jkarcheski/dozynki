@@ -22,10 +22,11 @@ browser, so the server lists them with count None and home.js fills them in.
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 from . import db, sources
+from .tns import listed as tns_listed
 from .brokers import antares
 
 SAME_SOURCE_ARCSEC = 1.0
@@ -101,9 +102,11 @@ def tns_for(object_id, locus_id):
 
 
 def check_tns():
-    """Re-check TNS for every object anyone labeled transient (primary class)."""
-    rows = db.query("SELECT DISTINCT q.object_id, q.antares_locus FROM queue q JOIN labels l USING (object_id) "
-                    "WHERE l.klass = 'transient'")
+    """Re-check TNS for every object anyone labeled transient (primary class), and every labeled object whose
+    ANTARES locus lists a TNS match (for the compare page's TNS source, tns.py)."""
+    rows = db.query("SELECT q.object_id, q.antares_locus, MAX(l.klass = 'transient') transient "
+                    "FROM queue q JOIN labels l USING (object_id) GROUP BY q.object_id")
+    rows = [r for r in rows if r["transient"] or tns_listed((db.cache_get(r["object_id"], "antares") or {}).get("data"))]
     errors = {}
 
     def one(r):
@@ -171,23 +174,34 @@ def nights(labeler, vetted=None):
 def night_runs(labeler, screen=None, vetted=None):
     """Whole nights run through a saved filter (nightrun.py), newest first: the night's size,
     how many passed the listing rules, and where those are now (being checked, thrown out by
-    the full check, vetted, left to vet)."""
+    the full check, passed but vetted before, left to vet, set aside, and held by another filter)."""
     if vetted is None:
         vetted = {r["object_id"] for r in db.query(
             "SELECT DISTINCT object_id FROM labels WHERE COALESCE(labeler, 'anonymous') = ?", (labeler,))}
-    status = {r["object_id"]: r["status"] for r in db.query("SELECT object_id, status FROM queue")}
+    queued = {r["object_id"]: r for r in db.query("SELECT object_id, status, screen FROM queue")}
+    marked = {r["object_id"] for r in db.query("SELECT object_id FROM queue_status WHERE labeler = ?", (labeler,))}
     out = []
     for r in reversed(db.night_runs(screen)):
         ids = r.pop("object_ids")
-        n_screening = sum(status.get(o) == "screening" for o in ids)
-        n_filtered = sum(status.get(o) == "filtered" for o in ids)
-        n_vetted = sum(o in vetted for o in ids)
-        left = len(ids) - n_screening - n_filtered - n_vetted
+        n = Counter()
+        for o in ids:
+            q = queued.get(o, {})
+            here = q.get("screen") == r["screen"]
+            if here and q["status"] in ("screening", "filtered"):
+                n[q["status"]] += 1
+            elif o in vetted:
+                n["vetted"] += 1
+            elif not here:
+                n["elsewhere"] += 1  # an older run let another filter keep it, so this one never checked it
+            elif o in marked:
+                n["set_aside"] += 1  # skipped, watched or cleared
+            else:
+                n["left"] += 1
         out.append({k: r[k] for k in ("id", "night", "screen", "state", "n_night", "n_listed", "n_passed", "error",
                                       "started_at", "finished_at")}
-                   | {"screening": n_screening, "filtered": n_filtered, "vetted": n_vetted, "left": left,
-                      "kept": len(ids) - n_screening - n_filtered,
-                      "done": r["state"] == "done" and not n_screening and not left})
+                   | {k: n[k] for k in ("screening", "filtered", "vetted", "left", "set_aside", "elsewhere")}
+                   | {"kept": n["vetted"] + n["left"] + n["set_aside"],
+                      "done": r["state"] == "done" and not n["screening"] and not n["left"]})
     return out
 
 
