@@ -42,8 +42,8 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
    Both are kept, so you can measure how much brokers shift your labels.
 
 **Sampling a night.** "Sample night" queues the next N random objects (the count box) whose first ANTARES
-alert came on one Rubin night (dayObs: noon to noon UTC). Batches are recorded in the `night_pulls` table, and the landing page's Nights
-card shows each night's progress: sampled and vetted of the night's size, and what is left. Night samples are left out of the filter lab and
+alert came on one Rubin night (dayObs: noon to noon UTC). Batches are recorded in the `night_pulls` table, and the landing page's Coverage
+card shows how much of each night has been vetted. Night samples are left out of the filter lab and
 compare pages' default population, which is the uniform random sample.
 
 **Coverage.** The landing page's Coverage card shows the share of LSST objects vetted. The first load of a fresh install counts every night, which takes a while; the card
