@@ -130,7 +130,7 @@ Label taxonomy, flags and hotkeys live in `dozynki/labels.py`.
 
 ![Building a filter with questions: each answer shows what it would drop, and the decision tree grows beside it](docs/images/filter-lab.webp)
 
-Filter rules come from on the light curve, broker scores, and data brokers already store. Examples include:
+Filter rules come from light curve, broker scores, and metadata brokers already store. Examples include:
 - **Rubin pipeline measurements** of each LSST detection: difference-image extendedness, dipole flag,
   glint-trail flag, PSF-fit χ²/N, size relative to the PSF (too sharp or too large), failed
   measurement flags, SNR and trail length. New fetches keep them (`antares.get_locus` "lsst_details");
