@@ -34,7 +34,7 @@ function defaultState() {
   const alerce = CFG.sources.filter((s) => s.kind === "alerce").sort((a, b) => b.n - a.n || b.id.localeCompare(a.id));
   const ref = labels[0]?.id ?? CFG.sources[0]?.id;
   const comp = alerce[0]?.id ?? CFG.sources.find((s) => s.id !== ref)?.id;
-  return { ref, comp, view: "class", norm: "row", min_prob: 0, include_alt: false, all_sources: false };
+  return { ref, comp, view: "class", norm: "row", min_prob: 0, include_alt: false, all_sources: false, object_list: "" };
 }
 
 function loadState() {
@@ -55,7 +55,7 @@ function saveState() {
 
 const request = () => ({
   ref: state.ref, comp: state.comp, view: state.view, min_prob: state.min_prob,
-  include_alt: state.include_alt, all_sources: state.all_sources,
+  include_alt: state.include_alt, all_sources: state.all_sources, object_list: state.object_list || null,
 });
 
 // ---------- settings ----------
@@ -69,7 +69,6 @@ function renderSettings() {
   document.querySelectorAll("#norm button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.norm));
   $("#min-prob").value = state.min_prob;
   $("#include-alt").checked = state.include_alt;
-  $("#all-sources").checked = state.all_sources;
 }
 
 let debounce = null;
@@ -225,7 +224,7 @@ async function init() {
     debounce = setTimeout(run, 250);
   };
   $("#include-alt").onchange = (e) => { state.include_alt = e.target.checked; changed(); };
-  $("#all-sources").onchange = (e) => { state.all_sources = e.target.checked; changed(); };
+  Population.mount($("#population"), state, (p) => { Object.assign(state, p); changed(); });
   $("#show-all-dis").onclick = () => { selected = null; if (result) { renderMatrix(); renderCell(); } };
   await run();
 }

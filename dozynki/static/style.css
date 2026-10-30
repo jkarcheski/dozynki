@@ -119,7 +119,24 @@ footer .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 #toast { position: fixed; top: 60px; right: 16px; background: var(--ink); color: var(--card); padding: 8px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 420px; }
 #toast.show { opacity: .95; }
 .loading { color: var(--muted); padding: 40px; text-align: center; }
+.mode { flex-wrap: wrap; align-items: center; }
+.mode .seg { flex-shrink: 0; }
 .mode select { padding: 3px 6px; }
 .mode #mode-status, .mode #run-status { font-size: 12px; }
 body.filtered-mode #mode button.on { background: var(--ok); border-color: var(--ok); }
 body.filtered-mode .random-only, body:not(.filtered-mode) .filtered-only { display: none; }
+body.list-mode #mode button.on { background: var(--ink); border-color: var(--ink); color: var(--card); }
+body.list-mode .random-only, body.list-mode .filtered-only, body.list-mode .sampling,
+body:not(.list-mode) .list-only { display: none; }
+.list-dialog { width: min(640px, calc(100vw - 32px)); background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.list-dialog::backdrop { background: rgb(0 0 0 / .35); }
+.list-dialog h2 { margin: 0 0 6px; font-size: 16px; }
+.list-dialog p { margin: 0 0 10px; font-size: 13px; }
+.list-dialog .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
+.list-dialog .actions { justify-content: flex-end; }
+.list-dialog #list-name { width: 220px; }
+.list-dialog #list-radius { width: 60px; }
+.list-dialog textarea { width: 100%; font: 12px/1.4 ui-monospace, monospace; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+.list-dialog #list-result { font-size: 13px; max-height: 180px; overflow: auto; }
+.list-dialog #list-result ul { margin: 4px 0; padding-left: 18px; }
+.list-dialog #list-result code { font-size: 12px; }

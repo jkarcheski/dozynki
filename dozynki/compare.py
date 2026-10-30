@@ -20,7 +20,7 @@ import json
 from collections import Counter
 
 from . import db
-from .evaluate import RANDOM_SOURCES, wilson
+from .evaluate import population_ids, wilson
 from .labels import CLASS_BY_KEY, CLASSES
 
 # ALeRCE classes -> DOZYNKI classes. Stamp classifiers first; satellites are not
@@ -107,13 +107,13 @@ def kappa(pairs):
     return None if pe == 1 else (po - pe) / (1 - pe)
 
 
-def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_sources=False):
+def compare(ref, comp, view="class", min_prob=0.0, include_alt=False, all_sources=False, object_list=None):
     if view not in VIEWS:
         raise ValueError(f"view must be one of {list(VIEWS)}")
     group = VIEWS[view]
     R, C = load(ref), load(comp)
-    queue = {r["object_id"]: r["source"] for r in db.query("SELECT object_id, source FROM queue")}
-    in_pop = lambda oid: all_sources or queue.get(oid) in RANDOM_SOURCES
+    ids = population_ids(all_sources, object_list)
+    in_pop = lambda oid: oid in ids
     excluded = Counter()
     excluded["only in reference"] = sum(1 for o in R if o not in C and in_pop(o))
     excluded["only in compared"] = sum(1 for o in C if o not in R and in_pop(o))

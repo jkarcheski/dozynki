@@ -8,7 +8,7 @@ Created and currently managed by UCSC PhD student Jenna Karcheski. Please contac
 Current pages:
 - **[Vetter](#vetter-identify-transients-and-create-labels)** – label each object blind from the evidence
   (light curve, cutouts, field image, an independent crossmatch and host ranking), then see what the brokers
-  think. Run it over a random sample or over a whole night, live.
+  think. Run it over a random sample, over a whole night, live, or over a list of objects you load.
 - **[Filter lab](#filter-lab-filter-out-the-noise)** – build rejection filters by answering plain-language
   questions, and see what each one would throw away.
 - **[Sky map](#sky-map)** – where the labeled classes and a filter's rejections fall on the sky.
@@ -68,6 +68,19 @@ To keep things running fast, the run (`nightrun.py`, table `night_runs`) has two
 
 The two modes have separate queues, so neither takes the other's objects; a random-mode sample that draws an object a filter
 threw away takes it back into random mode, so Random stays random.
+
+**Object lists.** "Load list" takes any objects, pasted or from a CSV/text file, one per line: an ANTARES alert
+ID (`lsst:<diaSourceId>`, or `ztf_candidate:<candid>`), an LSST diaObjectId or bare diaSourceId, an ANTARES locus,
+or RA and Dec (degrees or sexagesimal). Columns after the object are ignored. Coordinates and ZTF alerts take the
+nearest LSST diaObject within the radius (1″ by default) from ALeRCE's cone search, since ANTARES v2's
+`sky_distance` query currently fails on its side; when ANTARES's locus search is failing, an object's position comes
+from ALeRCE and its locus is looked up when it is opened. Lines that can't be resolved are listed with the reason,
+as are positions with more than one object in the radius and lines naming the same object. The *List* mode vets one
+list's objects, including ones a filtered-mode run threw away, and the filter lab, sky map, similar and compare
+pages can use a list as their population ("objects" picker). Lists are named and shared like saved filters
+(tables `object_lists` and `list_members`, code in `lists.py`); objects new to the queue get source `object_list`,
+and objects already queued keep their source and mode. Adding to a list you loaded keeps what is on it; deleting a
+list keeps its objects and labels.
 
 **Multiple classes.** Click (or press the digit) for the primary class; Shift+click
 (or Shift+digit) adds "could also be" classes, e.g. primary *bogus* that could be a
@@ -157,6 +170,8 @@ and draw it on the map. Click a point to open it in the vetter. Code lives in `d
 
 ## Similar objects
 
+![The feature map of everything queued with a star selected, and its nearest labeled neighbors with their cutouts](docs/images/similar.webp)
+
 `http://127.0.0.1:8765/similar` (or the "Similar" tab) shows which objects look alike, with no trained model.
 Each object is a vector of the filter lab's features (`rejection.features()`) plus a few light-curve shape
 numbers from the cached ANTARES points (peak flux, rise and fade time, last/peak flux, bands, difference minus
@@ -174,7 +189,7 @@ Toggle feature groups in the header; broker scores (reliability, drb, SCIMMA tag
 
 Rubin pipeline measurements and ANTARES catalog matches are missing until fetched ("Fetch them" in the
 filter lab), and neighbors are only as good as the features they share. Like the filter lab, only the uniform
-random sample is used unless "non-random objects too" is on. Code lives in `dozynki/similar.py`.
+random sample is used unless the "objects" picker says otherwise (everything queued, or an object list). Code lives in `dozynki/similar.py`.
 
 ## Compare: labels against brokers and each other
 
@@ -189,7 +204,7 @@ classifier found in the cache (top class). Nothing is stored. Code lives in `doz
 - A table scores every source against the reference. Click a matrix cell to list its objects,
   most confident broker calls first, with links into the vetter.
 - Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
-- Like the filter lab, only the uniform random sample is used unless "non-random objects too" is on.
+- Like the filter lab, only the uniform random sample is used unless the "objects" picker says otherwise (everything queued, or an object list).
 
 ## Export
 
@@ -209,6 +224,7 @@ dozynki/
   compare.py        confusion matrices between label sources (labelers, ALeRCE)
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
+  lists.py          object lists: resolve alert IDs, diaObjectIds, loci and coordinates to LSST objects
   crossmatch.py     independent catalog crossmatch + DLR
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background

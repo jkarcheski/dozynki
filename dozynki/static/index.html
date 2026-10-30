@@ -14,9 +14,11 @@
   <div id="haystack" class="haystack"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
-    <span class="group mode" title="Random: every sampled object, as drawn. Filtered: a whole night is run through a saved filter from the filter lab, and you only see what passes.">
-      <span class="seg" id="mode"><button data-v="random">Random</button><button data-v="filtered">Filtered</button></span>
+    <span class="group mode" title="Random: every sampled object, as drawn. Filtered: a whole night is run through a saved filter from the filter lab, and you only see what passes. List: the objects of a list you loaded.">
+      <span class="seg" id="mode"><button data-v="random">Random</button><button data-v="filtered">Filtered</button><button data-v="list">List</button></span>
       <select id="mode-filter" aria-label="Saved filter to screen with"></select>
+      <select id="mode-list" aria-label="Object list to vet"></select>
+      <button id="list-delete" class="small list-only" title="Forget this list (its objects stay queued, with their labels)">Delete list</button>
       <span id="mode-status" class="muted"></span>
       <span id="run-status" class="muted filtered-only"></span>
     </span>
@@ -26,11 +28,11 @@
         <button id="fill" title="Random LSST objects from ANTARES">Sample random LSST</button>
         <span class="muted">or from night</span>
       </span>
-      <input id="night" type="date" title="Rubin night (dayObs): noon to noon UTC">
+      <input id="night" class="sampling" type="date" title="Rubin night (dayObs): noon to noon UTC">
       <button id="pull-night" class="random-only" title="The next random objects whose first alert came that night. Later samples of the night continue without repeats.">Sample night</button>
       <button id="run-night" class="filtered-only" title="Every LSST object whose first or latest alert came that night, through the saved filter: the rules ANTARES's listing answers run over the whole night at once, then each object that passes is fetched and checked against the rest before you get to it.">Filter whole night</button>
     </span>
-    <button id="add-ids" title="Queue specific LSST diaObjectIds">Add IDs</button>
+    <button id="load-list" title="Load objects by alert ID, diaObjectId, ANTARES locus or coordinates, to vet and to use in the filter lab and other pages">Load list</button>
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>
     <button id="xmatch-fill" title="Retry catalogs that failed or timed out in cached crossmatches of objects not yet labeled">Retry failed catalogs</button>
     <button id="export">Export</button>
@@ -50,6 +52,28 @@
     <span id="f-matching" class="muted"></span>
   </div>
 </header>
+
+<dialog id="list-dialog" class="list-dialog" aria-labelledby="list-dialog-title">
+  <form method="dialog">
+    <h2 id="list-dialog-title">Load an object list</h2>
+    <p class="muted">One object per line: an alert ID (<code>lsst:&lt;diaSourceId&gt;</code> or <code>ztf_candidate:&lt;candid&gt;</code>),
+      an LSST diaObjectId or diaSourceId, an ANTARES locus, or RA Dec (degrees or sexagesimal). Columns after the object are ignored.
+      Coordinates and ZTF alerts take the nearest LSST object within the radius.</p>
+    <div class="row">
+      <label>Name <input id="list-name" list="list-names" maxlength="80" required autocomplete="off"></label>
+      <datalist id="list-names"></datalist>
+      <label>Radius <input id="list-radius" type="number" value="1" step="0.1" min="0.1" max="30"> arcsec</label>
+    </div>
+    <textarea id="list-text" rows="10" spellcheck="false" placeholder="lsst:314011740143091792&#10;314002970870546497&#10;ANT2026xzuqin9qdg22&#10;54.34694 -28.67020&#10;03:37:23.27 -28:40:12.7"></textarea>
+    <div class="row"><label>or a file <input id="list-file" type="file" accept=".csv,.tsv,.txt,text/plain,text/csv"></label>
+      <span class="muted">Adding to a list you loaded before keeps what is on it.</span></div>
+    <div id="list-result" aria-live="polite"></div>
+    <div class="row actions">
+      <button value="close" formnovalidate>Close</button>
+      <button id="list-submit" type="button" class="primary">Load</button>
+    </div>
+  </form>
+</dialog>
 
 <main id="main">
   <section class="col">

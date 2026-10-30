@@ -101,6 +101,15 @@ def locus_for_dia_object(dia_object_id):
     return _listing_summary(data[0]) if data else None
 
 
+def alert(alert_id):
+    """One alert's properties by its ANTARES id (lsst:<diaSourceId>, ztf_candidate:<candid>); None if unknown."""
+    r = _session.get(f"{ANTARES_API}/alerts/{alert_id}", timeout=HTTP_TIMEOUT)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return r.json()["data"]["properties"]
+
+
 def _listing_summary(x):
     loc = _locus(x)
     props = loc["properties"]

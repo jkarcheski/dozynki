@@ -40,6 +40,14 @@ from .config import EXPORT_DIR
 from .labels import CLASS_BY_KEY, CLASSES, TRANSIENT_SUBCLASSES
 
 RANDOM_SOURCES = ("antares_random_lsst",)
+
+
+def population_ids(all_sources=False, object_list=None):
+    """Object ids to use: one object list's members (lists.py), every queued object, or the uniform random sample."""
+    if object_list:
+        return db.list_object_ids(object_list)
+    return {r["object_id"] for r in db.query("SELECT object_id, source FROM queue")
+            if all_sources or r["source"] in RANDOM_SOURCES}
 SHORTHANDS = {"real": [c["key"] for c in CLASSES if c["real"]],
               "transient": [c["key"] for c in CLASSES if c["transient"]]}
 
@@ -113,14 +121,14 @@ def metrics(classes, pos, kept):
 
 
 def evaluate(pipeline=rejection.DEFAULT_PIPELINE, truth="blind", target="transient", include_alt=False,
-             all_sources=False, save=True):
+             all_sources=False, save=True, object_list=None):
     pipeline = rejection.resolve(pipeline)
     target_keys = parse_target(target)
     steps = [rejection.step_key(s) for s in pipeline]
     labels = truth_labels(truth)
     queue = {r["object_id"]: r for r in db.query("SELECT object_id, source, source_params FROM queue")}
-    population = {oid: lab for oid, lab in labels.items()
-                  if all_sources or queue.get(oid, {}).get("source") in RANDOM_SOURCES}
+    ids = population_ids(all_sources, object_list)
+    population ={oid: lab for oid, lab in labels.items() if oid in ids}
     ver, results = rejection.run(population, pipeline, save=save)
 
     rows, excluded = [], Counter()
@@ -151,6 +159,7 @@ def evaluate(pipeline=rejection.DEFAULT_PIPELINE, truth="blind", target="transie
         "truth": truth,
         "target": sorted(target_keys),
         "include_alt": include_alt,
+        "object_list": object_list,
         "population": {"scored": len(df), "n_target": int(df["target"].sum()),
                        "by_class": df["truth"].value_counts().to_dict(),
                        "excluded": dict(excluded),
@@ -239,6 +248,7 @@ def main(argv=None):
                     help="comma list of classes / transient:<subclass>, or real / transient (default transient)")
     ap.add_argument("--include-alt", action="store_true", help="count 'could also be' classes toward the target")
     ap.add_argument("--all-sources", action="store_true", help="also score objects not from the random sample")
+    ap.add_argument("--list", dest="object_list", help="score the objects of one object list instead (lists.py)")
     ap.add_argument("--list-rules", action="store_true")
     args = ap.parse_args(argv)
 
@@ -255,7 +265,7 @@ def main(argv=None):
             names = ", ".join(p["name"] for p in db.saved_pipelines()) or "none yet"
             ap.error(f"no saved pipeline {args.saved!r} (saved: {names})")
     try:
-        report, df = evaluate(pipeline, args.truth, args.target, args.include_alt, args.all_sources)
+        report, df = evaluate(pipeline, args.truth, args.target, args.include_alt, args.all_sources, object_list=args.object_list)
     except ValueError as e:
         ap.error(str(e))
     text = text_report(report)

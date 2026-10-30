@@ -20,7 +20,7 @@
     <label title="Objects with no label yet, as small gray dots"><input type="checkbox" id="unlabeled"> unlabeled</label>
     <span class="muted">· truth</span>
     <span class="seg" id="truth"><button data-v="blind" class="on">first blind</button><button data-v="final">latest</button></span>
-    <label title="Also use objects that did not come from the uniform random sample"><input type="checkbox" id="all-sources"> non-random objects too</label>
+    <label>objects <select id="population" aria-label="Which objects"></select></label>
   </div>
   <div class="filterbar settings">
     <span class="muted" title="Which features make up the vector. They are scaled (median, IQR) but never weighted or fit to labels.">Features</span>
@@ -65,6 +65,7 @@
   </section>
 </main>
 <div id="toast"></div>
+<script src="/static/population.js"></script>
 <script src="/static/similar.js"></script>
 </body>
 </html>

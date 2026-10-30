@@ -1,7 +1,7 @@
 """Ways to fill the labeling queue. Each records its selection function in
 queue.source / queue.source_params so the training set's biases are known.
 
-Babamul Kafka topics and user-supplied object lists are planned additions.
+User-supplied object lists live in lists.py; Babamul Kafka topics are a planned addition.
 pittgoogle_random_lsst is a prototype: it needs a Google Cloud project (see brokers/pittgoogle.py).
 """
 
