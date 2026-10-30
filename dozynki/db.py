@@ -358,6 +358,18 @@ def watched(labeler):
                  (labeler,))
 
 
+def watchlist(labeler, since=None):
+    """This labeler's watched objects with the label that put each on the list, newest first;
+    since (YYYY-MM-DD, UTC) keeps those flagged on or after that day."""
+    return query("""
+        SELECT q.object_id, q.antares_locus, q.ra, q.dec, l.klass, l.subclass, l.confidence, l.flags, l.notes,
+               l.phase, l.created_at AS flagged_at
+        FROM queue_status s JOIN queue q USING (object_id)
+        JOIN labels l ON l.id = (SELECT MAX(id) FROM labels WHERE object_id = s.object_id AND labeler = s.labeler)
+        WHERE s.labeler = ? AND s.status = 'watch' AND (? IS NULL OR l.created_at >= ?)
+        ORDER BY l.created_at DESC""", (labeler, since, since))
+
+
 def cache_get(object_id, kind):
     rows = query("SELECT payload, fetched_at FROM cache WHERE object_id = ? AND kind = ?", (object_id, kind))
     if not rows:

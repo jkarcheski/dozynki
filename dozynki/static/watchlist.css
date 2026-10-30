@@ -1,0 +1,6 @@
+/* Watchlist page; layout from home.css. */
+.watch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+a.button { display: inline-block; text-decoration: none; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
+a.button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+#list td { vertical-align: top; }
+#list a { color: var(--accent); }

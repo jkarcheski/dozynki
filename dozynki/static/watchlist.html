@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI watchlist</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <link rel="stylesheet" href="/static/home.css">
+  <link rel="stylesheet" href="/static/watchlist.css">
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+</header>
+
+<main class="home">
+  <section class="card">
+    <div class="card-head">
+      <h2>Watchlist <span id="count" class="muted"></span></h2>
+      <span class="watch-controls">
+        <span class="muted">flagged</span>
+        <span class="seg" id="range"><button data-v="night" class="on">since last night</button><button data-v="week">past week</button><button data-v="all">all</button></span>
+        <label class="muted">since <input type="date" id="since"></label>
+        <button id="recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the vetter queue">Recheck for new alerts</button>
+        <a id="csv" class="button primary" href="/api/watchlist.csv" download>Download CSV</a>
+      </span>
+    </div>
+    <div class="tablewrap"><table id="list"></table></div>
+    <div class="hint">Objects you labeled with "Watch for more data" and haven't relabeled without it. Dates are UTC;
+      "since last night" starts at yesterday's date. Open an object to give it a follow-up label.</div>
+    <div id="err" class="err"></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/static/watchlist.js"></script>
+</body>
+</html>

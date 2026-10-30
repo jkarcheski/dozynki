@@ -1,4 +1,6 @@
+import csv
 import html
+import io
 import json
 import re
 import time
@@ -38,6 +40,7 @@ PAGES = [
     ("/sky", "sky.html", "Sky map"),
     ("/similar", "similar.html", "Similar"),
     ("/compare", "compare.html", "Compare"),
+    ("/watchlist", "watchlist.html", "Watchlist"),
 ]
 OTHER_PAGES = [("/account", "account.html")]  # no tab
 
@@ -167,6 +170,11 @@ def sky_page(request: Request):
 @app.get("/similar")
 def similar_page(request: Request):
     return _page("/similar", request)
+
+
+@app.get("/watchlist")
+def watchlist_page(request: Request):
+    return _page("/watchlist", request)
 
 
 @app.get("/account")
@@ -619,6 +627,34 @@ def watch_recheck(request: Request):
         except Exception as e:
             errors[oid] = f"{type(e).__name__}: {e}"
     return {"requeued": updated, "unchanged": unchanged, "errors": errors}
+
+
+WATCHLIST_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "klass", "subclass", "confidence", "flags", "notes",
+                     "phase", "flagged_at"]
+
+
+def _since(since):
+    if since and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", since):
+        raise HTTPException(400, "since must be YYYY-MM-DD")
+    return since or None
+
+
+@app.get("/api/watchlist")
+def watchlist(request: Request, since: str = ""):
+    """Your watched objects, with the label that put each on the list."""
+    return {"objects": db.watchlist(_who(request), _since(since))}
+
+
+@app.get("/api/watchlist.csv")
+def watchlist_csv(request: Request, since: str = ""):
+    """The same list as a CSV download; built per request, nothing is written to disk."""
+    rows = db.watchlist(_who(request), _since(since))
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, WATCHLIST_COLUMNS)
+    writer.writeheader()
+    writer.writerows(rows)
+    name = f"watchlist{'_since_' + since if since else ''}.csv"
+    return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.post("/api/xmatch/fill-missing")
