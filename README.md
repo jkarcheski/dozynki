@@ -170,6 +170,8 @@ and draw it on the map. Click a point to open it in the vetter. Code lives in `d
 
 ## Similar objects
 
+![The feature map with a transient selected, and its nearest neighbors with their cutouts](docs/images/similar.webp)
+
 `http://127.0.0.1:8765/similar` (or the "Similar" tab) shows which objects look alike, with no trained model.
 Each object is a vector of the filter lab's features (`rejection.features()`) plus a few light-curve shape
 numbers from the cached ANTARES points (peak flux, rise and fade time, last/peak flux, bands, difference minus
