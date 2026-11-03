@@ -1,9 +1,32 @@
-// Watchlist: your objects flagged "watch", filtered by when they were flagged, with a CSV download.
+// Watchlist: your objects flagged "watch", filtered by when they were flagged and by detections, latest mag and Dec;
+// sortable by any column, with a CSV of the selected (or shown) rows.
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fix = (v, d) => (v == null ? "—" : v.toFixed(d));
 
 let CLASSES = {};
+let objects = [];
+let shown = [];
+let selected = new Set();
+let sort = { key: "flagged_at", dir: -1 };
+
+// [key, heading, cell, numeric]; sorting uses the row's value under key
+const COLUMNS = [
+  ["object_id", "Object", (o) => `<a href="/vet?object=${encodeURIComponent(o.object_id)}">${esc(o.object_id)}</a>`],
+  ["klass", "Class", (o) => `${esc(CLASSES[o.klass] ?? o.klass)}${o.subclass ? ` <span class="muted">${esc(o.subclass)}</span>` : ""}`],
+  ["confidence", "Confidence", (o) => esc(o.confidence)],
+  ["n_det", "Detections", (o) => o.n_det ?? "—", true],
+  ["last_mag", "Latest mag", (o) => (o.last_mag == null ? "—" : `${o.last_mag.toFixed(2)} <span class="muted">${esc(o.last_band)}</span>`), true],
+  ["ra", "RA", (o) => fix(o.ra, 5), true],
+  ["dec", "Dec", (o) => fix(o.dec, 5), true],
+  ["flags", "Flags", (o) => JSON.parse(o.flags || "[]").filter((f) => f !== "watch").map((f) => `<span class="pill">${esc(f)}</span>`).join("")],
+  ["notes", "Notes", (o) => esc(o.notes)],
+  ["flagged_at", "Flagged (UTC)", (o) => `<span class="muted">${esc(o.flagged_at.slice(0, 16).replace("T", " "))}</span>`],
+];
+const CSV_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "n_det", "last_mag", "last_band", "last_mjd", "klass",
+  "subclass", "confidence", "flags", "notes", "phase", "flagged_at"];
+const RANGES = [["n_det", "#ndet-min", "#ndet-max"], ["last_mag", "#mag-min", "#mag-max"], ["dec", "#dec-min", "#dec-max"]];
 
 function toast(msg, ms = 3000) {
   const t = $("#toast");
@@ -30,26 +53,82 @@ function setRange(v) {
 
 async function load() {
   const since = $("#since").value;
-  const q = since ? `?since=${since}` : "";
-  $("#csv").href = `/api/watchlist.csv${q}`;
   try {
-    const { objects } = await api(`/api/watchlist${q}`);
+    objects = (await api(`/api/watchlist${since ? `?since=${since}` : ""}`)).objects;
     $("#err").textContent = "";
-    $("#count").textContent = `· ${objects.length} object${objects.length === 1 ? "" : "s"}`;
-    $("#list").innerHTML = objects.length
-      ? `<tr><th>Object</th><th>Class</th><th>Confidence</th><th>Flags</th><th>Notes</th><th class="num">RA</th><th class="num">Dec</th><th>Flagged (UTC)</th></tr>`
-        + objects.map((o) => `<tr>`
-          + `<td><a href="/vet?object=${encodeURIComponent(o.object_id)}">${esc(o.object_id)}</a></td>`
-          + `<td>${esc(CLASSES[o.klass] ?? o.klass)}${o.subclass ? ` <span class="muted">${esc(o.subclass)}</span>` : ""}</td>`
-          + `<td>${esc(o.confidence)}</td>`
-          + `<td>${JSON.parse(o.flags || "[]").filter((f) => f !== "watch").map((f) => `<span class="pill">${esc(f)}</span>`).join("")}</td>`
-          + `<td>${esc(o.notes)}</td>`
-          + `<td class="num">${o.ra?.toFixed(5) ?? "—"}</td><td class="num">${o.dec?.toFixed(5) ?? "—"}</td>`
-          + `<td class="muted">${esc(o.flagged_at.slice(0, 16).replace("T", " "))}</td></tr>`).join("")
-      : `<tr><td class="muted">Nothing on your watchlist${since ? " flagged since " + since : ""}.</td></tr>`;
+    const ids = new Set(objects.map((o) => o.object_id));
+    selected = new Set([...selected].filter((id) => ids.has(id)));
+    render();
   } catch (e) {
     $("#err").textContent = e.message;
   }
+}
+
+// An object with no value for a filtered attribute is hidden: it can't be shown to be in range.
+function passes(o) {
+  return RANGES.every(([key, lo, hi]) => {
+    const min = $(lo).value, max = $(hi).value;
+    if (min === "" && max === "") return true;
+    const v = o[key];
+    return v != null && (min === "" || v >= +min) && (max === "" || v <= +max);
+  });
+}
+
+function compare(a, b) {
+  const x = a[sort.key], y = b[sort.key];
+  if (x == null || y == null) return (x == null) - (y == null);  // missing values last either way
+  return sort.dir * (typeof x === "number" ? x - y : String(x).localeCompare(String(y)));
+}
+
+function render() {
+  shown = objects.filter(passes).sort(compare);
+  const since = $("#since").value;
+  $("#count").textContent = `· ${shown.length}${shown.length < objects.length ? ` of ${objects.length}` : ""} object${objects.length === 1 ? "" : "s"}`
+    + (selected.size ? ` · ${selected.size} selected` : "");
+  $("#csv").textContent = selected.size ? `Download CSV (${selected.size} selected)` : "Download CSV";
+  if (!objects.length) {
+    $("#list").innerHTML = `<tr><td class="muted">Nothing on your watchlist${since ? " flagged since " + since : ""}.</td></tr>`;
+    return;
+  }
+  const all = shown.length && shown.every((o) => selected.has(o.object_id));
+  $("#list").innerHTML =
+    `<tr><th><input type="checkbox" id="select-all" aria-label="Select every row shown"${all ? " checked" : ""}></th>`
+    + COLUMNS.map(([key, head, , num]) => `<th class="sortable${num ? " num" : ""}${sort.key === key ? " sorted" : ""}" data-k="${key}">`
+      + `${head}${sort.key === key ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("") + `</tr>`
+    + (shown.map((o) => `<tr${selected.has(o.object_id) ? ' class="sel"' : ""}>`
+      + `<td><input type="checkbox" data-id="${esc(o.object_id)}" aria-label="Select ${esc(o.object_id)}"${selected.has(o.object_id) ? " checked" : ""}></td>`
+      + COLUMNS.map(([, , cell, num]) => `<td${num ? ' class="num"' : ""}>${cell(o)}</td>`).join("") + `</tr>`).join("")
+      || `<tr><td></td><td colspan="${COLUMNS.length}" class="muted">No watched objects match these filters.</td></tr>`);
+}
+
+function onTableClick(e) {
+  const th = e.target.closest("th.sortable");
+  if (th) {
+    sort = th.dataset.k === sort.key ? { key: sort.key, dir: -sort.dir } : { key: th.dataset.k, dir: 1 };
+    return render();
+  }
+  const box = e.target.closest("input[type=checkbox]");
+  if (!box) return;
+  const ids = box.id === "select-all" ? shown.map((o) => o.object_id) : [box.dataset.id];
+  ids.forEach((id) => (box.checked ? selected.add(id) : selected.delete(id)));
+  render();
+}
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCsv() {
+  const rows = selected.size ? shown.concat(objects.filter((o) => !shown.includes(o))).filter((o) => selected.has(o.object_id)) : shown;
+  if (!rows.length) return toast("No rows to download.");
+  const text = [CSV_COLUMNS.join(","), ...rows.map((o) => CSV_COLUMNS.map((k) => csvCell(o[k])).join(","))].join("\n") + "\n";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  const since = $("#since").value;
+  a.download = `watchlist${since ? "_since_" + since : ""}${selected.size ? "_selected" : ""}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 async function recheck() {
@@ -75,6 +154,13 @@ async function init() {
     document.querySelectorAll("#range button").forEach((b) => b.classList.remove("on"));
     load();
   };
+  RANGES.forEach(([, lo, hi]) => [lo, hi].forEach((s) => ($(s).oninput = render)));
+  $("#clear-filters").onclick = () => {
+    RANGES.forEach(([, lo, hi]) => ($(lo).value = $(hi).value = ""));
+    render();
+  };
+  $("#list").onclick = onTableClick;
+  $("#csv").onclick = downloadCsv;
   $("#recheck").onclick = recheck;
   setRange("night");
 }

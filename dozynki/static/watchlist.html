@@ -23,12 +23,20 @@
         <span class="seg" id="range"><button data-v="night" class="on">since last night</button><button data-v="week">past week</button><button data-v="all">all</button></span>
         <label class="muted">since <input type="date" id="since"></label>
         <button id="recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the vetter queue">Recheck for new alerts</button>
-        <a id="csv" class="button primary" href="/api/watchlist.csv" download>Download CSV</a>
+        <button id="csv" class="primary" title="The selected rows, or every row shown when none are selected">Download CSV</button>
       </span>
     </div>
+    <div class="watch-controls watch-filters">
+      <span class="muted">Show</span>
+      <label class="muted">detections <input type="number" id="ndet-min" min="0" step="1" placeholder="min"> – <input type="number" id="ndet-max" min="0" step="1" placeholder="max"></label>
+      <label class="muted">latest mag <input type="number" id="mag-min" step="0.1" placeholder="min"> – <input type="number" id="mag-max" step="0.1" placeholder="max"></label>
+      <label class="muted">Dec <input type="number" id="dec-min" min="-90" max="90" step="1" placeholder="min"> – <input type="number" id="dec-max" min="-90" max="90" step="1" placeholder="max"></label>
+      <button id="clear-filters" class="small">Clear</button>
+    </div>
     <div class="tablewrap"><table id="list"></table></div>
-    <div class="hint">Objects you labeled with "Watch for more data" and haven't relabeled without it. Dates are UTC;
-      "since last night" starts at yesterday's date. Open an object to give it a follow-up label.</div>
+    <div class="hint">Objects you labeled with "Watch for more data" and haven't relabeled without it. Detections and latest mag
+      (difference-image magnitude of the newest detection) come from the light curve as last fetched; "Recheck for new alerts" refreshes it.
+      Click a column heading to sort. Dates are UTC; "since last night" starts at yesterday's date. Open an object to give it a follow-up label.</div>
     <div id="err" class="err"></div>
   </section>
 </main>

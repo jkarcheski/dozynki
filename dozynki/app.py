@@ -629,8 +629,19 @@ def watch_recheck(request: Request):
     return {"requeued": updated, "unchanged": unchanged, "errors": errors}
 
 
-WATCHLIST_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "klass", "subclass", "confidence", "flags", "notes",
-                     "phase", "flagged_at"]
+WATCHLIST_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "n_det", "last_mag", "last_band", "last_mjd", "klass",
+                     "subclass", "confidence", "flags", "notes", "phase", "flagged_at"]
+
+
+def _watchlist(request, since):
+    """Your watched objects, each with its detection count and latest detected magnitude from the cached light curve."""
+    rows = db.watchlist(_who(request), _since(since))
+    for r in rows:
+        cached = db.cache_get(r["object_id"], "antares")
+        dets = [p for p in (cached["data"]["points"] if cached else []) if p["kind"] == "detection" and p.get("mag") is not None]
+        last = max(dets, key=lambda p: p["mjd"]) if dets else {}
+        r.update(n_det=len(dets) if cached else None, last_mag=last.get("mag"), last_band=last.get("band"), last_mjd=last.get("mjd"))
+    return rows
 
 
 def _since(since):
@@ -642,13 +653,13 @@ def _since(since):
 @app.get("/api/watchlist")
 def watchlist(request: Request, since: str = ""):
     """Your watched objects, with the label that put each on the list."""
-    return {"objects": db.watchlist(_who(request), _since(since))}
+    return {"objects": _watchlist(request, since)}
 
 
 @app.get("/api/watchlist.csv")
 def watchlist_csv(request: Request, since: str = ""):
     """The same list as a CSV download; built per request, nothing is written to disk."""
-    rows = db.watchlist(_who(request), _since(since))
+    rows = _watchlist(request, since)
     buf = io.StringIO()
     writer = csv.DictWriter(buf, WATCHLIST_COLUMNS)
     writer.writeheader()
