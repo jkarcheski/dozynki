@@ -1344,6 +1344,7 @@ const yseValue = (v) => String(v).replace(/[\[\]']/g, "");
 function renderYse(y) {
   let html = `<h3>YSE PZ</h3>`;
   if (!y.enabled) return html + `<div class="muted" style="font-size:12px">no YSE PZ login: add yours on your <a href="/account">profile</a></div>`;
+  if (y.errors?.login) return html + `<div class="err">YSE PZ didn't accept your saved login: update it on your <a href="/account">profile</a></div>`;
   if (y.errors?.cone) return html + `<div class="err">${esc(y.errors.cone).slice(0, 200)}</div>`;
   if (!y.found) return html + `<div class="muted" style="font-size:12px">no YSE transient within 3″</div>`;
   const [m, ...others] = y.matches;

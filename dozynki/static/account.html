@@ -33,17 +33,21 @@
       shows YSE PZ's photometry of the nearest YSE transient on the light curve, and its name, status and
       classification with the broker opinions. It sees what your YSE PZ account can see.</p>
     <div id="yse-on" hidden>
-      <p>Connected as <b id="yse-user"></b>.</p>
-      <button id="yse-forget">Remove my YSE PZ login</button>
+      <p>Saved login: <b id="yse-user"></b></p>
+      <div class="buttons">
+        <button id="yse-test">Test login</button>
+        <button id="yse-change">Change login</button>
+        <button id="yse-forget">Remove my YSE PZ login</button>
+      </div>
     </div>
     <form id="yse-form">
       <label>YSE PZ username <input name="username" autocomplete="off" required></label>
       <label>YSE PZ password <input name="password" type="password" autocomplete="off" required></label>
       <p class="hint">Checked with YSE PZ before it's saved. YSE PZ needs the password itself with every request,
         so DOZYNKI keeps it encrypted rather than as a one-way hash; whoever runs this server could decrypt it.</p>
-      <button class="primary">Save YSE PZ login</button>
-      <div class="err"></div>
+      <button class="primary">Check and save</button>
     </form>
+    <div id="yse-status" role="status" hidden></div>
   </section>
 
   <section id="guest" hidden>

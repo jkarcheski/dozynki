@@ -45,12 +45,44 @@ function showYse(username) {
   $("#yse-form").reset();
 }
 
+// The outcome of a save or test, in a box under the card, so a wrong password can't go unnoticed.
+function yseStatus(ok, text) {
+  const el = $("#yse-status");
+  el.hidden = !text;
+  el.className = ok ? "good" : "bad";
+  el.textContent = text ? `${ok ? "✓" : "✗"} ${text}` : "";
+}
+
+// Run a YSE PZ request with the button disabled; report its outcome.
+async function yseAction(button, request, ok) {
+  button.disabled = true;
+  yseStatus(true, "");
+  try {
+    ok(await request());
+  } catch (ex) {
+    yseStatus(false, ex.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function initYse() {
-  wire($("#yse-form"), "/api/account/yse", (r) => showYse(r.username));
-  $("#yse-forget").onclick = async () => {
-    const r = await fetch("/api/account/yse", { method: "DELETE" });
-    if (r.ok) showYse(null);
+  const form = $("#yse-form");
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    yseAction(form.querySelector("button"), () => api("/api/account/yse", data), (r) => {
+      showYse(r.username);
+      yseStatus(true, `YSE PZ accepted the login for ${r.username}. It's saved; the vetter will use it.`);
+    });
   };
+  $("#yse-test").onclick = () => yseAction($("#yse-test"), () => api("/api/account/yse/check", {}),
+    (r) => yseStatus(true, `YSE PZ still accepts the login for ${r.username}.`));
+  $("#yse-change").onclick = () => { $("#yse-on").hidden = true; form.hidden = false; yseStatus(true, ""); };
+  $("#yse-forget").onclick = () => yseAction($("#yse-forget"), async () => {
+    const r = await fetch("/api/account/yse", { method: "DELETE" });
+    if (!r.ok) throw new Error(`couldn't remove it (HTTP ${r.status})`);
+  }, () => { showYse(null); yseStatus(true, "Removed. The vetter no longer uses a YSE PZ login for you."); });
   showYse((await api("/api/account/yse")).username);
 }
 

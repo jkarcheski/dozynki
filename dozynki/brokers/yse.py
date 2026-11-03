@@ -66,18 +66,27 @@ def username_for(labeler):
     return rows[0]["username"] if rows else None
 
 
+def _rejected(e):
+    return isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code in (401, 403)
+
+
+def check_login(login):
+    """Raise LoginError unless YSE PZ accepts login (an API call that needs one)."""
+    try:
+        _get("api/transients/", login, {"limit": 1})
+    except requests.RequestException as e:
+        if _rejected(e):
+            raise LoginError(f"YSE PZ didn't accept the password for {login[0]!r}. Check it and try again.")
+        raise LoginError(f"Couldn't reach YSE PZ to check the login ({type(e).__name__}); try again later.")
+
+
 def save_login(labeler, username, password):
     """Check the login against YSE PZ, then keep it. A new login drops the old one's cached matches,
     since another account may see other photometry."""
     username = (username or "").strip()
     if not username or not password:
-        raise LoginError("enter your YSE PZ username and password")
-    try:
-        _get("api/transients/", (username, password), {"limit": 1})
-    except requests.HTTPError as e:
-        if e.response.status_code in (401, 403):
-            raise LoginError("YSE PZ didn't accept that username and password")
-        raise
+        raise LoginError("Enter your YSE PZ username and password.")
+    check_login((username, password))
     db.execute("INSERT OR REPLACE INTO yse_logins (labeler, username, password, saved_at) VALUES (?, ?, ?, ?)",
                (labeler, username, _fernet().encrypt(password.encode()).decode(), db.now()))
     db.execute("DELETE FROM cache WHERE kind = ?", (cache_kind(labeler),))
@@ -156,7 +165,7 @@ def fetch(ra, dec, login):
     try:
         result["matches"] = cone(ra, dec, login)
     except Exception as e:
-        result["errors"]["cone"] = f"{type(e).__name__}: {e}"
+        result["errors"]["login" if _rejected(e) else "cone"] = f"{type(e).__name__}: {e}"
         return result
     if not result["matches"]:
         return result

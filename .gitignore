@@ -4,3 +4,11 @@ __pycache__/
 .env
 data/
 exports/
+# Secrets: the database holds password hashes and encrypted YSE PZ logins, the key decrypts them.
+# data/ covers the default location; these catch a copy or a DOZYNKI_DATA_DIR elsewhere in the tree.
+*.sqlite
+*.sqlite.*
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.key

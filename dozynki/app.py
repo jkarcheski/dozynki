@@ -324,6 +324,22 @@ def save_yse_login(body: YseLogin, request: Request):
     return {"username": yse.username_for(who)}
 
 
+@app.post("/api/account/yse/check")
+def check_yse_login(request: Request):
+    """Try the saved login with YSE PZ now (e.g. after changing the password there)."""
+    who = _yse_labeler(request)
+    login = yse.login_for(who)
+    if not login:
+        raise HTTPException(404, "no YSE PZ login saved")
+    if accounts._limited(("yse", who), 10, 900):
+        raise HTTPException(429, "too many attempts; try again in 15 minutes")
+    try:
+        yse.check_login(login)
+    except yse.LoginError as e:
+        raise HTTPException(400, str(e))
+    return {"username": login[0]}
+
+
 @app.delete("/api/account/yse")
 def forget_yse_login(request: Request):
     yse.forget_login(_yse_labeler(request))

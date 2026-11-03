@@ -13,3 +13,7 @@
 .account form button { align-self: flex-start; }
 .account .done { color: var(--ok); font-size: 13px; }
 .account #yse-on p { margin: 0 0 8px; }
+.account #yse .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.account #yse-status { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+.account #yse-status.good { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.account #yse-status.bad { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
