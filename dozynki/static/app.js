@@ -1300,7 +1300,7 @@ function renderOpinions() {
   const el = $("#opinions");
   if (!cur.revealed || !cur.opinions) {
     $("#op-state").textContent = "hidden";
-    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label: ALeRCE probabilities, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations.</div>`;
+    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label: ALeRCE probabilities, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div>`;
     return;
   }
   $("#op-state").textContent = "";
@@ -1333,7 +1333,53 @@ function renderOpinions() {
     const n = Object.entries(cm).filter(([, v]) => v && v.length).map(([k, v]) => `${k}: ${v.length}`).join(", ");
     html += `<div style="font-size:12px">crossmatches: ${esc(n || "none")}</div>`;
   }
+  html += renderYse(op.yse || {});
   el.innerHTML = html;
+  plotYse(op.yse || {});
+}
+
+// YSE PZ header values are Django natural keys, e.g. "['Following']"
+const yseValue = (v) => String(v).replace(/[\[\]']/g, "");
+
+function renderYse(y) {
+  let html = `<h3>YSE PZ</h3>`;
+  if (!y.enabled) return html + `<div class="muted" style="font-size:12px">not configured (set YSE_PZ_USER and YSE_PZ_PASSWORD in .env)</div>`;
+  if (y.errors?.cone) return html + `<div class="err">${esc(y.errors.cone).slice(0, 200)}</div>`;
+  if (!y.found) return html + `<div class="muted" style="font-size:12px">no YSE transient within 3″</div>`;
+  const [m, ...others] = y.matches;
+  html += `<div style="font-size:12px"><a target="_blank" href="${esc(y.url)}">${esc(m.name)}</a> at ${fmt(m.sep, 2)}″`
+    + (others.length ? ` <span class="muted">(also ${others.map((o) => `${esc(o.name)} ${fmt(o.sep, 1)}″`).join(", ")})</span>` : "") + `</div>`;
+  const f = y.fields || {};
+  html += `<div>${Object.entries(f).map(([k, v]) => `<span class="pill">${esc(k.replace(/_/g, " "))}: ${esc(yseValue(v))}</span>`).join("")}</div>`;
+  if (y.errors?.photometry) html += `<div class="err">${esc(y.errors.photometry).slice(0, 200)}</div>`;
+  else if (y.photometry?.length) html += `<div id="yse-lc" style="height:220px"></div>`;
+  else html += `<div class="muted" style="font-size:12px">no photometry</div>`;
+  return html;
+}
+
+function plotYse(y) {
+  if (!$("#yse-lc")) return;
+  const groups = {};
+  for (const p of y.photometry) if (p.mag !== null && p.mjd !== null) (groups[`${p.telescope} ${p.band}`] ||= []).push(p);
+  const traces = Object.entries(groups).map(([name, pts]) => {
+    const color = BAND_COLORS[pts[0].band.toLowerCase()] || "#888";
+    return {
+      x: pts.map((p) => p.mjd), y: pts.map((p) => p.mag), name, mode: "markers", type: "scatter",
+      error_y: { array: pts.map((p) => p.mag_err), visible: true, thickness: 1, width: 0, color },
+      marker: { color, size: 7, symbol: "diamond", line: { width: 1, color } },
+      hovertemplate: `%{x:.3f}<br>%{y:.2f}<extra>${esc(name)}</extra>`,
+    };
+  });
+  if (!traces.length) { $("#yse-lc").outerHTML = `<div class="muted" style="font-size:12px">no photometry with magnitudes</div>`; return; }
+  const css = getComputedStyle(document.documentElement);
+  const ink = css.getPropertyValue("--ink"), line = css.getPropertyValue("--line");
+  Plotly.newPlot("yse-lc", traces, {
+    margin: { l: 45, r: 10, t: 5, b: 35 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: ink, size: 10 },
+    xaxis: { title: { text: "MJD" }, tickformat: ".1f", gridcolor: line, zeroline: false },
+    yaxis: { title: { text: "mag (YSE PZ)" }, autorange: "reversed", gridcolor: line },
+    legend: { orientation: "h", y: -0.3 },
+  }, { displaylogo: false, responsive: true });
 }
 
 // ---------- commit ----------

@@ -6,7 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from . import crossmatch, db
-from .brokers import alerce, antares, babamul_client
+from .brokers import alerce, antares, babamul_client, yse
 
 # Per-point fields that are classifier / ML outputs rather than measurements.
 OPINION_POINT_FIELDS = {"reliability", "rb", "drb"}
@@ -56,10 +56,11 @@ def load(object_id, refresh=False):
             # cached before per-alert positions were kept: fetch them separately so the
             # rest of the evidence the object was labeled with stays as it was
             _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             jobs = [
                 pool.submit(_cached, object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh),
                 pool.submit(_cached, object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
+                pool.submit(_cached, object_id, "yse", lambda: yse.fetch(ant["ra"], ant["dec"]), refresh or _yse_stale(object_id)),
                 pool.submit(_cached, object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"]), refresh),
             ]
             for j in jobs:
@@ -71,6 +72,12 @@ def load(object_id, refresh=False):
     return _gather(object_id)
 
 
+def _yse_stale(object_id):
+    """A YSE PZ entry cached before a login was set: fetch it now there is one."""
+    hit = db.cache_get(object_id, "yse")
+    return yse.YSE_PZ_ENABLED and hit is not None and not hit["data"].get("enabled")
+
+
 def load_antares(object_id):
     """Only the ANTARES payload (light curve, cutouts, catalogs), cached as load() caches it."""
     item = db.get_queue_item(object_id)
@@ -78,7 +85,7 @@ def load_antares(object_id):
 
 
 def _gather(object_id):
-    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot", "positions")}
+    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "yse", "xmatch", "skybot", "positions")}
 
 
 def fill_missing_xmatch(object_id):
@@ -156,6 +163,7 @@ def refresh_brokers(object_id):
     ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh=True)["data"]
     _cached(object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh=True)
     _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
+    _cached(object_id, "yse", lambda: yse.fetch(ant["ra"], ant["dec"]), refresh=True)
     return ant
 
 
@@ -202,7 +210,15 @@ def opinions(raw):
         "antares": {"tags": ant.get("tags"), "catalogs": ant.get("catalogs"), "catalog_matches": ant.get("catalog_matches")},
         "babamul": {k: bab.get(k) for k in ("enabled", "found", "properties", "reliability", "cross_matches", "errors")}
         | {"ztf_match": {k: v for k, v in (bab.get("ztf_match") or {}).items() if k != "forced_phot"} or None},
+        "yse": _yse_opinion((raw.get("yse") or {}).get("data") or {}),
     }
+
+
+def _yse_opinion(y):
+    """YSE PZ's nearest match, with the header fields the vetter shows."""
+    header = y.get("header") or {}
+    return {k: y.get(k) for k in ("enabled", "found", "matches", "url", "photometry", "errors")} | {
+        "fields": {k: header[k] for k in yse.HEADER_FIELDS if header.get(k) not in (None, "", "None", "[]")}}
 
 
 def snapshot(ev):

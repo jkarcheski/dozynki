@@ -15,6 +15,10 @@ EXPORT_DIR.mkdir(exist_ok=True)
 LABELER = os.environ.get("DOZYNKI_LABELER") or "anonymous"
 BLIND_DEFAULT = os.environ.get("DOZYNKI_BLIND", "1") not in ("0", "false", "False", "")
 BABAMUL_ENABLED = bool(os.environ.get("BABAMUL_API_TOKEN"))
+YSE_PZ_URL = os.environ.get("YSE_PZ_URL", "https://ziggy.ucolick.org/yse").rstrip("/")
+YSE_PZ_USER = os.environ.get("YSE_PZ_USER", "")
+YSE_PZ_PASSWORD = os.environ.get("YSE_PZ_PASSWORD", "")
+YSE_PZ_ENABLED = bool(YSE_PZ_USER and YSE_PZ_PASSWORD)
 
 # Profiles (accounts.py), for a shared server. Off: everyone is LABELER, as on a laptop.
 ACCOUNTS = os.environ.get("DOZYNKI_ACCOUNTS", "0") not in ("0", "false", "False", "")
