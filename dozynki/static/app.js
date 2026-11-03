@@ -749,6 +749,7 @@ function renderLightcurve(ev) {
       hovertemplate: `%{x:.3f}<br>%{y:.3g}<extra>${survey} ${band} ${kind}</extra>`,
     });
   }
+  traces.push(...yseTraces(ev.yse_photometry));
   const css = getComputedStyle(document.documentElement);
   const ink = css.getPropertyValue("--ink"), line = css.getPropertyValue("--line");
   const layout = {
@@ -1335,7 +1336,6 @@ function renderOpinions() {
   }
   html += renderYse(op.yse || {});
   el.innerHTML = html;
-  plotYse(op.yse || {});
 }
 
 // YSE PZ header values are Django natural keys, e.g. "['Following']"
@@ -1352,34 +1352,34 @@ function renderYse(y) {
   const f = y.fields || {};
   html += `<div>${Object.entries(f).map(([k, v]) => `<span class="pill">${esc(k.replace(/_/g, " "))}: ${esc(yseValue(v))}</span>`).join("")}</div>`;
   if (y.errors?.photometry) html += `<div class="err">${esc(y.errors.photometry).slice(0, 200)}</div>`;
-  else if (y.photometry?.length) html += `<div id="yse-lc" style="height:220px"></div>`;
-  else html += `<div class="muted" style="font-size:12px">no photometry</div>`;
+  else html += `<div class="muted" style="font-size:12px">${cur.evidence.yse_photometry?.length ? `${cur.evidence.yse_photometry.length} photometry points, on the light curve (diamonds)` : "no photometry"}</div>`;
   return html;
 }
 
-function plotYse(y) {
-  if (!$("#yse-lc")) return;
+const YSE_FLUXCAL_TO_NJY = 10 ** (-0.4 * (27.5 - 31.4)); // YSE PZ FLUXCAL is at zero point 27.5
+
+// YSE PZ photometry of the nearest match, for the light curve: diamonds, one trace per telescope and band.
+// Not shown in the ref+diff view; YSE PZ doesn't say which of its points are difference photometry.
+function yseTraces(photometry) {
+  if (!photometry?.length || lcMode === "sci") return [];
   const groups = {};
-  for (const p of y.photometry) if (p.mag !== null && p.mjd !== null) (groups[`${p.telescope} ${p.band}`] ||= []).push(p);
-  const traces = Object.entries(groups).map(([name, pts]) => {
-    const color = BAND_COLORS[pts[0].band.toLowerCase()] || "#888";
+  for (const p of photometry) {
+    const v = lcMode === "flux" ? p.fluxcal : p.mag;
+    if (v !== null && p.mjd !== null) (groups[`${p.telescope}|${p.band}`] ||= []).push(p);
+  }
+  return Object.entries(groups).map(([key, pts]) => {
+    const [telescope, band] = key.split("|");
+    const color = BAND_COLORS[band.toLowerCase()] || "#888";
+    const ys = lcMode === "flux" ? pts.map((p) => p.fluxcal * YSE_FLUXCAL_TO_NJY) : pts.map((p) => p.mag);
+    const err = lcMode === "flux" ? pts.map((p) => p.fluxcal_err * YSE_FLUXCAL_TO_NJY) : pts.map((p) => p.mag_err);
     return {
-      x: pts.map((p) => p.mjd), y: pts.map((p) => p.mag), name, mode: "markers", type: "scatter",
-      error_y: { array: pts.map((p) => p.mag_err), visible: true, thickness: 1, width: 0, color },
-      marker: { color, size: 7, symbol: "diamond", line: { width: 1, color } },
-      hovertemplate: `%{x:.3f}<br>%{y:.2f}<extra>${esc(name)}</extra>`,
+      x: pts.map((p) => p.mjd), y: ys, customdata: pts.map(() => ""),
+      error_y: { array: err, visible: true, thickness: 1, width: 0, color },
+      mode: "markers", type: "scatter", name: `YSE ${telescope} ${band}`,
+      marker: { color, size: 8, symbol: "diamond-open", line: { width: 1.5, color } },
+      hovertemplate: `%{x:.3f}<br>%{y:.3g}<extra>YSE PZ ${esc(telescope)} ${esc(band)}</extra>`,
     };
   });
-  if (!traces.length) { $("#yse-lc").outerHTML = `<div class="muted" style="font-size:12px">no photometry with magnitudes</div>`; return; }
-  const css = getComputedStyle(document.documentElement);
-  const ink = css.getPropertyValue("--ink"), line = css.getPropertyValue("--line");
-  Plotly.newPlot("yse-lc", traces, {
-    margin: { l: 45, r: 10, t: 5, b: 35 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
-    font: { color: ink, size: 10 },
-    xaxis: { title: { text: "MJD" }, tickformat: ".1f", gridcolor: line, zeroline: false },
-    yaxis: { title: { text: "mag (YSE PZ)" }, autorange: "reversed", gridcolor: line },
-    legend: { orientation: "h", y: -0.3 },
-  }, { displaylogo: false, responsive: true });
 }
 
 // ---------- commit ----------

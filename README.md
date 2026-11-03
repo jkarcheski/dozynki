@@ -38,7 +38,8 @@ cp .env.example .env    # add Babamul token and YSE PZ login (both optional) and
    classifier probabilities (each classifier version separately), LSST
    reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and its
    ZTF association (flagged when it disagrees with ANTARES), and YSE PZ's nearest transient
-   within 3″ (status, classification, redshift, its photometry) when a YSE PZ login is set.
+   within 3″ (name, status, classification, redshift) when a YSE PZ login is set. That transient's
+   photometry is evidence: it is on the light curve (diamonds) from the blind pass on.
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 

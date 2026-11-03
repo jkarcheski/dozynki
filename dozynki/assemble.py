@@ -190,6 +190,8 @@ def evidence(object_id, raw):
         "xmatch": (raw["xmatch"] or {}).get("data"),
         "skybot": (raw.get("skybot") or {}).get("data"),
         "babamul_enabled": bool(bab.get("enabled")),
+        # measurements of YSE PZ's nearest transient; its name, status and class are opinions
+        "yse_photometry": ((raw.get("yse") or {}).get("data") or {}).get("photometry") or [],
         "fetched_at": {k: (v or {}).get("fetched_at") for k, v in raw.items()},
     }
 
@@ -215,9 +217,9 @@ def opinions(raw):
 
 
 def _yse_opinion(y):
-    """YSE PZ's nearest match, with the header fields the vetter shows."""
+    """YSE PZ's nearest match, with the header fields the vetter shows (its photometry is evidence)."""
     header = y.get("header") or {}
-    return {k: y.get(k) for k in ("enabled", "found", "matches", "url", "photometry", "errors")} | {
+    return {k: y.get(k) for k in ("enabled", "found", "matches", "url", "errors")} | {
         "fields": {k: header[k] for k in yse.HEADER_FIELDS if header.get(k) not in (None, "", "None", "[]")}}
 
 

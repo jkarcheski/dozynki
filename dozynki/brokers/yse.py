@@ -1,8 +1,8 @@
 """YSE PZ: transients YSE has near the object's position, and the nearest one's photometry.
 
 Needs YSE_PZ_USER and YSE_PZ_PASSWORD in .env (a YSE PZ account; its API refuses anonymous requests);
-without them every call returns {"enabled": False}. Everything here is broker opinion (YSE's status,
-classification, follow-up), so the vetter shows it only after a blind label.
+without them every call returns {"enabled": False}. The match's name, status and classification are broker
+opinion, shown only after a blind label; its photometry is evidence, on the light curve from the start.
 
 The API's transient list filters by an RA/Dec box; separations are computed here. Photometry comes from
 download_photometry/<slug>/, a text file whose "# KEY: value" header carries the transient's fields with
