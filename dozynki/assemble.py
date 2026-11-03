@@ -71,13 +71,26 @@ def load(object_id, refresh=False):
     return _gather(object_id)
 
 
+def _tns_names(object_id, ant):
+    """The object's TNS names, nearest first: its cached TNS match, fetched (and cached, as
+    achievements.tns_for does) when ANTARES lists one that isn't cached yet."""
+    from .tns import listed  # tns imports this module
+    hit = db.cache_get(object_id, "tns")
+    if hit is None and listed(ant):
+        db.cache_put(object_id, "tns", antares.tns_matches(ant["locus_id"]))
+        hit = db.cache_get(object_id, "tns")
+    matches = sorted(hit["data"] if hit else [], key=lambda m: m["sep"] if m.get("sep") is not None else 99)
+    return [m["name"] for m in matches]
+
+
 def with_yse(object_id, raw, labeler, refresh=False):
     """raw plus labeler's own YSE PZ match ("yse"), fetched with their login and cached under their name."""
     login = yse.login_for(labeler)
     if not login:
         return raw | {"yse": {"data": {"enabled": False}, "fetched_at": None}}
     ant = raw["antares"]["data"]
-    return raw | {"yse": _cached(object_id, yse.cache_kind(labeler), lambda: yse.fetch(ant["ra"], ant["dec"], login), refresh)}
+    fetch = lambda: yse.fetch(ant["ra"], ant["dec"], login, _tns_names(object_id, ant))
+    return raw | {"yse": _cached(object_id, yse.cache_kind(labeler), fetch, refresh)}
 
 
 def load_antares(object_id):
@@ -224,7 +237,7 @@ def opinions(raw):
 def _yse_opinion(y):
     """YSE PZ's nearest match, with the header fields the vetter shows (its photometry is evidence)."""
     header = y.get("header") or {}
-    return {k: y.get(k) for k in ("enabled", "found", "matches", "url", "errors")} | {
+    return {k: y.get(k) for k in ("enabled", "found", "matches", "tns_names", "url", "errors")} | {
         "fields": {k: header[k] for k in yse.HEADER_FIELDS if header.get(k) not in (None, "", "None", "[]")}}
 
 

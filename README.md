@@ -37,8 +37,8 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 3. **Reveal** – committing a label reveals broker opinions: ALeRCE
    classifier probabilities (each classifier version separately), LSST
    reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and its
-   ZTF association (flagged when it disagrees with ANTARES), and YSE PZ's nearest transient
-   within 3″ (name, status, classification, redshift) for labelers who added their own YSE PZ login on
+   ZTF association (flagged when it disagrees with ANTARES), and the object's YSE PZ transient,
+   found by its TNS name (name, status, classification, redshift), for labelers who added their own YSE PZ login on
    their profile page. That transient's photometry is evidence: it is on the light curve (diamonds) from
    the blind pass on.
 4. **Revise (optional)** – committing again stores a separate `revealed` label.

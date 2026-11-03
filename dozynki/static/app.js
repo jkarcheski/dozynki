@@ -1345,11 +1345,12 @@ function renderYse(y) {
   let html = `<h3>YSE PZ</h3>`;
   if (!y.enabled) return html + `<div class="muted" style="font-size:12px">no YSE PZ login: add yours on your <a href="/account">profile</a></div>`;
   if (y.errors?.login) return html + `<div class="err">YSE PZ didn't accept your saved login: update it on your <a href="/account">profile</a></div>`;
-  if (y.errors?.cone) return html + `<div class="err">${esc(y.errors.cone).slice(0, 200)}</div>`;
-  if (!y.found) return html + `<div class="muted" style="font-size:12px">no YSE transient within 3″</div>`;
-  const [m, ...others] = y.matches;
-  html += `<div style="font-size:12px"><a target="_blank" href="${esc(y.url)}">${esc(m.name)}</a> at ${fmt(m.sep, 2)}″`
-    + (others.length ? ` <span class="muted">(also ${others.map((o) => `${esc(o.name)} ${fmt(o.sep, 1)}″`).join(", ")})</span>` : "") + `</div>`;
+  if (y.errors?.lookup) return html + `<div class="err">${esc(y.errors.lookup).slice(0, 200)}</div>`;
+  if (!y.found) return html + `<div class="muted" style="font-size:12px">${y.tns_names?.length
+    ? `not in YSE PZ under its TNS name (${y.tns_names.map(esc).join(", ")})` : "no TNS name to look up in YSE PZ"}</div>`;
+  const [m] = y.matches;
+  html += `<div style="font-size:12px"><a target="_blank" href="${esc(y.url)}">${esc(m.name)}</a> (${esc(m.tns_name)})`
+    + (m.sep !== null ? `, ${fmt(m.sep, 2)}″ from the LSST position` : "") + `</div>`;
   const f = y.fields || {};
   html += `<div>${Object.entries(f).map(([k, v]) => `<span class="pill">${esc(k.replace(/_/g, " "))}: ${esc(yseValue(v))}</span>`).join("")}</div>`;
   if (y.errors?.photometry) html += `<div class="err">${esc(y.errors.photometry).slice(0, 200)}</div>`;
@@ -1357,28 +1358,41 @@ function renderYse(y) {
   return html;
 }
 
-const YSE_FLUXCAL_TO_NJY = 10 ** (-0.4 * (27.5 - 31.4)); // YSE PZ FLUXCAL is at zero point 27.5
+// YSE PZ bands look like "r-ZTF", "orange-ATLAS", "cyan-ATLAS" or "Unknown": color by the part before the dash.
+const YSE_BAND_COLORS = { orange: "#f26b1d", cyan: "#17a2b8", w: "#b59b00" };
+const YSE_MAX_MAG_ERR = 1; // larger errors are YSE PZ's non-detections (e.g. ATLAS forced photometry at ±5 mag)
 
-// YSE PZ photometry of the nearest match, for the light curve: diamonds, one trace per telescope and band.
-// Not shown in the ref+diff view; YSE PZ doesn't say which of its points are difference photometry.
+function yseBand(band) {
+  const filter = band.split("-")[0].toLowerCase();
+  return { color: BAND_COLORS[filter] || YSE_BAND_COLORS[filter] || "#888", label: band === "Unknown" ? "band unknown" : band };
+}
+
+// YSE PZ photometry of the matched transient, for the light curve: diamonds, one trace per telescope and band.
+// Flux comes from the magnitude, since FLUXCAL's scale differs between YSE PZ's sources. Points repeated
+// under the "Unknown" band are dropped. Not shown in the ref+diff view: these are difference magnitudes.
 function yseTraces(photometry) {
   if (!photometry?.length || lcMode === "sci") return [];
-  const groups = {};
-  for (const p of photometry) {
-    const v = lcMode === "flux" ? p.fluxcal : p.mag;
-    if (v !== null && p.mjd !== null) (groups[`${p.telescope}|${p.band}`] ||= []).push(p);
+  const seen = new Set(), groups = {};
+  const sorted = [...photometry].sort((a, b) => (a.band === "Unknown") - (b.band === "Unknown"));
+  for (const p of sorted) {
+    if (p.mjd === null || p.mag === null || p.mag_err === null || p.mag_err > YSE_MAX_MAG_ERR) continue;
+    const key = `${p.mjd.toFixed(3)}|${p.telescope}|${p.mag}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    (groups[`${p.telescope}|${p.band}`] ||= []).push(p);
   }
   return Object.entries(groups).map(([key, pts]) => {
     const [telescope, band] = key.split("|");
-    const color = BAND_COLORS[band.toLowerCase()] || "#888";
-    const ys = lcMode === "flux" ? pts.map((p) => p.fluxcal * YSE_FLUXCAL_TO_NJY) : pts.map((p) => p.mag);
-    const err = lcMode === "flux" ? pts.map((p) => p.fluxcal_err * YSE_FLUXCAL_TO_NJY) : pts.map((p) => p.mag_err);
+    const { color, label } = yseBand(band);
+    const flux = pts.map((p) => 10 ** (-0.4 * (p.mag - 31.4)));
+    const ys = lcMode === "flux" ? flux : pts.map((p) => p.mag);
+    const err = lcMode === "flux" ? pts.map((p, i) => flux[i] * p.mag_err / 1.0857) : pts.map((p) => p.mag_err);
     return {
       x: pts.map((p) => p.mjd), y: ys, customdata: pts.map(() => ""),
       error_y: { array: err, visible: true, thickness: 1, width: 0, color },
-      mode: "markers", type: "scatter", name: `YSE ${telescope} ${band}`,
+      mode: "markers", type: "scatter", name: `YSE ${telescope} ${label}`,
       marker: { color, size: 8, symbol: "diamond-open", line: { width: 1.5, color } },
-      hovertemplate: `%{x:.3f}<br>%{y:.3g}<extra>YSE PZ ${esc(telescope)} ${esc(band)}</extra>`,
+      hovertemplate: `%{x:.3f}<br>%{y:.3g}<extra>YSE PZ ${esc(telescope)} ${esc(label)}</extra>`,
     };
   });
 }
