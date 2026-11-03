@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS queue (
 );
 CREATE TABLE IF NOT EXISTS cache (
     object_id   TEXT NOT NULL,
-    kind        TEXT NOT NULL,         -- antares | alerce | babamul | xmatch
+    kind        TEXT NOT NULL,         -- antares | alerce | babamul | xmatch | yse:<labeler> | ...
     fetched_at  TEXT NOT NULL,
     payload     TEXT NOT NULL,
     PRIMARY KEY (object_id, kind)
@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS users (
     email_hash  TEXT NOT NULL,         -- scrypt hash of the lower-cased email; the address itself is never stored
     created_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS yse_logins (
+    labeler     TEXT PRIMARY KEY,      -- a profile's handle, or the install's labeler without profiles
+    username    TEXT NOT NULL,
+    password    TEXT NOT NULL,         -- encrypted (yse.py); YSE PZ's API needs it back, so it can't be a hash
+    saved_at    TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash  TEXT PRIMARY KEY,      -- sha256 of the cookie value
     user_id     INTEGER NOT NULL,
@@ -192,6 +198,8 @@ _conn.execute("INSERT OR IGNORE INTO queue_status (object_id, labeler, status) "
               "WHERE l.object_id = q.object_id ORDER BY l.id DESC LIMIT 1), ?), q.status "
               "FROM queue q WHERE q.status IN ('labeled', 'skipped', 'watch')", (LABELER,))
 _conn.execute("UPDATE queue SET status = 'pending' WHERE status IN ('labeled', 'skipped', 'watch')")
+# YSE PZ matches were once cached per object with a server-wide login; now they are each labeler's own.
+_conn.execute("DELETE FROM cache WHERE kind = 'yse'")
 _conn.commit()
 
 

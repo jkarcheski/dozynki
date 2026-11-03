@@ -12,3 +12,4 @@
 .account form .hint { margin: -4px 0 2px; }
 .account form button { align-self: flex-start; }
 .account .done { color: var(--ok); font-size: 13px; }
+.account #yse-on p { margin: 0 0 8px; }

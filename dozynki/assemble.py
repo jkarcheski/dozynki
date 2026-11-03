@@ -56,11 +56,10 @@ def load(object_id, refresh=False):
             # cached before per-alert positions were kept: fetch them separately so the
             # rest of the evidence the object was labeled with stays as it was
             _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=3) as pool:
             jobs = [
                 pool.submit(_cached, object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh),
                 pool.submit(_cached, object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
-                pool.submit(_cached, object_id, "yse", lambda: yse.fetch(ant["ra"], ant["dec"]), refresh or _yse_stale(object_id)),
                 pool.submit(_cached, object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"]), refresh),
             ]
             for j in jobs:
@@ -72,10 +71,13 @@ def load(object_id, refresh=False):
     return _gather(object_id)
 
 
-def _yse_stale(object_id):
-    """A YSE PZ entry cached before a login was set: fetch it now there is one."""
-    hit = db.cache_get(object_id, "yse")
-    return yse.YSE_PZ_ENABLED and hit is not None and not hit["data"].get("enabled")
+def with_yse(object_id, raw, labeler, refresh=False):
+    """raw plus labeler's own YSE PZ match ("yse"), fetched with their login and cached under their name."""
+    login = yse.login_for(labeler)
+    if not login:
+        return raw | {"yse": {"data": {"enabled": False}, "fetched_at": None}}
+    ant = raw["antares"]["data"]
+    return raw | {"yse": _cached(object_id, yse.cache_kind(labeler), lambda: yse.fetch(ant["ra"], ant["dec"], login), refresh)}
 
 
 def load_antares(object_id):
@@ -85,7 +87,7 @@ def load_antares(object_id):
 
 
 def _gather(object_id):
-    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "yse", "xmatch", "skybot", "positions")}
+    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot", "positions")}
 
 
 def fill_missing_xmatch(object_id):
@@ -114,20 +116,22 @@ _prefetch_pool = ThreadPoolExecutor(max_workers=4)
 _prefetching = set()
 
 
-def prefetch(object_ids):
+def prefetch(object_ids, labeler=None):
     """Load objects in the background, several at once and nearest first, so the
-    next ones are cached before the vetter gets to them."""
+    next ones are cached before the vetter gets to them (with labeler's YSE PZ match, if given)."""
     for oid in object_ids:
         with _inflight_lock:
             if oid in _prefetching:
                 continue
             _prefetching.add(oid)
-        _prefetch_pool.submit(_prefetch_one, oid)
+        _prefetch_pool.submit(_prefetch_one, oid, labeler)
 
 
-def _prefetch_one(object_id):
+def _prefetch_one(object_id, labeler):
     try:
-        load(object_id)
+        raw = load(object_id)
+        if labeler:
+            with_yse(object_id, raw, labeler)
     except Exception:
         pass
     finally:
@@ -157,13 +161,14 @@ def _with_ztf_total_mag(p):
     return p
 
 
-def refresh_brokers(object_id):
-    """Re-fetch broker data (not the crossmatch) after new alerts arrive."""
+def refresh_brokers(object_id, labeler=None):
+    """Re-fetch broker data (not the crossmatch) after new alerts arrive; YSE PZ's only for labeler."""
     item = db.get_queue_item(object_id)
     ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh=True)["data"]
     _cached(object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh=True)
     _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
-    _cached(object_id, "yse", lambda: yse.fetch(ant["ra"], ant["dec"]), refresh=True)
+    if labeler:
+        with_yse(object_id, _gather(object_id), labeler, refresh=True)
     return ant
 
 

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, similar, sky, sources, tns
 from . import nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
-from .brokers import antares, pittgoogle
+from .brokers import antares, pittgoogle, yse
 from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
                      XMATCH_RADIUS_ARCSEC)
 from .filters import DATE_MODES, Filters
@@ -293,6 +293,43 @@ def reset(body: Reset, response: Response):
     return _signed_in(response, user)
 
 
+def _yse_labeler(request):
+    """Who a YSE PZ login is for: a signed-in profile, or the install's labeler without profiles. Not guests,
+    whose labeler name is only a cookie."""
+    if ACCOUNTS and not request.state.user:
+        raise HTTPException(403, "sign in to add a YSE PZ login")
+    return _who(request)
+
+
+@app.get("/api/account/yse")
+def yse_login(request: Request):
+    can = not ACCOUNTS or bool(request.state.user)
+    return {"can_add": can, "username": yse.username_for(_who(request)) if can else None}
+
+
+class YseLogin(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/account/yse")
+def save_yse_login(body: YseLogin, request: Request):
+    who = _yse_labeler(request)
+    if accounts._limited(("yse", who), 10, 900):  # each try is a login attempt at YSE PZ
+        raise HTTPException(429, "too many attempts; try again in 15 minutes")
+    try:
+        yse.save_login(who, body.username, body.password)
+    except yse.LoginError as e:
+        raise HTTPException(400, str(e))
+    return {"username": yse.username_for(who)}
+
+
+@app.delete("/api/account/yse")
+def forget_yse_login(request: Request):
+    yse.forget_login(_yse_labeler(request))
+    return {"username": None}
+
+
 class FilterParams(BaseModel):
     min_det: int = 1
     date_from: str | None = None
@@ -323,7 +360,7 @@ def _after_pull(body, request):
     if body.screen:
         screening.start()
     else:
-        assemble.prefetch([r["object_id"] for r in db.next_pending(_who(request), PREFETCH, where="screen IS NULL")])
+        assemble.prefetch([r["object_id"] for r in db.next_pending(_who(request), PREFETCH, where="screen IS NULL")], _who(request))
 
 
 class Fill(Pull):
@@ -424,7 +461,7 @@ def load_list(body: ObjectList, request: Request):
         out = lists.load(name, body.text, body.radius, _who(request), (body.note or "").strip() or None)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    assemble.prefetch(out["object_ids"][:PREFETCH])
+    assemble.prefetch(out["object_ids"][:PREFETCH], _who(request))
     return out
 
 
@@ -509,7 +546,7 @@ def next_object(request: Request, exclude: str = "", min_det: int = 1, date_from
     out = {"n_matching": db.count_pending(who, where, params, ready), **_mode(screen, who, object_list)}
     if not rows:
         return {"object_id": None, **out}
-    assemble.prefetch([r["object_id"] for r in rows[1:]])
+    assemble.prefetch([r["object_id"] for r in rows[1:]], who)
     return {"object_id": rows[0]["object_id"], **out}
 
 
@@ -522,7 +559,7 @@ def get_object(object_id: str, request: Request, refresh: bool = False):
     item = db.get_queue_item(object_id)
     if not item:
         raise HTTPException(404, "not in queue")
-    raw = assemble.load(object_id, refresh=refresh)
+    raw = assemble.with_yse(object_id, assemble.load(object_id, refresh=refresh), _who(request), refresh)
     ev = assemble.evidence(object_id, raw)
     labels = db.labels_for(object_id, _who(request))
     revealed = not _blind(request) or _has_blind_label(object_id, _who(request))
@@ -539,7 +576,7 @@ def get_object(object_id: str, request: Request, refresh: bool = False):
 def reveal(object_id: str, request: Request):
     if _blind(request) and not _has_blind_label(object_id, _who(request)):
         raise HTTPException(403, "commit a blind label first")
-    return assemble.opinions(assemble.load(object_id))
+    return assemble.opinions(assemble.with_yse(object_id, assemble.load(object_id), _who(request)))
 
 
 class Label(BaseModel):
@@ -619,7 +656,7 @@ def watch_recheck(request: Request):
             db.set_summary(oid, summary)
             n_new = summary["num_alerts"] or 0
             if n_new > n_old:
-                assemble.refresh_brokers(oid)
+                assemble.refresh_brokers(oid, _who(request))
                 db.set_status(oid, _who(request), None)
                 updated.append({"object_id": oid, "new_alerts": n_new - n_old})
             else:

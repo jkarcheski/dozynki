@@ -1,4 +1,4 @@
-// DOZYNKI profile page: sign in, make a profile, reset a password. Plain JS, no build step.
+// DOZYNKI profile page: sign in, make a profile, reset a password, your YSE PZ login. Plain JS, no build step.
 
 const $ = (s) => document.querySelector(s);
 
@@ -38,6 +38,22 @@ function wire(form, path, done, extra = () => ({})) {
 
 const home = () => { location.href = "/"; };
 
+function showYse(username) {
+  $("#yse-on").hidden = !username;
+  $("#yse-form").hidden = !!username;
+  $("#yse-user").textContent = username || "";
+  $("#yse-form").reset();
+}
+
+async function initYse() {
+  wire($("#yse-form"), "/api/account/yse", (r) => showYse(r.username));
+  $("#yse-forget").onclick = async () => {
+    const r = await fetch("/api/account/yse", { method: "DELETE" });
+    if (r.ok) showYse(null);
+  };
+  showYse((await api("/api/account/yse")).username);
+}
+
 async function init() {
   const cfg = await api("/api/config");
   const token = new URLSearchParams(location.hash.slice(1)).get("reset");
@@ -54,12 +70,14 @@ async function init() {
 
   if (!cfg.accounts) {
     $("#off-labeler").textContent = cfg.labeler;
-    show("off");
+    show("off", "yse");
+    await initYse();
   } else if (token) {
     show("reset");
   } else if (cfg.signed_in) {
     $("#me-handle").textContent = cfg.labeler;
-    show("me");
+    show("me", "yse");
+    await initYse();
   } else {
     show("guest");
   }

@@ -27,6 +27,25 @@
     <button id="logout">Sign out</button>
   </section>
 
+  <section class="card" id="yse" hidden>
+    <h2>YSE PZ</h2>
+    <p class="muted">With your own <a href="https://ziggy.ucolick.org/yse" target="_blank">YSE PZ</a> login, the vetter
+      shows YSE PZ's photometry of the nearest YSE transient on the light curve, and its name, status and
+      classification with the broker opinions. It sees what your YSE PZ account can see.</p>
+    <div id="yse-on" hidden>
+      <p>Connected as <b id="yse-user"></b>.</p>
+      <button id="yse-forget">Remove my YSE PZ login</button>
+    </div>
+    <form id="yse-form">
+      <label>YSE PZ username <input name="username" autocomplete="off" required></label>
+      <label>YSE PZ password <input name="password" type="password" autocomplete="off" required></label>
+      <p class="hint">Checked with YSE PZ before it's saved. YSE PZ needs the password itself with every request,
+        so DOZYNKI keeps it encrypted rather than as a one-way hash; whoever runs this server could decrypt it.</p>
+      <button class="primary">Save YSE PZ login</button>
+      <div class="err"></div>
+    </form>
+  </section>
+
   <section id="guest" hidden>
     <p class="muted intro">You're vetting as a guest. Guest labels count toward the totals as one "guests" group.
       Make a profile to be on the leaderboard under your own handle, keep your queue on any browser, and
