@@ -3,16 +3,24 @@ queue.source / queue.source_params so the training set's biases are known.
 
 User-supplied object lists live in lists.py; Babamul Kafka topics are a planned addition.
 pittgoogle_random_lsst is a prototype: it needs a Google Cloud project (see brokers/pittgoogle.py).
+ztf_random samples ZTF objects, queued under their ZTF object id, for when LSST isn't observing.
 """
 
+import dataclasses
 import random
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
+
+import requests
 
 from . import db
-from .brokers import antares, pittgoogle
+from .brokers import alerce, antares, pittgoogle
 from .filters import MJD_UNIX_EPOCH, Filters
 
 ES_WINDOW = 10000  # ANTARES counts and pages only this many matches of a query
+ZTF_DEFAULT_DAYS = 3  # ZTF's archive goes back to 2018: without a date range, sample objects first seen this recently
+ZTF_PAGE = 100
+ZTF_MIN_STRATUM = 1 / 96  # days: don't split a window ALeRCE can't count below 15 minutes
 
 
 def antares_random_lsst(n=50, filters=None, seed=None, screen=None):
@@ -98,4 +106,75 @@ def pittgoogle_random_lsst(n=50, filters=None, seed=None, screen=None):
     return {"source": source, "seed": seed, "returned": len(objects), "added": added}
 
 
-SOURCES = {"antares_random_lsst": antares_random_lsst, "pittgoogle_random_lsst": pittgoogle_random_lsst}
+def ztf_random(n=50, filters=None, seed=None, screen=None):
+    """Uniform random ZTF objects, from ANTARES's loci, or from ALeRCE's ZTF objects when ANTARES's search fails.
+
+    Without a date range in the filter bar, only objects first detected in the last ZTF_DEFAULT_DAYS days.
+    The ALeRCE fallback always selects by first detection (date_mode "first").
+    """
+    filters = filters or Filters()
+    if filters.date_from is None and filters.date_to is None:
+        today = datetime.now(timezone.utc).date()
+        filters = dataclasses.replace(filters, date_from=(today - timedelta(days=ZTF_DEFAULT_DAYS)).isoformat(),
+                                      date_to=today.isoformat(), date_mode="first")
+    seed = seed if seed is not None else random.randrange(2**31)
+    params = {"seed": seed, "filters": filters.as_params(), "n_requested": n}
+    try:
+        es_query, loci = antares.random_ztf_loci(n, seed, extra_filters=filters.es_filters())
+        params |= {"es_query": es_query, "unit": "object (ANTARES locus with a ZTF object), uniform within the filters"}
+        objects = [{**loc, "object_id": loc["ztf_object_id"]} for loc in loci if loc["ztf_object_id"]]
+        params["broker"] = "antares"
+    except requests.RequestException as e:
+        objects, capped = _alerce_ztf_sample(n, seed, filters)
+        params |= {"broker": "alerce", "antares_error": str(e), "capped": capped,
+                   "unit": "object (ALeRCE ZTF object), uniform over first detection in the date range and min_det"}
+    source = "ztf_random"
+    if screen:
+        params["screen"], source = screen, "ztf_random_screened"
+    added = 0
+    for obj in objects:
+        added += db.add_to_queue(obj["object_id"], obj.get("locus_id"), obj["ra"], obj["dec"],
+                                 source, params, summary=obj, screen=screen and screen["name"])
+    return {"source": source, "seed": seed, "returned": len(objects), "added": added, "broker": params["broker"],
+            "capped": params.get("capped", False)}
+
+
+def _alerce_ztf_sample(n, seed, filters):
+    """n ZTF objects drawn uniformly from ALeRCE's, by first detection in the filters' date range.
+
+    ALeRCE stops counting at COUNT_CAP, so the window is split until each piece can be counted; a piece
+    still at the cap after ZTF_MIN_STRATUM is sampled as if it held only COUNT_CAP (capped=True).
+    """
+    lo, hi = filters.mjd_range()
+    strata, capped = [], False
+    todo = [(lo + (hi - lo) * i / 8, lo + (hi - lo) * (i + 1) / 8) for i in range(8)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        while todo:
+            counts = list(pool.map(lambda w: alerce.ztf_count(*w, filters.min_det), todo))
+            split = []
+            for (a, b), count in zip(todo, counts):
+                if count >= alerce.COUNT_CAP and b - a > ZTF_MIN_STRATUM:
+                    split += [(a, (a + b) / 2), ((a + b) / 2, b)]
+                    continue
+                capped |= count >= alerce.COUNT_CAP
+                if count:
+                    strata.append((a, b, count))
+            todo = split
+    total = sum(c for *_, c in strata)
+    picks = sorted(random.Random(seed).sample(range(total), min(n, total)))
+    pages, start = {}, 0
+    for a, b, count in sorted(strata):
+        for i in picks:
+            if start <= i < start + count:
+                pages.setdefault((a, b, (i - start) // ZTF_PAGE + 1), []).append((i - start) % ZTF_PAGE)
+        start += count
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        fetched = pool.map(lambda key: alerce.ztf_page(key[0], key[1], filters.min_det, key[2], ZTF_PAGE), pages)
+    out = [{**items[r], "object_id": items[r]["ztf_object_id"]}
+           for items, rows in zip(fetched, pages.values()) for r in rows if r < len(items)]
+    random.Random(seed).shuffle(out)
+    return out, capped
+
+
+SOURCES = {"antares_random_lsst": antares_random_lsst, "pittgoogle_random_lsst": pittgoogle_random_lsst,
+           "ztf_random": ztf_random}

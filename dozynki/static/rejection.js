@@ -51,7 +51,7 @@ function pipelineFrom(steps) {
 }
 
 function defaultState() {
-  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, object_list: "", vetted: "", pipeline: pipelineFrom(CFG.default_pipeline), name: null };
+  return { target: ["transient"], include_alt: false, truth: "blind", all_sources: false, object_list: "", vetted: "", survey: "lsst", pipeline: pipelineFrom(CFG.default_pipeline), name: null };
 }
 
 function loadState() {
@@ -186,7 +186,9 @@ async function evaluatePipeline() {
     $("#err").textContent = "";
     renderAll();
   } catch (e) {
-    if (token === evalToken) $("#err").textContent = e.message;
+    if (token !== evalToken) return;
+    $("#err").textContent = e.message;
+    $("#pop").innerHTML = "";  // e.g. a survey with no labeled objects: don't leave the last population's count
   }
 }
 

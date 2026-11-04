@@ -31,19 +31,21 @@ def _phot(points, survey, kind):
     return out
 
 
-def fetch(dia_object_id):
+def fetch(object_id):
+    """object_id is an LSST diaObjectId, or a ZTF object id for objects sampled from ZTF."""
     if not BABAMUL_ENABLED:
         return {"enabled": False}
     from babamul import api
 
+    survey = "ZTF" if str(object_id).startswith("ZTF") else "LSST"
     result = {"enabled": True, "found": False, "errors": {}}
     try:
-        obj = api.get_object("LSST", str(dia_object_id))
+        obj = api.get_object(survey, str(object_id))
         result["found"] = True
-        result["forced_phot"] = _phot(obj.fp_hists, "lsst", "forced")
+        result["forced_phot"] = _phot(obj.fp_hists, survey.lower(), "forced")
         result["properties"] = obj.properties.model_dump(mode="json") if obj.properties else None
         result["reliability"] = obj.drb
-        ztf = obj.survey_matches.ztf if obj.survey_matches else None
+        ztf = obj.survey_matches.ztf if obj.survey_matches and survey == "LSST" else None
         result["ztf_match"] = (
             {"objectId": ztf.objectId, "ra": ztf.ra, "dec": ztf.dec, "forced_phot": _phot(ztf.fp_hists, "ztf", "forced")}
             if ztf
@@ -52,7 +54,7 @@ def fetch(dia_object_id):
     except Exception as e:
         result["errors"]["object"] = f"{type(e).__name__}: {e}"
     try:
-        result["cross_matches"] = api.get_cross_matches("LSST", str(dia_object_id)).model_dump(mode="json")
+        result["cross_matches"] = api.get_cross_matches(survey, str(object_id)).model_dump(mode="json")
     except Exception as e:
         result["errors"]["cross_matches"] = f"{type(e).__name__}: {e}"
     return result

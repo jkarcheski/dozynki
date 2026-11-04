@@ -58,7 +58,7 @@ function wilson(k, n, z = 1.96) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, object_list: "", vetted: "", unlabeled: false, frame: "eq", hidden: [], cut_b: 0, cut_e: 0, pipe: "off", hist: { b: "count", e: "count" } };
+  return { truth: "blind", all_sources: false, object_list: "", vetted: "", survey: "lsst", unlabeled: false, frame: "eq", hidden: [], cut_b: 0, cut_e: 0, pipe: "off", hist: { b: "count", e: "count" } };
 }
 
 function loadState() {

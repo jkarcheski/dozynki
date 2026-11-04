@@ -894,12 +894,13 @@ class Evaluation(BaseModel):
     all_sources: bool = False
     object_list: str | None = None  # score one object list's objects instead
     vetted: str | None = None  # or the objects I first vetted on these dates, "FROM..TO"
+    survey: str = "lsst"  # lsst | ztf | both
 
 
 def _evaluate(body, request):
     try:
         report, df = evaluate.evaluate(body.pipeline, body.truth, body.target, body.include_alt, body.all_sources, save=False,
-                                       object_list=body.object_list, vetted=_vetted(request, body.vetted))
+                                       object_list=body.object_list, vetted=_vetted(request, body.vetted), survey=body.survey)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     return report, df
@@ -928,7 +929,7 @@ def rejection_sweep(body: Sweep, request: Request):
     try:
         return evaluate.sweep(body.pipeline, body.step, body.param, body.values[:60], truth=body.truth,
                               target=body.target, include_alt=body.include_alt, all_sources=body.all_sources,
-                              object_list=body.object_list, vetted=_vetted(request, body.vetted))
+                              object_list=body.object_list, vetted=_vetted(request, body.vetted), survey=body.survey)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
 
@@ -1005,6 +1006,7 @@ class Comparison(BaseModel):
     all_sources: bool = False
     object_list: str | None = None
     vetted: str | None = None
+    survey: str = "lsst"
 
 
 @app.post("/api/compare")
@@ -1012,7 +1014,7 @@ def compare_sources(body: Comparison, request: Request):
     """Confusion matrix of two label sources. Nothing is stored."""
     try:
         return compare.compare(body.ref, body.comp, body.view, body.min_prob, body.include_alt, body.all_sources,
-                               body.object_list, _vetted(request, body.vetted))
+                               body.object_list, _vetted(request, body.vetted), body.survey)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -1021,17 +1023,21 @@ def compare_sources(body: Comparison, request: Request):
 def compare_summary(body: Comparison, request: Request):
     try:
         return compare.summary(body.ref, view=body.view, min_prob=body.min_prob, include_alt=body.include_alt,
-                               all_sources=body.all_sources, object_list=body.object_list, vetted=_vetted(request, body.vetted))
+                               all_sources=body.all_sources, object_list=body.object_list, vetted=_vetted(request, body.vetted),
+                               survey=body.survey)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @app.get("/api/sky")
-def sky_objects(request: Request, truth: str = "blind", all_sources: bool = False, object_list: str = "", vetted: str = ""):
+def sky_objects(request: Request, truth: str = "blind", all_sources: bool = False, object_list: str = "", vetted: str = "",
+                survey: str = "lsst"):
     """Every queued object's position in three frames, with its truth label (None if unlabeled)."""
     if truth not in ("blind", "final"):
         raise HTTPException(400, "truth must be blind or final")
-    return {"objects": sky.objects(truth, all_sources, object_list or None, _vetted(request, vetted)), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
+    if survey not in evaluate.SURVEYS:
+        raise HTTPException(400, f"survey must be one of {evaluate.SURVEYS}")
+    return {"objects": sky.objects(truth, all_sources, object_list or None, _vetted(request, vetted), survey), "classes": CLASSES, "transient_subclasses": TRANSIENT_SUBCLASSES}
 
 
 def _groups(groups):
@@ -1040,10 +1046,10 @@ def _groups(groups):
 
 @app.get("/api/similar")
 def similar_map(request: Request, truth: str = "blind", all_sources: bool = False, groups: str = "", object_list: str = "",
-                vetted: str = ""):
+                vetted: str = "", survey: str = "lsst"):
     """Every object's position on the first two principal components of its features, with its truth label."""
     try:
-        out = similar.projection(truth, all_sources, _groups(groups), object_list or None, _vetted(request, vetted))
+        out = similar.projection(truth, all_sources, _groups(groups), object_list or None, _vetted(request, vetted), survey)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {**out, "groups": similar.GROUPS, "default_groups": similar.DEFAULT_GROUPS, "classes": CLASSES}
@@ -1051,13 +1057,14 @@ def similar_map(request: Request, truth: str = "blind", all_sources: bool = Fals
 
 @app.get("/api/similar/{object_id}")
 def similar_neighbors(object_id: str, request: Request, k: int = 8, truth: str = "blind", all_sources: bool = False,
-                      groups: str = "", pool: str = "labeled", object_list: str = "", vetted: str = ""):
+                      groups: str = "", pool: str = "labeled", object_list: str = "", vetted: str = "",
+                      survey: str = "lsst"):
     """The k objects closest to one in feature space. Nothing is stored."""
     if pool not in ("labeled", "all"):
         raise HTTPException(400, "pool must be labeled or all")
     try:
         return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool, object_list or None,
-                                 _vetted(request, vetted))
+                                 _vetted(request, vetted), survey)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except KeyError:

@@ -1,4 +1,4 @@
-"""ANTARES REST client: random LSST sampling, locus + alert history, thumbnails."""
+"""ANTARES REST client: random LSST and ZTF sampling, locus + alert history, thumbnails."""
 
 import json
 import math
@@ -33,6 +33,27 @@ def random_lsst_loci(n, seed, extra_filters=()):
     alerts are not up-weighted. extra_filters are ES clauses (see filters.py).
     """
     filters = [{"exists": {"field": "properties.survey.lsst.dia_object_id"}}, *extra_filters]
+    es_query = {
+        "query": {
+            "function_score": {
+                "query": {"bool": {"filter": filters}},
+                "random_score": {"seed": seed, "field": "_seq_no"},
+                "boost_mode": "replace",
+            }
+        }
+    }
+    resp = _search(es_query, n)
+    return es_query, [_listing_summary(x) for x in resp.get("data", [])]
+
+
+def is_ztf_object(object_id):
+    """Queue ids are LSST diaObjectIds, or ZTF object ids (ZTF26abcdefg) for objects sampled from ZTF."""
+    return str(object_id).startswith("ZTF")
+
+
+def random_ztf_loci(n, seed, extra_filters=()):
+    """Uniform random sample over ANTARES loci with a ZTF object, as random_lsst_loci does for LSST."""
+    filters = [{"exists": {"field": "properties.ztf_object_id"}}, *extra_filters]
     es_query = {
         "query": {
             "function_score": {
@@ -101,6 +122,12 @@ def locus_for_dia_object(dia_object_id):
     return _listing_summary(data[0]) if data else None
 
 
+def locus_for_ztf_object(ztf_object_id):
+    es_query = {"query": {"term": {"properties.ztf_object_id": str(ztf_object_id)}}}
+    data = _search(es_query, 1).get("data", [])
+    return _listing_summary(data[0]) if data else None
+
+
 def alert(alert_id):
     """One alert's properties by its ANTARES id (lsst:<diaSourceId>, ztf_candidate:<candid>); None if unknown."""
     r = _session.get(f"{ANTARES_API}/alerts/{alert_id}", timeout=HTTP_TIMEOUT)
@@ -120,6 +147,7 @@ def _listing_summary(x):
         "ra": loc["ra"],
         "dec": loc["dec"],
         "dia_object_id": dia_ids[0] if dia_ids else None,
+        "ztf_object_id": props.get("ztf_object_id"),
         "num_alerts": props.get("num_alerts"),
         "n_det": props.get("num_mag_values"),
         "first_mjd": props.get("oldest_alert_observation_time"),

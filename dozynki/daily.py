@@ -146,11 +146,15 @@ def recheck_watchlist(labeler):
         try:
             old = db.cache_get(oid, "antares")
             n_old = (old["data"].get("num_alerts") or len(old["data"]["points"])) if old else 0
-            summary = antares.locus_summary(item["antares_locus"])
-            db.set_summary(oid, summary)
-            n_new = summary["num_alerts"] or 0
+            if item["antares_locus"]:
+                summary = antares.locus_summary(item["antares_locus"])
+                db.set_summary(oid, summary)
+                n_new = summary["num_alerts"] or 0
+            else:  # a ZTF object whose light curve came from ALeRCE: refetch it to count
+                n_new = assemble.refresh_brokers(oid, labeler)["num_alerts"] or 0
             if n_new > n_old:
-                assemble.refresh_brokers(oid, labeler)
+                if item["antares_locus"]:
+                    assemble.refresh_brokers(oid, labeler)
                 db.set_status(oid, labeler, None)
                 updated.append({"object_id": oid, "new_alerts": n_new - n_old})
             else:

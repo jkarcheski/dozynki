@@ -128,12 +128,12 @@ def _value(raw, name, transform):
     return v if v is not None and math.isfinite(v) else None
 
 
-def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None):
+def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst"):
     """Scaled matrix (NaN where missing) over the population and the features with any spread."""
     unknown = set(groups) - set(GROUPS)
     if unknown:
         raise ValueError(f"unknown feature groups {sorted(unknown)}")
-    ids = sorted(population_ids(all_sources, object_list, vetted))
+    ids = sorted(population_ids(all_sources, object_list, vetted, survey))
     raw = _raw(ids)
     ids = sorted(raw)
     feats = [f for f in FEATURES if f[1] in groups]
@@ -166,9 +166,9 @@ def _label(labels, oid):
             "alt_classes": lab["alt_classes"] if lab else []}
 
 
-def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None):
+def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst"):
     """Every object's first two principal components, with the loadings that explain the axes."""
-    m = build(truth, all_sources, groups, object_list, vetted)
+    m = build(truth, all_sources, groups, object_list, vetted, survey)
     ids, X, cols = m["ids"], m["X"], m["columns"]
     if len(ids) < 3 or X.shape[1] < 2:
         return {"objects": [], "columns": cols, "explained": [], "loadings": []}
@@ -199,9 +199,10 @@ def _display(raw):
     return {name: raw.get(name) for name, *_ in FEATURES}
 
 
-def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_GROUPS, pool="labeled", object_list=None, vetted=None):
+def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_GROUPS, pool="labeled", object_list=None, vetted=None,
+              survey="lsst"):
     """The k nearest objects to one: rms of scaled differences over the features both objects have."""
-    m = build(truth, all_sources, groups, object_list, vetted)
+    m = build(truth, all_sources, groups, object_list, vetted, survey)
     ids, X, labels = m["ids"], m["X"], m["labels"]
     if object_id not in ids:
         raise KeyError(object_id)

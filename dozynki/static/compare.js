@@ -34,7 +34,7 @@ function defaultState() {
   const alerce = CFG.sources.filter((s) => s.kind === "alerce").sort((a, b) => b.n - a.n || b.id.localeCompare(a.id));
   const ref = labels[0]?.id ?? CFG.sources[0]?.id;
   const comp = alerce[0]?.id ?? CFG.sources.find((s) => s.id !== ref)?.id;
-  return { ref, comp, view: "class", norm: "row", min_prob: 0, include_alt: false, all_sources: false, object_list: "", vetted: "" };
+  return { ref, comp, view: "class", norm: "row", min_prob: 0, include_alt: false, all_sources: false, object_list: "", vetted: "", survey: "lsst" };
 }
 
 function loadState() {
@@ -93,7 +93,7 @@ async function run() {
     if (token !== evalToken) return;
     result = null;
     $("#err").textContent = e.message;
-    for (const id of ["#matrix", "#metrics", "#per-class", "#cell"]) $(id).innerHTML = "";
+    for (const id of ["#matrix", "#metrics", "#per-class", "#cell", "#pop", "#summary"]) $(id).innerHTML = "";
   }
 }
 

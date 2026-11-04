@@ -52,7 +52,7 @@ function fmt(v) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, object_list: "", vetted: "", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null,
+  return { truth: "blind", all_sources: false, object_list: "", vetted: "", survey: "lsst", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null,
            colorby: "label" };
 }
 

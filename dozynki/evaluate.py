@@ -36,28 +36,65 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from . import db, rejection
+from .brokers import antares
 from .config import EXPORT_DIR
 from .labels import CLASS_BY_KEY, CLASSES, TRANSIENT_SUBCLASSES
 
-RANDOM_SOURCES = ("antares_random_lsst",)
+RANDOM_SOURCES = ("antares_random_lsst", "ztf_random")  # each survey's uniform sample; survey picks from both
+SURVEYS = ("lsst", "ztf", "both")
 
 
-def population_ids(all_sources=False, object_list=None, vetted=None):
+_surveys_memo = {}
+
+
+def _surveys():
+    """{object_id: (has LSST, has ZTF)} as ANTARES has them: the cached locus's LSST diaObject and ZTF object
+    (a locus with a ZTF object has ZTF alerts), so an LSST object ZTF also detected is in both. Remembered until
+    the ANTARES cache changes, since the filter lab's sweeps ask many times."""
+    key = tuple(db.query("SELECT COUNT(*), MAX(fetched_at) FROM cache WHERE kind = 'antares'")[0])
+    if key not in _surveys_memo:
+        _surveys_memo.clear()
+        _surveys_memo[key] = {r["object_id"]: (bool(r["lsst"]), bool(r["ztf"])) for r in db.query(
+            "SELECT object_id, json_extract(payload, '$.survey.lsst') IS NOT NULL AS lsst, "
+            "json_extract(payload, '$.ztf_object_id') IS NOT NULL AS ztf FROM cache WHERE kind = 'antares'")}
+    return _surveys_memo[key]
+
+
+def in_survey(object_id, survey, surveys=None):
+    """Whether an object is one of the survey's ("both": either). Without a cached locus, its id says: an LSST
+    diaObjectId, or a ZTF object sampled from ZTF; a ZTF object sampled from ZTF is ZTF's whatever its locus says."""
+    if survey == "both":
+        return True
+    ztf_id = antares.is_ztf_object(object_id)
+    lsst, ztf = (surveys if surveys is not None else _surveys()).get(object_id, (not ztf_id, ztf_id))
+    return ztf or ztf_id if survey == "ztf" else lsst or not ztf_id
+
+
+def population_ids(all_sources=False, object_list=None, vetted=None, survey="lsst"):
     """Object ids to use: one object list's members (lists.py), the objects one labeler vetted in a date range,
-    every queued object, or the uniform random sample.
+    every queued object, or the random sample (the LSST and ZTF samples together); of those, only survey's objects
+    (in_survey). So for "ztf" the random sample is the ZTF sample plus the LSST sample's objects ZTF also detected,
+    and for "lsst" the LSST sample plus the ZTF sample's objects with an LSST diaObject.
 
     vetted is (labeler, date_from, date_to): objects whose first label by labeler falls on those UTC dates,
     inclusive; either date may be empty for an open end.
     """
+    if survey not in SURVEYS:
+        raise ValueError(f"survey must be one of {SURVEYS}")
     if object_list:
-        return db.list_object_ids(object_list)
-    if vetted:
+        ids = db.list_object_ids(object_list)
+    elif vetted:
         who, lo, hi = vetted
-        return {r["object_id"] for r in db.query("SELECT object_id, MIN(created_at) AS first FROM labels "
-                                                 "WHERE labeler = ? GROUP BY object_id", (who,))
-                if (not lo or r["first"][:10] >= lo) and (not hi or r["first"][:10] <= hi)}
-    return {r["object_id"] for r in db.query("SELECT object_id, source FROM queue")
-            if all_sources or r["source"] in RANDOM_SOURCES}
+        ids = {r["object_id"] for r in db.query("SELECT object_id, MIN(created_at) AS first FROM labels "
+                                                "WHERE labeler = ? GROUP BY object_id", (who,))
+               if (not lo or r["first"][:10] >= lo) and (not hi or r["first"][:10] <= hi)}
+    else:
+        ids = {r["object_id"] for r in db.query("SELECT object_id, source FROM queue")
+               if all_sources or r["source"] in RANDOM_SOURCES}
+    if survey == "both":
+        return ids
+    surveys = _surveys()
+    return {oid for oid in ids if in_survey(oid, survey, surveys)}
 SHORTHANDS = {"real": [c["key"] for c in CLASSES if c["real"]],
               "transient": [c["key"] for c in CLASSES if c["transient"]]}
 
@@ -131,13 +168,13 @@ def metrics(classes, pos, kept):
 
 
 def evaluate(pipeline=rejection.DEFAULT_PIPELINE, truth="blind", target="transient", include_alt=False,
-             all_sources=False, save=True, object_list=None, vetted=None):
+             all_sources=False, save=True, object_list=None, vetted=None, survey="lsst"):
     pipeline = rejection.resolve(pipeline)
     target_keys = parse_target(target)
     steps = [rejection.step_key(s) for s in pipeline]
     labels = truth_labels(truth)
     queue = {r["object_id"]: r for r in db.query("SELECT object_id, source, source_params FROM queue")}
-    ids = population_ids(all_sources, object_list, vetted)
+    ids = population_ids(all_sources, object_list, vetted, survey)
     population ={oid: lab for oid, lab in labels.items() if oid in ids}
     ver, results = rejection.run(population, pipeline, save=save)
 
@@ -171,6 +208,7 @@ def evaluate(pipeline=rejection.DEFAULT_PIPELINE, truth="blind", target="transie
         "include_alt": include_alt,
         "object_list": object_list,
         "vetted": list(vetted) if vetted else None,
+        "survey": survey,
         "population": {"scored": len(df), "n_target": int(df["target"].sum()),
                        "by_class": df["truth"].value_counts().to_dict(),
                        "excluded": dict(excluded),
@@ -259,6 +297,7 @@ def main(argv=None):
                     help="comma list of classes / transient:<subclass>, or real / transient (default transient)")
     ap.add_argument("--include-alt", action="store_true", help="count 'could also be' classes toward the target")
     ap.add_argument("--all-sources", action="store_true", help="also score objects not from the random sample")
+    ap.add_argument("--survey", choices=SURVEYS, default="lsst", help="score LSST objects, ZTF objects, or both")
     ap.add_argument("--list", dest="object_list", help="score the objects of one object list instead (lists.py)")
     ap.add_argument("--list-rules", action="store_true")
     args = ap.parse_args(argv)
@@ -276,7 +315,8 @@ def main(argv=None):
             names = ", ".join(p["name"] for p in db.saved_pipelines()) or "none yet"
             ap.error(f"no saved pipeline {args.saved!r} (saved: {names})")
     try:
-        report, df = evaluate(pipeline, args.truth, args.target, args.include_alt, args.all_sources, object_list=args.object_list)
+        report, df = evaluate(pipeline, args.truth, args.target, args.include_alt, args.all_sources, object_list=args.object_list,
+                                  survey=args.survey)
     except ValueError as e:
         ap.error(str(e))
     text = text_report(report)

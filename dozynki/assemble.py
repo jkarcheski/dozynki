@@ -5,6 +5,8 @@ evidence (always shown) and broker opinions (hidden until a blind label exists).
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+import requests
+
 from . import archival, crossmatch, db
 from .brokers import alerce, antares, babamul_client, yse
 
@@ -24,9 +26,26 @@ def _cached(object_id, kind, fetch, refresh=False):
     return db.cache_get(object_id, kind)
 
 
+def _light_curve(item):
+    """ANTARES's locus; for a ZTF object whose locus can't be found (ANTARES's search down), ALeRCE's light curve."""
+    if item["antares_locus"]:
+        return antares.get_locus(item["antares_locus"])
+    if not antares.is_ztf_object(item["object_id"]):
+        return antares.get_locus(antares.locus_for_dia_object(item["object_id"])["locus_id"])
+    try:
+        loc = antares.locus_for_ztf_object(item["object_id"])
+    except requests.RequestException:
+        loc = None
+    return antares.get_locus(loc["locus_id"]) if loc else alerce.ztf_payload(item["object_id"])
+
+
+def _alerce(object_id, ant):
+    lsst_id = None if antares.is_ztf_object(object_id) else object_id
+    return alerce.fetch(lsst_id, ant.get("ztf_object_id"))
+
+
 def _fetch_antares(item):
-    locus_id = item["antares_locus"] or antares.locus_for_dia_object(item["object_id"])["locus_id"]
-    data = antares.get_locus(locus_id)
+    data = _light_curve(item)
     data["thumbs"] = {}
     for survey in ("lsst", "ztf"):
         dets = [p for p in data["points"] if p["survey"] == survey and p["kind"] == "detection"]
@@ -58,7 +77,7 @@ def load(object_id, refresh=False):
             _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
         with ThreadPoolExecutor(max_workers=4) as pool:
             jobs = [
-                pool.submit(_cached, object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh),
+                pool.submit(_cached, object_id, "alerce", lambda: _alerce(object_id, ant), refresh),
                 pool.submit(_cached, object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
                 pool.submit(_cached, object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"]), refresh),
                 pool.submit(_cached, object_id, "archival", lambda: archival.run(ant["ra"], ant["dec"]),
@@ -186,7 +205,7 @@ def refresh_brokers(object_id, labeler=None):
     """Re-fetch broker data (not the crossmatch) after new alerts arrive; YSE PZ's only for labeler."""
     item = db.get_queue_item(object_id)
     ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh=True)["data"]
-    _cached(object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh=True)
+    _cached(object_id, "alerce", lambda: _alerce(object_id, ant), refresh=True)
     _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
     if labeler:
         with_yse(object_id, _gather(object_id), labeler, refresh=True)

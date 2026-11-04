@@ -16,9 +16,9 @@ from . import db
 from .evaluate import population_ids, truth_labels
 
 
-def objects(truth="blind", all_sources=False, object_list=None, vetted=None):
+def objects(truth="blind", all_sources=False, object_list=None, vetted=None, survey="lsst"):
     labels = truth_labels(truth)
-    ids = population_ids(all_sources, object_list, vetted)
+    ids = population_ids(all_sources, object_list, vetted, survey)
     rows = [r for r in db.query("SELECT object_id, ra, dec, source, status FROM queue WHERE ra IS NOT NULL")
             if r["object_id"] in ids]
     if not rows:

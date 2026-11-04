@@ -59,7 +59,8 @@ async function init() {
   buildLabelBar();
   await initMode();
   initFilters();
-  $("#fill").onclick = fillQueue;
+  $("#fill").onclick = () => fillQueue();
+  $("#fill-ztf").onclick = () => fillQueue("ztf_random", "#fill-ztf");
   $("#pull-night").onclick = pullNight;
   $("#run-night").onclick = runNight;
   $("#clear-stack").onclick = clearStack;
@@ -395,13 +396,15 @@ async function refreshMatching() {
   }
 }
 
-async function fillQueue() {
+async function fillQueue(source = "antares_random_lsst", button = "#fill") {
   const n = +$("#fill-n").value;
-  $("#fill").disabled = true;
+  $(button).disabled = true;
   try {
-    const r = await api("/api/queue/fill", { method: "POST", body: { source: "antares_random_lsst", n, ...getFilters(), screen: screenName() || null } });
+    const r = await api("/api/queue/fill", { method: "POST", body: { source, n, ...getFilters(), screen: screenName() || null } });
     if (r.added && !screenName()) Harvest.reap(r.added);  // screened objects join the stack as they pass
     toast(`Sampled ${r.returned} objects (seed ${r.seed}), ${r.added} new` + (r.returned === 0 && filtersActive() ? " — nothing in ANTARES matches these filters" : "")
+      + (r.broker === "alerce" ? " — from ALeRCE, since ANTARES's search failed" : "")
+      + (r.capped ? "; ALeRCE couldn't count every object, so the sample isn't quite uniform" : "")
       + (screenName() && r.added ? `; screening them with "${screenName()}"` : ""), 5000);
     refreshMatching();
     refreshStats();
@@ -409,7 +412,7 @@ async function fillQueue() {
   } catch (e) {
     toast("Fill failed: " + e.message, 5000);
   } finally {
-    $("#fill").disabled = false;
+    $(button).disabled = false;
   }
 }
 
@@ -665,8 +668,9 @@ async function loadObject(oid) {
     form.notes = last.notes || "";
   }
   $("#obj-links").innerHTML = [
-    `<a target="_blank" href="https://antares.noirlab.edu/loci/${ev.locus_id}">ANTARES ${ev.locus_id}</a>`,
-    `<a target="_blank" href="https://lsst.alerce.online/object/${ev.object_id}">ALeRCE</a>`,
+    ev.locus_id ? `<a target="_blank" href="https://antares.noirlab.edu/loci/${ev.locus_id}">ANTARES ${ev.locus_id}</a>`
+      : `<span class="muted" title="ANTARES's search was down when this object was fetched">light curve from ALeRCE</span>`,
+    ev.object_id.startsWith("ZTF") ? "" : `<a target="_blank" href="https://lsst.alerce.online/object/${ev.object_id}">ALeRCE</a>`,
     ev.ztf_object_id ? `<a target="_blank" href="https://alerce.online/object/${ev.ztf_object_id}">ZTF ${ev.ztf_object_id}</a>` : "",
     `<a target="_blank" href="https://www.legacysurvey.org/viewer?ra=${ev.ra}&dec=${ev.dec}&layer=ls-dr10&zoom=16&mark=${ev.ra},${ev.dec}">LS viewer</a>`,
     // labeled without the transient's name, which the blind pass doesn't show; the page itself has YSE PZ's class
