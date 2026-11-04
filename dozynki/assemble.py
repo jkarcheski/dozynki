@@ -131,6 +131,21 @@ def load_antares(object_id):
     return _cached(object_id, "antares", lambda: _fetch_antares(item))["data"]
 
 
+# what load() fetches after ANTARES, as the vetter names them while they're still coming
+SLOW = {"alerce": "ALeRCE", "babamul": "Babamul", "xmatch": "crossmatch", "archival": "archival light curves"}
+
+
+def quick(object_id, labeler):
+    """What the vetter can show at once: the ANTARES light curve and cutouts (fetched if need be) and whatever
+    else is already cached, plus the names of what isn't yet; load() and with_yse() fetch the rest."""
+    load_antares(object_id)
+    raw = _gather(object_id)
+    raw["yse"] = (db.cache_get(object_id, yse.cache_kind(labeler)) if yse.login_for(labeler)
+                  else {"data": {"enabled": False}, "fetched_at": None})
+    pending = [name for kind, name in SLOW.items() if raw[kind] is None] + (["YSE PZ"] if raw["yse"] is None else [])
+    return raw, pending
+
+
 def _gather(object_id):
     return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "archival", "skybot", "positions")}
 
@@ -182,6 +197,36 @@ def _prefetch_one(object_id, labeler):
     finally:
         with _inflight_lock:
             _prefetching.discard(object_id)
+
+
+_loading = set()  # objects load_in_background is loading
+
+
+def load_in_background(object_id, labeler=None):
+    """load() (and labeler's YSE PZ match) for the object on screen, in a thread of its own rather than
+    queued behind the prefetches of the next ones; each source is cached as it lands, for quick() to show."""
+    with _inflight_lock:
+        if object_id in _loading:
+            return
+        _loading.add(object_id)
+
+    def run():
+        try:
+            raw = load(object_id)
+            if labeler:
+                with_yse(object_id, raw, labeler)
+        except Exception:
+            pass
+        finally:
+            with _inflight_lock:
+                _loading.discard(object_id)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def loading(object_id):
+    with _inflight_lock:
+        return object_id in _loading
 
 
 ZTF_NR_MAX_ARCSEC = 1.5  # reference source must be this close for ref + diff to mean "total flux"

@@ -154,6 +154,7 @@ function renderForm() {
   const h = form.host;
   $("#host-display").textContent = !h ? "host: not set" : h.hostless ? "host: hostless" : `host: LS ${h.ls_id} (${fmt(h.sep, 1)}″, z≈${fmt(h.z_phot_median)})`;
   $("#commit").disabled = !cur || !form.klass;
+  $("#commit").title = cur?.pending?.length ? `Not loaded yet: ${cur.pending.join(", ")}` : "";
 }
 
 function onKey(e) {
@@ -637,8 +638,9 @@ const clearPanels = () => ["#cutouts", "#point-detail", "#xmatch", "#opinions", 
 async function loadObject(oid) {
   window.scrollTo({ top: 0 }); // each new target starts at the cutouts
   $("#obj-title").textContent = `LSST ${oid}`;
-  $("#lc").innerHTML = `<div class="loading">Fetching ANTARES, ALeRCE, Babamul and crossmatches…</div>`;
+  $("#lc").innerHTML = `<div class="loading">Fetching the light curve from ANTARES…</div>`;
   clearPanels();
+  renderPending([]);
   form = blankForm();
   selectedPoint = null;
   fieldFov = DEFAULT_FOV;
@@ -647,18 +649,60 @@ async function loadObject(oid) {
   const token = ++loadToken;
   cur = null; // so Commit stays disabled (and can't hit the previous object) until this one arrives
   renderForm();
+  // first what is ready at once (the ANTARES light curve and cutouts, anything cached) ...
   let data;
   try {
-    data = await api(`/api/object/${oid}`);
+    data = await api(`/api/object/${oid}?quick=true&start=true`);
   } catch (e) {
     if (token === loadToken) $("#lc").innerHTML = `<div class="loading err">Failed to load: ${esc(e.message)}</div>`;
     return;
   }
   if (token !== loadToken) return; // a newer loadObject started while this one was fetching
+  showObject(data, true);
+  // ... then each other source as the server finishes it, so a slow one (IRSA) doesn't hold back the rest
+  while (data.pending.length) {
+    await new Promise((r) => setTimeout(r, 1000));
+    if (token !== loadToken) return;
+    let next;
+    try {
+      next = await api(`/api/object/${oid}?quick=true`);
+    } catch (e) {
+      if (token === loadToken) renderPending(cur.pending, e.message);
+      return;
+    }
+    if (token !== loadToken) return;
+    if (next.pending.length < data.pending.length) showObject(next, false);
+    if (!next.loading && next.pending.length) {
+      renderPending(next.pending, "they failed on the server");
+      return;
+    }
+    data = next;
+  }
+}
+
+// Under the object's links while some of its sources are still loading (or failed to): what isn't shown yet.
+function renderPending(pending, error) {
+  const el = $("#obj-pending");
+  el.hidden = !pending.length;
+  el.className = error ? "pending-note err" : "pending-note";
+  el.textContent = !pending.length ? ""
+    : error ? `Couldn't load ${pending.join(", ")}: ${error}. Reload the object to try again.`
+    : `Still loading ${pending.join(", ")}. Points, crossmatches and hosts may still appear: a label committed now is made without them.`;
+}
+
+// Render an object's data: first from the quick response, then again as each other source arrives (first = false),
+// keeping the form and the selected point.
+function showObject(data, first) {
+  if (!first && cur.labels.length > data.labels.length) {
+    // committed while the rest was loading: keep that label and the opinions it revealed
+    data.labels = cur.labels;
+    if (cur.revealed) Object.assign(data, { revealed: true, opinions: cur.opinions });
+  }
   cur = data;
   const ev = cur.evidence;
+  renderPending(cur.pending);
   const last = cur.labels[cur.labels.length - 1];
-  if (last) {
+  if (first && last) {
     form.klass = last.klass;
     form.alts = new Set(JSON.parse(last.alt_classes || "[]"));
     form.subclass = last.subclass;
@@ -687,7 +731,8 @@ async function loadObject(oid) {
   renderOpinions();
   renderForm();
   const dets = ev.points.filter((p) => p.kind === "detection").sort((a, b) => b.mjd - a.mjd);
-  if (dets.length) selectPoint(dets[0]);
+  const same = selectedPoint && ev.points.find((p) => p.alert_id === selectedPoint.alert_id && p.mjd === selectedPoint.mjd);
+  if (same || dets.length) selectPoint(same || dets[0]);
 }
 
 function renderPhase() {
@@ -757,6 +802,7 @@ function renderLightcurve(ev) {
   }
   traces.push(...yseTraces(ev.yse_photometry), ...archivalTraces(ev.archival));
   $("#lc-archival").textContent = archivalNote(ev.archival);
+  if (!traces.length) { $("#lc").innerHTML = `<div class="loading">No points in this view.</div>`; return; }
   const css = getComputedStyle(document.documentElement);
   const ink = css.getPropertyValue("--ink"), line = css.getPropertyValue("--line");
   const layout = {
@@ -771,7 +817,6 @@ function renderLightcurve(ev) {
     legend: { orientation: "h", y: -0.18 },
   };
   $("#lc").innerHTML = "";
-  if (!traces.length) { $("#lc").innerHTML = `<div class="loading">No points in this view.</div>`; return; }
   Plotly.newPlot("lc", traces, layout, { displaylogo: false, responsive: true });
   // keep the "Range: (date — date)" title and tick precision in step with zooming
   $("#lc").on("plotly_relayout", (ev) => {
@@ -1211,7 +1256,7 @@ function yseArchivesLine(archives) {
 
 function renderXmatch(ev) {
   const xm = ev.xmatch;
-  if (!xm) { $("#xmatch").innerHTML = `<div class="muted">no crossmatch</div>`; return; }
+  if (!xm) { $("#xmatch").innerHTML = `<div class="muted">${cur?.pending?.includes("crossmatch") ? "loading…" : "no crossmatch"}</div>`; return; }
   const ctx = xm.context || {};
   const sso = ev.sso_associations || {};
   const ssoBits = [
@@ -1455,6 +1500,8 @@ async function commit() {
     object_id: cur.evidence.object_id, klass: form.klass, alt_classes: [...form.alts], subclass: form.subclass,
     confidence: form.confidence, flags: [...form.flags], host: form.host, notes: form.notes || null,
   };
+  // the label's snapshot is taken from the full evidence, so the server saves it once the rest has loaded
+  if (cur.pending?.length) toast(`Saving once ${cur.pending.join(", ")} finish loading…`, 4000);
   try {
     const r = await api("/api/label", { method: "POST", body });
     const won = (r.achievements || []).map((a) => `${a.name} (${a.tiers[a.earned - 1]} ${a.what})`);

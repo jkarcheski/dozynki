@@ -582,11 +582,21 @@ def _has_blind_label(object_id, labeler):
 
 
 @app.get("/api/object/{object_id}")
-def get_object(object_id: str, request: Request, refresh: bool = False):
+def get_object(object_id: str, request: Request, refresh: bool = False, quick: bool = False, start: bool = False):
+    """With quick, only what is ready at once (assemble.quick), and in "pending" what is still to come; with start
+    too, the rest starts loading in the background ("loading" says whether it still is, so the vetter can poll)."""
     item = db.get_queue_item(object_id)
     if not item:
         raise HTTPException(404, "not in queue")
-    raw = assemble.with_yse(object_id, assemble.load(object_id, refresh=refresh), _who(request), refresh)
+    loading = False
+    if quick and not refresh:
+        loading = assemble.loading(object_id)  # before quick(), so loading false with pending left means it failed
+        raw, pending = assemble.quick(object_id, _who(request))
+        if pending and start:
+            assemble.load_in_background(object_id, _who(request))
+            loading = True
+    else:
+        raw, pending = assemble.with_yse(object_id, assemble.load(object_id, refresh=refresh), _who(request), refresh), []
     ev = assemble.evidence(object_id, raw)
     labels = db.labels_for(object_id, _who(request))
     revealed = not _blind(request) or _has_blind_label(object_id, _who(request))
@@ -596,6 +606,8 @@ def get_object(object_id: str, request: Request, refresh: bool = False):
         "labels": labels,
         "opinions": assemble.opinions(raw) if revealed else None,
         "revealed": revealed,
+        "pending": pending,
+        "loading": loading,
     }
 
 

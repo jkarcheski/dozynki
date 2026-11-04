@@ -277,6 +277,45 @@ def test_archival_surveys_run_at_once_and_a_failed_one_is_skipped(monkeypatch):
     assert out["errors"]["ztf_dr"].startswith("skipped") and len(out["points"]) == 1
 
 
+def test_quick_shows_the_light_curve_before_the_rest(stubbed):
+    """The vetter's first request (/api/object?quick=true) costs ANTARES only and says what's still coming;
+    once load() has run, nothing is pending and quick is as complete as the full response."""
+    oid = _queued()
+    t0 = time.perf_counter()
+    raw, pending = assemble.quick(oid, "tester")
+    took = time.perf_counter() - t0
+    print(f"\nquick open {took:.3f} s")
+    assert took == pytest.approx(DELAY["locus"] + 2 * DELAY["thumbs"], abs=SLACK)
+    assert pending == ["ALeRCE", "Babamul", "crossmatch", "archival light curves", "YSE PZ"]
+    ev = assemble.evidence(oid, raw)
+    assert len(ev["points"]) == 500 and ev["thumbs"] and ev["xmatch"] is None
+    assemble.opinions(raw)  # blind mode off shows opinions straight away: they must build from the partial data
+
+    _open(oid)
+    t0 = time.perf_counter()
+    raw, pending = assemble.quick(oid, "tester")
+    assert pending == [] and raw["xmatch"] is not None
+    assert time.perf_counter() - t0 < min(DELAY.values())
+
+
+def test_sources_show_up_one_by_one_while_loading_in_the_background(stubbed):
+    """What the vetter's polling sees: after quick(), load_in_background caches each source as it lands, so a
+    fast one (ALeRCE) is there while a slow one (crossmatch) is still pending, and nothing is once it's done."""
+    oid = _queued()
+    assemble.quick(oid, "tester")
+    assemble.load_in_background(oid, "tester")
+    assert assemble.loading(oid)
+    time.sleep(DELAY["alerce"] + 0.08)
+    _, pending = assemble.quick(oid, "tester")
+    assert "ALeRCE" not in pending and "crossmatch" in pending
+    for _ in range(50):
+        if not assemble.loading(oid):
+            break
+        time.sleep(0.05)
+    _, pending = assemble.quick(oid, "tester")
+    assert not assemble.loading(oid) and pending == []
+
+
 # ---------- live: the real services, one at a time ----------
 
 live = pytest.mark.skipif(not os.environ.get("DOZYNKI_LIVE"), reason="set DOZYNKI_LIVE=1 to time the real services")
