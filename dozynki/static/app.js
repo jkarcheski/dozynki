@@ -1318,7 +1318,7 @@ function renderOpinions() {
   const el = $("#opinions");
   if (!cur.revealed || !cur.opinions) {
     $("#op-state").textContent = "hidden";
-    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label: ALeRCE probabilities, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div>`;
+    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">ALeRCE probabilities, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
     return;
   }
   $("#op-state").textContent = "";

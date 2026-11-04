@@ -17,7 +17,9 @@
 <main class="home">
   <section class="card">
     <div class="card-head">
-      <h2>Watchlist <span id="count" class="muted"></span></h2>
+      <h2>Watchlist <span id="count" class="muted"></span> <details class="info"><summary title="More info">i</summary><div class="info-body">Objects you labeled with "Watch for more data" and haven't relabeled without it. Detections and latest mag
+      (difference-image magnitude of the newest detection) come from the light curve as last fetched; "Recheck for new alerts" refreshes it.
+      Click a column heading to sort. Dates are UTC; "since last night" starts at yesterday's date. Open an object to give it a follow-up label.</div></details></h2>
       <span class="watch-controls">
         <span class="muted">flagged</span>
         <span class="seg" id="range"><button data-v="night" class="on">since last night</button><button data-v="week">past week</button><button data-v="all">all</button></span>
@@ -34,9 +36,6 @@
       <button id="clear-filters" class="small">Clear</button>
     </div>
     <div class="tablewrap"><table id="list"></table></div>
-    <div class="hint">Objects you labeled with "Watch for more data" and haven't relabeled without it. Detections and latest mag
-      (difference-image magnitude of the newest detection) come from the light curve as last fetched; "Recheck for new alerts" refreshes it.
-      Click a column heading to sort. Dates are UTC; "since last night" starts at yesterday's date. Open an object to give it a follow-up label.</div>
     <div id="err" class="err"></div>
   </section>
 </main>

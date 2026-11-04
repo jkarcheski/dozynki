@@ -35,8 +35,7 @@
   <section class="card wide" id="details-note" hidden></section>
   <section class="card pipe" id="pipe"></section>
   <section class="card">
-    <div class="card-head"><h2>Decision tree</h2><span class="hint">click a box to list its objects</span></div>
-    <div class="hint">Each object falls to the first question it answers yes to. Bars: target / other.</div>
+    <div class="card-head"><h2>Decision tree <details class="info"><summary title="More info">i</summary><div class="info-body">Each object falls to the first question it answers yes to. Bars: target / other.</div></details></h2><span class="hint">click a box to list its objects</span></div>
     <div id="tree"></div>
   </section>
 
@@ -54,7 +53,7 @@
 
   <section class="card wide">
     <div class="card-head">
-      <h2>Threshold sweep</h2>
+      <h2>Threshold sweep <details class="info"><summary title="More info">i</summary><div class="info-body">Click a point to set that threshold. Dashed line: the current value.</div></details></h2>
       <span class="sweep-controls">
         <select id="sweep-param"></select>
         from <input id="sweep-from" type="number" step="any"> to <input id="sweep-to" type="number" step="any">
@@ -63,11 +62,10 @@
       </span>
     </div>
     <div id="sweep" class="chart"></div>
-    <div class="hint">Click a point to set that threshold. Dashed line: the current value.</div>
   </section>
 
   <section class="card wide">
-    <div class="card-head"><h2>Per step</h2><span class="hint">alone = this step on its own · only = rejected by no other enabled step · without = pipeline with this step off</span></div>
+    <div class="card-head"><h2>Per step <details class="info"><summary title="More info">i</summary><div class="info-body"><b>alone</b> = this step on its own · <b>only</b> = rejected by no other enabled step · <b>without</b> = pipeline with this step off</div></details></h2></div>
     <div class="tablewrap"><table id="steps"></table></div>
   </section>
 

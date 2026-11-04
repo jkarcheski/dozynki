@@ -107,7 +107,7 @@ function renderChips() {
   for (const c of DATA.columns) used[c.group] = (used[c.group] || 0) + 1;
   $("#groups").innerHTML = Object.entries(DATA.groups).map(([g, label]) =>
     `<button data-g="${g}" class="${state.groups.includes(g) ? "on" : ""}">${esc(label)}${state.groups.includes(g) ? ` <span class="muted">${used[g] || 0}</span>` : ""}</button>`).join("")
-    + `<span class="hint">Broker scores are off by default: they are classifier output, not evidence.</span>`;
+    + `<details class="info"><summary title="More info">i</summary><div class="info-body">Broker scores are off by default: they are classifier output, not evidence.</div></details>`;
   $("#groups").querySelectorAll("button").forEach((b) => b.onclick = () => {
     const g = b.dataset.g;
     const next = state.groups.includes(g) ? state.groups.filter((x) => x !== g) : [...state.groups, g];

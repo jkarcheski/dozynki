@@ -33,7 +33,9 @@
 <main class="lab-main">
   <section class="card wide">
     <div class="card-head">
-      <h2>Feature map</h2>
+      <h2>Feature map <details class="info"><summary title="More info">i</summary><div class="info-body">The first two principal components of the feature vectors (missing values at the median). Nearby points have similar features;
+      the axes are linear mixes of them, listed below. Click a point to list its nearest neighbors.
+      TNS matches are ANTARES's, cached when an object is labeled, by "Check TNS", or by building the TNS list in the vetter; they never enter the features.</div></details></h2>
       <span class="find">
         <input id="find" placeholder="object id" spellcheck="false" list="ids">
         <datalist id="ids"></datalist>
@@ -41,15 +43,13 @@
       </span>
     </div>
     <div id="map" class="featmap"></div>
-    <div class="hint">The first two principal components of the feature vectors (missing values at the median). Nearby points have similar features;
-      the axes are linear mixes of them, listed below. Click a point to list its nearest neighbors.
-      TNS matches are ANTARES's, cached when an object is labeled, by "Check TNS", or by building the TNS list in the vetter; they never enter the features.</div>
     <div id="axes" class="axes"></div>
   </section>
 
   <section class="card wide">
     <div class="card-head">
-      <h2>Nearest neighbors <span id="query-name" class="muted"></span></h2>
+      <h2>Nearest neighbors <span id="query-name" class="muted"></span> <details class="info"><summary title="More info">i</summary><div class="info-body">Distance is the rms difference, in robust standard deviations, over the features both objects have.
+      "Differs on" names the features farthest apart. Cutouts are ANTARES's for the latest LSST detection: difference left, science right.</div></details></h2>
       <span class="nn-controls">
         <span class="muted">from</span>
         <span class="seg" id="pool"><button data-v="labeled" class="on">labeled</button><button data-v="all">all objects</button></span>
@@ -58,8 +58,6 @@
       </span>
     </div>
     <div id="tiles" class="tiles"><span class="muted">Click a point on the map, or find an object by id.</span></div>
-    <div class="hint">Distance is the rms difference, in robust standard deviations, over the features both objects have.
-      "Differs on" names the features farthest apart. Cutouts are ANTARES's for the latest LSST detection: difference left, science right.</div>
   </section>
 
   <section class="card wide">

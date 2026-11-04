@@ -101,7 +101,7 @@
     </div>
     <div class="card">
       <div class="card-head">
-        <h2>Light curve</h2>
+        <h2>Light curve <details class="info"><summary title="More info">i</summary><div class="info-body">Click a point to see its cutouts. Open symbols are forced photometry.</div></details></h2>
         <div class="seg" id="lc-mode">
           <button data-mode="sci" class="on" title="f">LSST sci mag</button>
           <button data-mode="flux">Diff flux</button>
@@ -109,14 +109,14 @@
         </div>
       </div>
       <div id="lc" class="plot"></div>
-      <div class="hint">Click a point to see its cutouts. Open symbols are forced photometry. <span id="lc-archival"></span></div>
+      <div id="lc-archival" class="hint"></div>
     </div>
   </section>
 
   <section class="col">
     <div class="card">
       <div class="card-head">
-        <h2>Field</h2>
+        <h2>Field <details class="info"><summary title="More info">i</summary><div class="info-body">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on either image to zoom it.</div></details></h2>
         <span class="zoom">
           <button id="zoom-in" class="small" title="Zoom both panels in (+)">+</button>
           <span id="fov" class="muted"></span>
@@ -144,7 +144,6 @@
       </div>
       <div id="field-legend" class="legend legend-row"></div>
       <div id="field-hover" class="detail">&nbsp;</div>
-      <div class="hint">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on either image to zoom it.</div>
     </div>
     <div class="card">
       <div class="card-head">

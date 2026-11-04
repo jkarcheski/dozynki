@@ -54,6 +54,15 @@ h2 { font-size: 14px; margin: 0; }
 h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .plot { height: 360px; }
 .hint { color: var(--muted); font-size: 12px; }
+/* Click-to-expand help: <details class="info"><summary>i</summary><div class="info-body">…</div></details> */
+.info { display: inline-block; position: relative; vertical-align: 1px; margin-left: 4px; font-size: 12px; font-weight: 400; }
+.info > summary { list-style: none; cursor: pointer; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--muted);
+  color: var(--muted); font: italic 700 10px/13px Georgia, serif; text-align: center; user-select: none; }
+.info > summary::-webkit-details-marker { display: none; }
+.info > summary:hover, .info[open] > summary { color: var(--accent); border-color: var(--accent); }
+.info-body { position: absolute; top: 20px; left: -8px; z-index: 20; width: max-content; max-width: min(380px, 80vw);
+  white-space: normal; font-style: normal; text-transform: none; letter-spacing: normal; line-height: 1.45; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 14px rgb(0 0 0 / .18); }
 .links a { color: var(--accent); margin-right: 10px; font-size: 12px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; padding: 3px 10px; }
