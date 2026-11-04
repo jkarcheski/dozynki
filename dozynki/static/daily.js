@@ -70,8 +70,12 @@ function renderReport(r) {
   if (rep.watchlist) items.push(watchItem(rep.watchlist));
   if (rep.alerce_sn) items.push(snItem(rep.alerce_sn));
   if (r.emailed) items.push(`<li class="muted">Email: ${esc(r.emailed)}</li>`);
+  if (r.slacked) items.push(`<li class="muted">Slack: ${esc(r.slacked)}</li>`);
   const title = r.state === "error" ? `Failed: ${esc(r.error)}` : esc(r.headline);
-  return `<div class="report ${r.state}${r.read_at ? "" : " unread"}"><h3>${title} ${when}</h3><ul>${items.join("")}</ul></div>`;
+  const failed = r.state === "error" || rep.night_error || [...(rep.filters || []), rep.watchlist, rep.alerce_sn].some((j) => j?.error);
+  const rerun = failed ? `<button class="small" data-rerun="${r.id}">Rerun failed jobs</button>` : "";
+  const post = state.slack && r.state === "done" ? `<button class="small" data-slack="${r.id}" title="Posts this report, with your DOZYNKI handle, to your Slack channel">Send to Slack</button>` : "";
+  return `<div class="report ${r.state}${r.read_at ? "" : " unread"}"><h3>${title} ${when} ${rerun}${post}</h3><ul>${items.join("")}</ul></div>`;
 }
 
 function renderReports() {
@@ -84,6 +88,28 @@ function renderReports() {
   $("#reports").innerHTML = renderReport(latest) + (older.length
     ? `<details class="older"><summary class="muted">${older.length} earlier report${older.length > 1 ? "s" : ""}</summary>${older.map(renderReport).join("")}</details>`
     : "");
+  $("#reports").querySelectorAll("[data-slack]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await api(`/api/daily/slack/${b.dataset.slack}`, { method: "POST" });
+      toast("Posted to Slack");
+      load();
+    } catch (err) {
+      toast("Couldn't post to Slack: " + err.message, 5000);
+      b.disabled = false;
+    }
+  }));
+  $("#reports").querySelectorAll("[data-rerun]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await api(`/api/daily/rerun/${b.dataset.rerun}`, { method: "POST" });
+      toast("Rerunning the failed jobs");
+      load();
+    } catch (err) {
+      toast("Couldn't rerun: " + err.message, 5000);
+      b.disabled = false;
+    }
+  }));
 }
 
 // The kinds of job, in the order "Add a job" offers them. Each says whether it is on in the settings, sums itself
@@ -151,6 +177,12 @@ function renderSchedule() {
   form.elements.time.value = s.time;
   form.elements.email.checked = s.email && state.emails;
   form.elements.email.disabled = !state.emails;
+  form.elements.slack.checked = s.slack && state.slack;
+  form.elements.slack.disabled = !state.slack;
+  $("#slack-hint").textContent = (state.slack
+    ? "to your channel's incoming webhook in DOZYNKI_SLACK_WEBHOOK (.env)"
+    : `add ${state.labeler}=<incoming webhook URL> to DOZYNKI_SLACK_WEBHOOK in .env; the URL is never stored in the database`)
+    + `. Everyone in the channel will see your DOZYNKI handle, ${state.labeler}: it's in the name of your ALeRCE SN list.`;
   $("#email-hint").textContent = state.emails
     ? "to your address in DOZYNKI_REPORT_EMAIL, through the DOZYNKI_SMTP_* server (.env)"
     : `add ${state.labeler}=<address> to DOZYNKI_REPORT_EMAIL in .env, and set the DOZYNKI_SMTP_* server; the address is never stored in the database`;
@@ -214,7 +246,9 @@ $("#schedule").onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target;
   try {
-    await save({ enabled: form.elements.enabled.checked, time: form.elements.time.value, email: form.elements.email.checked });
+    await save({ enabled: form.elements.enabled.checked, time: form.elements.time.value,
+                 email: state.emails ? form.elements.email.checked : state.settings.email,
+                 slack: state.slack ? form.elements.slack.checked : state.settings.slack });
     $("#saved").textContent = "saved";
     toast(state.settings.enabled ? `Saved; the jobs run every day at ${state.settings.time}` : "Saved; the daily run is off");
   } catch (err) {
@@ -253,4 +287,5 @@ $("#run-now").onclick = async () => {
   }
 };
 
+window.addEventListener("daily:changed", () => load());  // the pop-up started or finished a rerun
 load(true);

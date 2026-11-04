@@ -1,8 +1,8 @@
 """Daily jobs: each morning, the night just gone through your saved filters, a recheck of your watchlist,
 and ALeRCE's new high-probability supernovae, summed up in one report ("12 new objects to vet").
 
-The report is kept per labeler (daily_reports) for the Daily page and the tab's unread count, and
-emailed to the labeler's address in DOZYNKI_REPORT_EMAIL, if it has one. A scheduler thread in the server starts each
+The report is kept per labeler (daily_reports) for the Daily page and the tab's unread count, emailed to
+the labeler's address in DOZYNKI_REPORT_EMAIL and posted to their Slack webhook in DOZYNKI_SLACK_WEBHOOK, if set. A scheduler thread in the server starts each
 labeler's jobs once their time of day (server's local time) has passed and the night has no report yet;
 `python -m dozynki.daily` runs them now, from a terminal or a cron job.
 
@@ -21,9 +21,9 @@ from urllib.parse import urlparse
 
 import requests
 
-from . import achievements, assemble, db, lists, mail, nightrun, screen, sources
+from . import achievements, assemble, db, lists, mail, nightrun, screen, slack, sources
 from .brokers import alerce, antares
-from .config import BASE_URL, LABELER, REPORT_EMAILS
+from .config import BASE_URL, LABELER, REPORT_EMAILS, SLACK_WEBHOOKS
 
 DEFAULTS = {
     "enabled": False,
@@ -36,6 +36,7 @@ DEFAULTS = {
     "sn_days": 3,             # first detected within this many nights, so a second detection a night later still counts
     "sn_max": 200,            # most probable new ones added to the list per day
     "email": True,
+    "slack": True,            # post to the labeler's Slack webhook, if it has one
 }
 SN_CLASSIFIER = "stamp_classifier_rubin_beta_20260421"  # ALeRCE's newest LSST classifier with an SN class
 SCREEN_WAIT = 3 * 3600  # seconds to wait for a filter's background check before reporting what's left
@@ -84,6 +85,20 @@ def save_settings(labeler, config):
 def emails(labeler):
     """Whether this labeler's reports can be emailed: their address is only in .env (DOZYNKI_REPORT_EMAIL)."""
     return labeler.lower() in REPORT_EMAILS
+
+
+def posts(labeler):
+    """Whether this labeler's reports can go to Slack: their webhook is only in .env (DOZYNKI_SLACK_WEBHOOK)."""
+    return labeler.lower() in SLACK_WEBHOOKS
+
+
+def send_slack(labeler, title, report):
+    """Post a report to the labeler's Slack channel; returns "sent" or why it wasn't, for daily_reports.slacked."""
+    try:
+        slack.post(SLACK_WEBHOOKS[labeler.lower()], slack_text(title, report))
+        return "sent"
+    except Exception as e:
+        return f"not sent: {_why(e)}"
 
 
 def last_night(now=None):
@@ -195,13 +210,9 @@ def _to_vet(labeler, object_ids):
                     (*object_ids, labeler))[0]["n"]
 
 
-def failed(report):
-    jobs = report["filters"] + [report[k] for k in ("watchlist", "alerce_sn") if report.get(k)]
-    return sum(1 for j in jobs if j.get("error"))
-
-
 def headline(report):
-    n, night, bad = report["n_to_vet"], report["night"], failed(report)
+    n, night = report["n_to_vet"], report["night"]
+    bad = sum(1 for part, _ in problems(report) if part != "night")  # the night's count isn't a job
     vet = f"{n} new object{'s' * (n != 1)} to vet"
     if report.get("n_night") == 0:
         title = f"LSST produced no new alerts last night ({night})" + (f"; {vet}" if n else "")
@@ -210,7 +221,64 @@ def headline(report):
     return title + (f" ({bad} job{'s' * (bad != 1)} failed)" if bad else "")
 
 
+def problems(report, state="done", error=None):
+    """What went wrong in a report, as [(part, line)]; part is what rerun() redoes ("night", "filter:<name>",
+    "watchlist", "alerce_sn"). A run that stopped in the middle names the jobs it never got to as "all"."""
+    report = report or {}
+    out = []
+    if state == "error":
+        out.append(("all", f"The run stopped: {error}"))
+    if report.get("night_error"):
+        out.append(("night", f"Counting the night in ANTARES: {report['night_error']}"))
+    out += [(f"filter:{f['name']}", f"Filter \"{f['name']}\": {f['error']}") for f in report.get("filters", []) if f.get("error")]
+    for key, what in (("watchlist", "Watchlist recheck"), ("alerce_sn", "ALeRCE SN")):
+        if (report.get(key) or {}).get("error"):
+            out.append((key, f"{what}: {report[key]['error']}"))
+    return out
+
+
 # ---------- report ----------
+
+def _jobs(labeler, night, cfg, report, redo=None):
+    """Run the jobs into report. redo (a set of problems() parts) runs only those and keeps the rest; "all" in it
+    runs everything configured that the report has no result for, as after a run that stopped."""
+    everything = redo is None or "all" in redo
+    want = lambda part, done: redo is None or part in redo or ("all" in redo and not done)
+    if want("night", "n_night" in report):
+        report.pop("night_error", None)
+        try:
+            report["n_night"] = night_size(night)
+        except Exception as e:
+            report["n_night"], report["night_error"] = None, _why(e)
+    old = {f["name"]: f for f in report.get("filters", [])}
+    names = list(old) + [n for n in cfg["filters"] if n not in old] if everything else list(old)
+    report["filters"] = []
+    for name in names:
+        if not want(f"filter:{name}", name in old):
+            report["filters"].append(old[name])
+            continue
+        try:
+            report["filters"].append(filter_job(labeler, night, name))
+        except Exception as e:
+            report["filters"].append({"name": name, "error": _why(e)})
+    if cfg["watchlist"] and want("watchlist", "watchlist" in report) or "watchlist" in (redo or ()):
+        try:
+            report["watchlist"] = recheck_watchlist(labeler)
+        except Exception as e:
+            report["watchlist"] = {"error": _why(e)}
+    if cfg["alerce_sn"] and want("alerce_sn", "alerce_sn" in report) or "alerce_sn" in (redo or ()):
+        try:
+            report["alerce_sn"] = alerce_sn_job(labeler, night, cfg)
+        except Exception as e:
+            report["alerce_sn"] = {"error": _why(e)}
+    sn = report.get("alerce_sn") or {}
+    if "added" in sn:
+        sn["to_vet"] = _to_vet(labeler, [a["object_id"] for a in sn["added"]])
+    report["n_to_vet"] = (sum(f.get("left", 0) for f in report["filters"])
+                          + len((report.get("watchlist") or {}).get("requeued", []))
+                          + sn.get("to_vet", 0))
+    return headline(report)
+
 
 def run(labeler, night=None, email=True, report_id=None):
     """Run the labeler's jobs for a night (default: last night) and store the report; returns its id."""
@@ -221,33 +289,7 @@ def run(labeler, night=None, email=True, report_id=None):
         report_id = start_report(labeler, night)
     report = {"night": night}
     try:
-        try:
-            report["n_night"] = night_size(night)
-        except Exception as e:
-            report["n_night"], report["night_error"] = None, _why(e)
-        report["filters"] = []
-        for name in cfg["filters"]:
-            try:
-                report["filters"].append(filter_job(labeler, night, name))
-            except Exception as e:
-                report["filters"].append({"name": name, "error": _why(e)})
-        if cfg["watchlist"]:
-            try:
-                report["watchlist"] = recheck_watchlist(labeler)
-            except Exception as e:
-                report["watchlist"] = {"error": _why(e)}
-        if cfg["alerce_sn"]:
-            try:
-                report["alerce_sn"] = alerce_sn_job(labeler, night, cfg)
-            except Exception as e:
-                report["alerce_sn"] = {"error": _why(e)}
-        sn = report.get("alerce_sn") or {}
-        if "added" in sn:
-            sn["to_vet"] = _to_vet(labeler, [a["object_id"] for a in sn["added"]])
-        report["n_to_vet"] = (sum(f.get("left", 0) for f in report["filters"])
-                              + len((report.get("watchlist") or {}).get("requeued", []))
-                              + sn.get("to_vet", 0))
-        title = headline(report)
+        title = _jobs(labeler, night, cfg, report)
         emailed = None
         if email and cfg["email"] and emails(labeler):
             try:
@@ -257,12 +299,59 @@ def run(labeler, night=None, email=True, report_id=None):
                 emailed = "sent"
             except Exception as e:
                 emailed = f"not sent: {_why(e)}"
-        db.execute("UPDATE daily_reports SET state = 'done', headline = ?, report = ?, emailed = ?, finished_at = ? "
-                   "WHERE id = ?", (title, json.dumps(report), emailed, db.now(), report_id))
+        slacked = send_slack(labeler, title, report) if email and cfg["slack"] and posts(labeler) else None
+        db.execute("UPDATE daily_reports SET state = 'done', headline = ?, report = ?, emailed = ?, slacked = ?, "
+                   "finished_at = ? WHERE id = ?", (title, json.dumps(report), emailed, slacked, db.now(), report_id))
     except Exception as e:
         db.execute("UPDATE daily_reports SET state = 'error', report = ?, error = ?, finished_at = ? WHERE id = ?",
                    (json.dumps(report), _why(e), db.now(), report_id))
     return report_id
+
+
+def _rerun(labeler, row, redo):
+    report = json.loads(row["report"]) if row["report"] else {"night": row["night"]}
+    try:
+        title = _jobs(labeler, row["night"], settings(labeler), report, redo)
+        db.execute("UPDATE daily_reports SET state = 'done', headline = ?, report = ?, error = NULL, finished_at = ?, "
+                   "read_at = NULL WHERE id = ?", (title, json.dumps(report), db.now(), row["id"]))
+    except Exception as e:
+        db.execute("UPDATE daily_reports SET state = 'error', report = ?, error = ?, finished_at = ? WHERE id = ?",
+                   (json.dumps(report), _why(e), db.now(), row["id"]))
+
+
+def rerun(labeler, report_id):
+    """Run a report's failed jobs again, in the background, into the same report (not emailed again)."""
+    rows = db.query("SELECT * FROM daily_reports WHERE id = ? AND labeler = ?", (report_id, labeler))
+    if not rows:
+        raise KeyError(report_id)
+    row = rows[0]
+    redo = {part for part, _ in problems(json.loads(row["report"]) if row["report"] else None, row["state"], row["error"])}
+    if not redo:
+        raise ValueError("every job in this report ran")
+    if any(_alive(r["pid"]) for r in db.query("SELECT pid FROM daily_reports WHERE labeler = ? AND state = 'running'",
+                                               (labeler,))):
+        raise RuntimeError("the daily jobs are already running")
+    db.execute("UPDATE daily_reports SET state = 'running', pid = ?, dismissed_at = NULL WHERE id = ?", (os.getpid(), report_id))
+    threading.Thread(target=_rerun, args=(labeler, row, redo), daemon=True).start()
+
+
+def alert(labeler):
+    """The latest report, if it ran with problems the labeler hasn't dismissed, or is being rerun."""
+    rows = db.query("SELECT * FROM daily_reports WHERE labeler = ? ORDER BY id DESC LIMIT 1", (labeler,))
+    if not rows:
+        return None
+    r = rows[0]
+    if r["state"] == "running":
+        return {"id": r["id"], "night": r["night"], "running": True}
+    found = problems(json.loads(r["report"]) if r["report"] else None, r["state"], r["error"])
+    if not found or r["dismissed_at"]:
+        return None
+    return {"id": r["id"], "night": r["night"], "running": False, "headline": r["headline"],
+            "problems": [line for _, line in found]}
+
+
+def dismiss(labeler, report_id):
+    db.execute("UPDATE daily_reports SET dismissed_at = ? WHERE id = ? AND labeler = ?", (db.now(), report_id, labeler))
 
 
 def start_report(labeler, night):
@@ -317,6 +406,24 @@ def email_body(title, report):
                 lines.append(f"  ... and {len(sn['added']) - 20} more in List mode")
     lines.append(f"\nAll reports: {LINK_BASE}/daily")
     return "\n".join(lines)
+
+
+def slack_text(title, report):
+    """The email's text with a bold title; Slack makes the links clickable itself."""
+    return f"*DOZYNKI: {title}*\n" + email_body(title, report).split("\n", 1)[1]
+
+
+def post_report(labeler, report_id):
+    """Post a stored report to the labeler's Slack channel now (the Daily page's "Send to Slack")."""
+    rows = db.query("SELECT headline, report FROM daily_reports WHERE id = ? AND labeler = ? AND state = 'done'",
+                    (report_id, labeler))
+    if not rows:
+        raise KeyError(report_id)
+    if not posts(labeler):
+        raise ValueError(f"no Slack webhook for {labeler} in DOZYNKI_SLACK_WEBHOOK")
+    result = send_slack(labeler, rows[0]["headline"], json.loads(rows[0]["report"]))
+    db.execute("UPDATE daily_reports SET slacked = ? WHERE id = ?", (result, report_id))
+    return result
 
 
 def reports(labeler, limit=30):
@@ -378,7 +485,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Run the daily jobs now and store (and email) the report.")
     parser.add_argument("--labeler", default=LABELER)
     parser.add_argument("--night", help="Rubin dayObs, YYYY-MM-DD (default: last night)")
-    parser.add_argument("--no-email", action="store_true")
+    parser.add_argument("--no-email", action="store_true", help="neither email nor post to Slack")
     args = parser.parse_args(argv)
     report_id = run(args.labeler, args.night, email=not args.no_email)
     r = reports(args.labeler, 1)[0]
@@ -387,6 +494,8 @@ def main(argv=None):
         print(email_body(r["headline"], r["report"]))
     if r["emailed"]:
         print(f"email: {r['emailed']}")
+    if r["slacked"]:
+        print(f"Slack: {r['slacked']}")
     return report_id
 
 

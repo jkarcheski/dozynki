@@ -130,7 +130,9 @@ def _nav(active, request):
                f'<a href="/account" class="who{" on" if active == "/account" else ""}" '
                'title="You are vetting as a guest. Make a profile to be on the leaderboard and share filters.">guest · sign in</a>')
     # the profile link sits outside the tab bar, so CSS can pin it to the header's right-hand end
-    return f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>{who}'
+    # daily-alert.js pops up on every page when the latest daily report has jobs that failed
+    return (f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>{who}'
+            '<script src="/static/daily-alert.js" defer></script>')
 
 
 def _page(path, request):
@@ -725,6 +727,7 @@ def daily_status(request: Request):
     """Your daily jobs' settings and recent reports, and what the page needs to edit them."""
     who = _daily_labeler(request)
     return {"labeler": who, "settings": daily.settings(who), "reports": daily.reports(who), "emails": daily.emails(who),
+            "slack": daily.posts(who),
             "saved_filters": [p["name"] for p in db.saved_pipelines()], "last_night": daily.last_night(),
             "sn_list": daily.sn_list_name(who), "sn_classifier": daily.SN_CLASSIFIER}
 
@@ -750,6 +753,47 @@ def daily_run(body: DailyRun, request: Request):
         raise HTTPException(400, str(e))
     except RuntimeError as e:
         raise HTTPException(409, str(e))
+
+
+@app.get("/api/daily/alert")
+def daily_alert(request: Request):
+    """The pop-up on every page: your latest report's failed jobs, or that they're being rerun. Nothing for guests."""
+    who = _who(request)
+    return {"alert": None if who.startswith("guest:") else daily.alert(who)}
+
+
+@app.post("/api/daily/rerun/{report_id}")
+def daily_rerun(report_id: int, request: Request):
+    """Run a report's failed jobs again, now, into the same report."""
+    try:
+        daily.rerun(_daily_labeler(request), report_id)
+    except KeyError:
+        raise HTTPException(404, "no such report")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return {"id": report_id}
+
+
+@app.post("/api/daily/slack/{report_id}")
+def daily_slack(report_id: int, request: Request):
+    """Post one of your reports to your Slack channel now."""
+    try:
+        result = daily.post_report(_daily_labeler(request), report_id)
+    except KeyError:
+        raise HTTPException(404, "no such finished report")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if result != "sent":
+        raise HTTPException(502, result)
+    return {"slacked": result}
+
+
+@app.post("/api/daily/dismiss/{report_id}")
+def daily_dismiss(report_id: int, request: Request):
+    daily.dismiss(_daily_labeler(request), report_id)
+    return {"ok": True}
 
 
 @app.post("/api/daily/read")

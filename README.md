@@ -255,8 +255,18 @@ night: the latest Rubin night that has ended (dayObs D once it is past 11:00 UTC
 whose headline counts what is new to vet, e.g. "12 new objects to vet" or "LSST produced no new alerts last night
 (2026-11-02)". The report shows on the Daily page and the Home page, the tab shows how many reports you haven't
 read, and reports are emailed through the `DOZYNKI_SMTP_*` server to the addresses in `DOZYNKI_REPORT_EMAIL`
-(`handle=address`, comma-separated; a bare address is DOZYNKI_LABELER's). Addresses live only in `.env`, never in
-the database. Guests have no daily jobs.
+(`handle=address`, comma-separated; a bare address is DOZYNKI_LABELER's) and posted to Slack channels through the
+incoming webhooks in `DOZYNKI_SLACK_WEBHOOK` (`handle=<webhook URL>`, the same way). Addresses and webhooks live
+only in `.env`, never in the database. A report on Slack shows your DOZYNKI handle (it names your ALeRCE SN list),
+and the Daily page says so next to the Slack option. "Send to
+Slack" posts any finished report again. Guests have no daily jobs.
+
+The Jobs card puts the time, email and Slack first, then your jobs, one line each; "Add a job" asks what kind of
+job to run and shows only that kind's options (`JOBS` in `static/daily.js`).
+
+**When a job can't run** (a broker down, the server stopped mid-run), a pop-up on every page lists what failed,
+with "Rerun failed jobs": only those run again, now, into the same report (not emailed or posted again), and the
+pop-up says how it went. "Dismiss" hides it for that report; failed reports on the Daily page have the same button.
 
 - **Saved filters**: the night goes through each one as Filtered mode's "run the whole night" does, unless that night
   has already been run through the same version of the filter, and the report waits (up to 3 hours) for the
@@ -303,7 +313,8 @@ dozynki/
   archival.py       archival light curves at the position: ZTF data releases, Pan-STARRS1 DR2
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
-  daily.py          daily jobs (filters, watchlist, ALeRCE SN), their schedule and report; mail.py sends email
+  daily.py          daily jobs (filters, watchlist, ALeRCE SN), their schedule, report and reruns; mail.py and
+                    slack.py send it
   sky.py            sky map data
   similar.py        feature vectors, PCA map and nearest neighbors (similar-objects page)
   brokers/          antares.py, alerce.py, babamul_client.py, yse.py (YSE PZ)

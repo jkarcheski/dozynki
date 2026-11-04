@@ -200,6 +200,9 @@ MIGRATIONS = {
     "night_pulls": {"seed": "INTEGER", "start": "INTEGER", "n_matching": "INTEGER"},
     # labeler who saved the filter, the only one who may overwrite or delete it; NULL for filters from before
     "saved_pipelines": {"owner": "TEXT"},
+    # when the labeler closed the pop-up about a report's failed jobs (daily.alert)
+    "daily_reports": {"dismissed_at": "TEXT",
+                      "slacked": "TEXT"},  # "sent", the reason it wasn't, or NULL, like emailed
 }
 for _table, _cols in MIGRATIONS.items():
     _have = {r["name"] for r in _conn.execute(f"PRAGMA table_info({_table})")}
