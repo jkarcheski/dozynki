@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, similar, sky, sources, tns
-from . import nightrun
+from . import daily, nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, pittgoogle, yse
 from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
@@ -29,6 +29,7 @@ PREFETCH = 6
 
 app = FastAPI(title="DOZYNKI alert vetter")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+daily.start_scheduler()
 blind_mode = {}  # labeler -> blind on/off; a restart goes back to BLIND_DEFAULT
 
 
@@ -41,6 +42,7 @@ PAGES = [
     ("/similar", "similar.html", "Similar"),
     ("/compare", "compare.html", "Compare"),
     ("/watchlist", "watchlist.html", "Watchlist"),
+    ("/daily", "daily.html", "Daily"),
 ]
 OTHER_PAGES = [("/account", "account.html")]  # no tab
 
@@ -114,7 +116,9 @@ def _code_changed():
 
 def _nav(active, request):
     on = ' class="on" aria-current="page"'
-    tabs = "".join(f'<a href="{path}"{on if path == active else ""}>{label}</a>' for path, _, label in PAGES[1:])
+    unread = daily.unread(_who(request))
+    badge = {"/daily": f' <span class="badge" title="{unread} unread report{"s" * (unread != 1)}">{unread}</span>' if unread else ""}
+    tabs = "".join(f'<a href="{path}"{on if path == active else ""}>{label}{badge.get(path, "")}</a>' for path, _, label in PAGES[1:])
     stale = ('<span class="stale" title="The server is still running the code it started with, so pages may '
              'call features it doesn\'t have yet. Stop it and run python -m dozynki again.">'
              'Code changed: restart the server</span>') if _code_changed() else ""
@@ -175,6 +179,11 @@ def similar_page(request: Request):
 @app.get("/watchlist")
 def watchlist_page(request: Request):
     return _page("/watchlist", request)
+
+
+@app.get("/daily")
+def daily_page(request: Request):
+    return _page("/daily", request)
 
 
 @app.get("/account")
@@ -662,24 +671,7 @@ def post_label(body: Label, request: Request):
 @app.post("/api/watch/recheck")
 def watch_recheck(request: Request):
     """Re-poll ANTARES for your watched objects; any with new alerts go back to your queue."""
-    updated, unchanged, errors = [], 0, {}
-    for item in db.watched(_who(request)):
-        oid = item["object_id"]
-        try:
-            old = db.cache_get(oid, "antares")
-            n_old = (old["data"].get("num_alerts") or len(old["data"]["points"])) if old else 0
-            summary = antares.locus_summary(item["antares_locus"])
-            db.set_summary(oid, summary)
-            n_new = summary["num_alerts"] or 0
-            if n_new > n_old:
-                assemble.refresh_brokers(oid, _who(request))
-                db.set_status(oid, _who(request), None)
-                updated.append({"object_id": oid, "new_alerts": n_new - n_old})
-            else:
-                unchanged += 1
-        except Exception as e:
-            errors[oid] = f"{type(e).__name__}: {e}"
-    return {"requeued": updated, "unchanged": unchanged, "errors": errors}
+    return daily.recheck_watchlist(_who(request))
 
 
 WATCHLIST_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "n_det", "last_mag", "last_band", "last_mjd", "klass",
@@ -719,6 +711,51 @@ def watchlist_csv(request: Request, since: str = ""):
     writer.writerows(rows)
     name = f"watchlist{'_since_' + since if since else ''}.csv"
     return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+def _daily_labeler(request):
+    who = _who(request)
+    if who.startswith("guest:"):
+        raise HTTPException(403, "make a profile to get daily reports")
+    return who
+
+
+@app.get("/api/daily")
+def daily_status(request: Request):
+    """Your daily jobs' settings and recent reports, and what the page needs to edit them."""
+    who = _daily_labeler(request)
+    return {"labeler": who, "settings": daily.settings(who), "reports": daily.reports(who), "emails": daily.emails(who),
+            "saved_filters": [p["name"] for p in db.saved_pipelines()], "last_night": daily.last_night(),
+            "sn_list": daily.sn_list_name(who), "sn_classifier": daily.SN_CLASSIFIER}
+
+
+@app.post("/api/daily/settings")
+def daily_settings(body: dict, request: Request):
+    try:
+        return daily.save_settings(_daily_labeler(request), body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class DailyRun(BaseModel):
+    night: str | None = None
+
+
+@app.post("/api/daily/run")
+def daily_run(body: DailyRun, request: Request):
+    """Run your daily jobs now, in the background (for last night unless a night is given)."""
+    try:
+        return {"id": daily.run_in_background(_daily_labeler(request), body.night or None)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/daily/read")
+def daily_read(request: Request):
+    daily.mark_read(_daily_labeler(request))
+    return {"ok": True}
 
 
 @app.post("/api/xmatch/fill-missing")

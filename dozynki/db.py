@@ -147,6 +147,25 @@ CREATE TABLE IF NOT EXISTS list_members (
     added_at    TEXT NOT NULL,
     PRIMARY KEY (list, object_id)
 );
+CREATE TABLE IF NOT EXISTS daily_settings (
+    labeler     TEXT PRIMARY KEY,
+    config      TEXT NOT NULL,         -- JSON: which jobs run and when (daily.DEFAULTS)
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS daily_reports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    labeler     TEXT NOT NULL,
+    night       TEXT NOT NULL,         -- Rubin dayObs the report covers, YYYY-MM-DD
+    state       TEXT NOT NULL,         -- running | done | error
+    pid         INTEGER,               -- process running it, so a stopped one can be told from a running one
+    headline    TEXT,                  -- "12 new objects to vet", the email's subject
+    report      TEXT,                  -- JSON: each job's results (daily.py)
+    emailed     TEXT,                  -- "sent", the reason it wasn't, or NULL
+    error       TEXT,
+    started_at  TEXT NOT NULL,
+    finished_at TEXT,
+    read_at     TEXT
+);
 CREATE TABLE IF NOT EXISTS password_resets (
     token_hash  TEXT PRIMARY KEY,      -- sha256 of the emailed token
     user_id     INTEGER NOT NULL,

@@ -24,6 +24,10 @@ ACCOUNTS = os.environ.get("DOZYNKI_ACCOUNTS", "0") not in ("0", "false", "False"
 SECURE_COOKIES = os.environ.get("DOZYNKI_SECURE_COOKIES", "0") not in ("0", "false", "False", "")  # behind https
 BASE_URL = os.environ.get("DOZYNKI_BASE_URL", "").rstrip("/")  # for reset links; else the request's own address
 SMTP = {k: os.environ.get(f"DOZYNKI_SMTP_{k.upper()}", "") for k in ("host", "port", "user", "password", "from")}
+# Where daily reports are emailed (daily.py): "handle=address, ...", or a bare address for LABELER.
+# Only in .env, never in the database.
+REPORT_EMAILS = {(h.strip() if a else LABELER).lower(): (a or h).strip()
+                 for h, _, a in (e.partition("=") for e in os.environ.get("DOZYNKI_REPORT_EMAIL", "").split(",") if e.strip())}
 
 ANTARES_API = "https://api.antares.noirlab.edu/v2"
 # Pitt-Google's BigQuery archive of the LSST alert stream; queries are billed to your own project

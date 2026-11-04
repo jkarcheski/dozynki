@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOZYNKI daily</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rejection.css">
+  <link rel="stylesheet" href="/static/home.css">
+  <link rel="stylesheet" href="/static/daily.css">
+</head>
+<body class="lab">
+<header>
+  <!--nav-->
+</header>
+
+<main class="home">
+  <section class="card">
+    <div class="card-head">
+      <h2>Daily reports <details class="info"><summary title="More info">i</summary><div class="info-body">Each morning the jobs below run on
+      last night: the latest Rubin night that has ended (dayObs, noon to noon UTC). Filters run the whole night through a saved filter,
+      as Filtered mode does, and wait for the background check; the watchlist is rechecked for new alerts; ALeRCE's new
+      high-probability supernovae are added to an object list. The report says how many objects are new to vet.</div></details></h2>
+      <span class="daily-controls">
+        <label class="muted">night <input type="date" id="night"></label>
+        <button id="run-now" class="primary" title="Run the jobs below now, in the background">Run now</button>
+      </span>
+    </div>
+    <div id="reports"></div>
+    <div id="err" class="err"></div>
+  </section>
+
+  <section class="card" id="jobs">
+    <div class="card-head"><h2>Jobs</h2><span id="saved" class="hint"></span></div>
+    <form id="settings" class="daily-settings">
+      <label class="row"><input type="checkbox" name="enabled"> Run every day at <input type="time" name="time" required>
+        <span class="muted">(this server's local time)</span></label>
+
+      <fieldset>
+        <legend>Run last night through saved filters</legend>
+        <div id="filters" class="checks"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Watchlist</legend>
+        <label class="row"><input type="checkbox" name="watchlist"> Recheck watched objects; ones with new alerts go back to your queue</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>ALeRCE supernovae</legend>
+        <label class="row"><input type="checkbox" name="alerce_sn"> Add new LSST objects whose top ALeRCE class is SN to the list
+          <b id="sn-list"></b></label>
+        <div class="row nums">
+          <label>p ≥ <input type="number" name="sn_min_prob" min="0" max="1" step="0.05"></label>
+          <label>detections ≥ <input type="number" name="sn_min_det" min="1" step="1"></label>
+          <label>first seen in the last <input type="number" name="sn_days" min="1" max="30" step="1"> nights</label>
+          <label>at most <input type="number" name="sn_max" min="1" max="2000" step="1"> a day, most probable first</label>
+        </div>
+        <div class="hint" id="sn-hint"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Email</legend>
+        <label class="row"><input type="checkbox" name="email"> Email me the report</label>
+        <div class="hint" id="email-hint"></div>
+      </fieldset>
+      <button class="primary" type="submit">Save</button>
+    </form>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/static/daily.js"></script>
+</body>
+</html>

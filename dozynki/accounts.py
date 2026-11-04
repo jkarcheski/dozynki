@@ -13,15 +13,13 @@ import hashlib
 import hmac
 import re
 import secrets
-import smtplib
 import sys
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 
-from . import db
-from .config import BASE_URL, SMTP
+from . import db, mail
+from .config import BASE_URL
 
 SESSION_COOKIE = "dozynki_session"
 GUEST_COOKIE = "dozynki_guest"
@@ -208,18 +206,11 @@ def finish_reset(token, password):
 
 
 def _send(to, subject, body):
-    if not SMTP["host"]:
+    if not mail.configured():
         # no mail server configured (a test install): the admin can pass the link on
         print(f"[accounts] no DOZYNKI_SMTP_HOST; reset link for {to}:\n{body}", file=sys.stderr)
         return
-    msg = EmailMessage()
-    msg["From"], msg["To"], msg["Subject"] = SMTP["from"] or SMTP["user"], to, subject
-    msg.set_content(body)
-    with smtplib.SMTP(SMTP["host"], int(SMTP["port"] or 587), timeout=20) as s:
-        s.starttls()
-        if SMTP["user"]:
-            s.login(SMTP["user"], SMTP["password"])
-        s.send_message(msg)
+    mail.send(to, subject, body)
 
 
 # ---------- admin commands ----------

@@ -1,0 +1,21 @@
+/* Daily page; layout from home.css. */
+.daily-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.daily-settings { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.daily-settings fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 8px; margin: 0; }
+.daily-settings legend { font-weight: 600; padding: 0 4px; }
+.daily-settings .row { display: block; margin: 3px 0; line-height: 2; }
+.daily-settings .nums { display: flex; flex-wrap: wrap; gap: 0 14px; }
+.daily-settings input[type=number] { width: 70px; padding: 3px 6px; }
+.daily-settings button[type=submit] { align-self: flex-start; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.report { border-top: 1px solid var(--line); padding: 10px 0; }
+.report:first-child { border-top: 0; }
+.report h3 { margin: 0 0 4px; font-size: 15px; color: var(--ink); text-transform: none; letter-spacing: normal;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.report.unread h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); align-self: center; }
+.report.error h3 { color: var(--warn); }
+.report ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.report li { margin: 2px 0; overflow-wrap: anywhere; }
+.report a { color: var(--accent); }
+.report .ids { font-size: 12px; color: var(--muted); }
+.report .older { margin-top: 4px; }

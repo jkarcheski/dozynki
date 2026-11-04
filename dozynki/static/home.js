@@ -52,6 +52,19 @@ async function init() {
     `<span style="--c:var(--cls-${r.key})"><i></i>${esc(r.label)} <b>${r.n}</b></span>`).join("");
 }
 
+// The latest daily report's headline ("12 new objects to vet"), if there is one; guests have none.
+async function daily() {
+  const r = await fetch("/api/daily");
+  if (!r.ok) return;
+  const latest = (await r.json()).reports[0];
+  if (!latest) return;
+  $("#daily-headline").textContent = latest.state === "running" ? "Running…"
+    : latest.state === "error" ? `Failed: ${latest.error}` : latest.headline;
+  $("#daily-night").textContent = `night of ${latest.night}${latest.read_at ? "" : " · new"}`;
+  $("#daily").hidden = false;
+}
+daily().catch(() => {});
+
 init().catch((e) => {
   $("#err").textContent = e.message;
   if (!$("#harvest").innerHTML) Harvest.field($("#harvest"));

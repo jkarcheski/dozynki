@@ -30,6 +30,20 @@ def lsst_position(dia_object_id):
     return o["meanra"], o["meandec"]
 
 
+def lsst_top_class_since(classifier, class_name, min_prob, since_mjd, max_pages=100):
+    """LSST objects whose top class from `classifier` is class_name at probability >= min_prob, first detected
+    at or after since_mjd. ALeRCE's firstmjd filter times out, so this pages newest first and stops there."""
+    out = []
+    for page in range(1, max_pages + 1):
+        rows = _client.query_objects(survey="lsst", classifier=classifier, class_name=class_name, probability=min_prob,
+                                     ranking=1, order_by="firstmjd", order_mode="DESC", page=page, page_size=100,
+                                     format="json") or []
+        out += [r for r in rows if r["firstmjd"] >= since_mjd]
+        if len(rows) < 100 or rows[-1]["firstmjd"] < since_mjd:
+            break
+    return out
+
+
 def fetch(dia_object_id, ztf_object_id=None):
     result = {"lsst": None, "ztf": None, "errors": {}}
     try:

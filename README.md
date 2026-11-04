@@ -15,6 +15,8 @@ Current pages:
 - **[Similar](#similar-objects)** – a map of objects by their features, and any object's nearest neighbors.
 - **[Compare](#compare-labels-against-brokers-and-each-other)** – confusion matrices between labelers and
   ALeRCE's classifiers.
+- **[Daily](#daily-reports)** – every morning, last night through your saved filters, a watchlist recheck and
+  ALeRCE's new high-probability supernovae, in one report ("12 new objects to vet"), in the app and by email.
 
 ## Setup
 
@@ -246,6 +248,37 @@ objects are left out and counted). Nothing is stored. Code lives in `dozynki/com
 - Blind vs latest for the same labeler shows how much revealing broker opinions shifted your labels.
 - Like the filter lab, only the uniform random sample is used unless the "objects" picker says otherwise (everything queued, or an object list).
 
+## Daily reports
+
+`http://127.0.0.1:8765/daily` (or the "Daily" tab) sets up jobs that run every day at a time you pick, on last
+night: the latest Rubin night that has ended (dayObs D once it is past 11:00 UTC on D+1). Each run is one report
+whose headline counts what is new to vet, e.g. "12 new objects to vet" or "LSST produced no new alerts last night
+(2026-11-02)". The report shows on the Daily page and the Home page, the tab shows how many reports you haven't
+read, and reports are emailed through the `DOZYNKI_SMTP_*` server to the addresses in `DOZYNKI_REPORT_EMAIL`
+(`handle=address`, comma-separated; a bare address is DOZYNKI_LABELER's). Addresses live only in `.env`, never in
+the database. Guests have no daily jobs.
+
+- **Saved filters**: the night goes through each one as Filtered mode's "run the whole night" does, unless that night
+  has already been run through the same version of the filter, and the report waits (up to 3 hours) for the
+  background check. It counts what passed and is left to vet.
+- **Watchlist**: the "Recheck watchlist" button's job; objects with new alerts go back to your queue.
+- **ALeRCE supernovae**: LSST objects first detected in the last few nights (3 by default) whose top class from
+  ALeRCE's stamp classifier (`daily.SN_CLASSIFIER`) is SN at p ≥ 0.7, with 2+ detections. The most probable (200
+  by default) go on your object list "ALeRCE SN · daily · <labeler>", to vet in List mode. On 2026-11-01 about 1,400
+  objects passed p ≥ 0.7 and a quarter of those had 2+ detections. The list is picked by a broker, not
+  a random sample, and it stays out of the filter lab's population like any list.
+
+The scheduler is a thread in the server, so jobs run only while the server is up; a server started after the
+time runs that day's jobs then, and a failed run is tried again after an hour. "Run now" runs them for any night.
+From a terminal or a cron job, without the server:
+
+```bash
+.venv/bin/python -m dozynki.daily                     # last night, for DOZYNKI_LABELER (or --labeler <handle>), emailed
+.venv/bin/python -m dozynki.daily --night 2026-11-02 --no-email
+```
+
+Settings are in `daily_settings` and reports in `daily_reports`; code in `dozynki/daily.py`.
+
 ## Export
 
 The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/`:
@@ -270,6 +303,7 @@ dozynki/
   archival.py       archival light curves at the position: ZTF data releases, Pan-STARRS1 DR2
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
+  daily.py          daily jobs (filters, watchlist, ALeRCE SN), their schedule and report; mail.py sends email
   sky.py            sky map data
   similar.py        feature vectors, PCA map and nearest neighbors (similar-objects page)
   brokers/          antares.py, alerce.py, babamul_client.py, yse.py (YSE PZ)
