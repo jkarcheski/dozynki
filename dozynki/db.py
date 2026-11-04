@@ -195,7 +195,8 @@ MIGRATIONS = {
     "queue": {"n_det": "INTEGER", "first_mjd": "REAL", "last_mjd": "REAL",
               # filtered mode (screen.py): saved filter name the pull was screened with (NULL in random mode),
               # and its verdict: "kept", the rejecting step, or "error" (couldn't fetch, so kept)
-              "screen": "TEXT", "screen_result": "TEXT"},
+              "screen": "TEXT", "screen_result": "TEXT",
+              "screened_at": "TEXT"},  # when screen.py gave its verdict
     # night batches: the random order (seed), where this batch starts in it, and the night's size then
     "night_pulls": {"seed": "INTEGER", "start": "INTEGER", "n_matching": "INTEGER"},
     # labeler who saved the filter, the only one who may overwrite or delete it; NULL for filters from before
@@ -314,8 +315,31 @@ def night_runs(screen=None):
 
 def set_screened(object_id, status, result):
     # only while still waiting: a random-mode pull may have taken the object over meanwhile
-    execute("UPDATE queue SET status = ?, screen_result = ? WHERE object_id = ? AND status = 'screening'",
-            (status, result, object_id))
+    cur = execute("UPDATE queue SET status = ?, screen_result = ?, screened_at = ? WHERE object_id = ? AND status = 'screening'",
+                  (status, result, now(), object_id))
+    if cur.rowcount and status == "filtered":
+        forget_rejected(object_id)
+
+
+def forget_rejected(object_id=None):
+    """Drop what was fetched to screen objects a filter threw away (one, or every one), so a rejected
+    object is just its queue row: id, filter (screen), rejecting step (screen_result) and screened_at.
+    Labeled objects and object-list members keep their cache, which the analysis pages use; opening
+    any of them again fetches afresh."""
+    one, params = ("AND object_id = ?", (object_id,)) if object_id else ("", ())
+    rejected = f"SELECT object_id FROM queue WHERE status = 'filtered' {one}"
+    with _lock:
+        _conn.execute(f"DELETE FROM cache WHERE object_id IN ({rejected}) "
+                      "AND object_id NOT IN (SELECT object_id FROM labels) "
+                      "AND object_id NOT IN (SELECT object_id FROM list_members)", params)
+        _conn.execute(f"DELETE FROM rejections WHERE object_id IN ({rejected})", params)
+        _conn.commit()
+
+
+# Objects rejected before screened_at: when their decisions were saved, then drop what screening fetched.
+execute("UPDATE queue SET screened_at = (SELECT MAX(evaluated_at) FROM rejections r WHERE r.object_id = queue.object_id) "
+        "WHERE status = 'filtered' AND screened_at IS NULL")
+forget_rejected()
 
 
 def mode_counts(screen, labeler):

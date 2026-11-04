@@ -5,7 +5,8 @@ source_params (so later edits to the saved filter don't change what a pull meant
 background thread fetches what the rules read, all of it stored by brokers (ANTARES's object,
 alerts and catalog matches; ALeRCE, and Legacy Survey hosts, only for a rule that reads them;
 not the rest of our crossmatch, which waits until the object is opened), applies the pipeline, and moves it
-to 'pending' (kept) or 'filtered' (rejected; screen_result names the step). An object that can't be fetched goes to 'pending' with screen_result 'error',
+to 'pending' (kept) or 'filtered' (rejected; screen_result names the step, and what was fetched
+is dropped: db.forget_rejected). An object that can't be fetched goes to 'pending' with screen_result 'error',
 so a broker outage hides nothing. Random mode never serves screened objects.
 Objects from a whole-night run (nightrun.py) are also filtered out when none of their
 detections fall on the night.
