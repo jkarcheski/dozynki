@@ -6,9 +6,13 @@ is transformed by hand (log for heavy tails), then scaled robustly (median and I
 so no feature dominates by its units. Nothing is weighted or fit to labels: "similar" means
 close in these features, not "labeled the same".
 
-- projection(): a 2D PCA projection (numpy SVD) of every object, missing values at the median.
+- projection(): a 2D PCA projection (numpy SVD) of every object, fit around missing values (pca()), with how
+  much of each axis an object's own features support, so the page can fade positions that are mostly guesswork.
 - neighbors(): the k nearest objects to one, by rms difference over the features both have,
   so an object without Rubin details is compared on what it does have.
+
+The math is in plain functions over a matrix (scale, pca, distances), which tests/test_similar.py checks
+without a database.
 
 Each object also carries its TNS match (tns.py, ANTARES's match, when cached), for the page to show
 where TNS objects fall; it plays no part in the features or distances.
@@ -26,6 +30,8 @@ from .evaluate import population_ids, truth_labels
 
 CLIP = 5.0  # scaled values beyond this many robust sigmas are clipped
 MIN_SHARED = 0.5  # a neighbor must share at least this fraction of the query's features
+MIN_COVERAGE = 0.05  # a feature fewer objects than this have is left out: too few to place anything by
+MIN_PAIRS = 20  # two features are only compared over at least this many objects that have both
 
 GROUPS = {
     "lightcurve": "Light curve",
@@ -128,6 +134,82 @@ def _value(raw, name, transform):
     return v if v is not None and math.isfinite(v) else None
 
 
+def scale(X):
+    """Robust scaling of each column, in place: (x - median) / (IQR / 1.349), clipped to +-CLIP; NaN stays NaN.
+    Returns the indices of the columns kept (on at least MIN_COVERAGE of the rows, and some spread) and each
+    one's coverage."""
+    keep, coverage = [], []
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        present = col[~np.isnan(col)]
+        if len(present) < max(2, MIN_COVERAGE * len(X)):
+            continue
+        med = np.median(present)
+        q1, q3 = np.percentile(present, [25, 75])
+        spread = (q3 - q1) / 1.349 or present.std()
+        if not spread:
+            continue
+        X[:, j] = np.clip((col - med) / spread, -CLIP, CLIP)
+        keep.append(j)
+        coverage.append(len(present) / len(X))
+    return keep, coverage
+
+
+def pca(X, n=2):
+    """The first n principal components of a scaled matrix with missing values (NaN), without filling them in.
+
+    The axes come from the covariance of what is there: each pair of features is compared over the objects
+    that have both, if at least MIN_PAIRS do (for complete data, exactly plain PCA). Each object is then placed from the features it
+    has: a least-squares fit to the axes, regularized as in probabilistic PCA so that an object with little
+    on an axis sits near that axis's center instead of being thrown far out on a guess, and scaled so a
+    complete object lands exactly where plain PCA puts it.
+
+    Each axis is turned so its largest loading is positive: an SVD's signs are arbitrary, and without this the
+    map could mirror itself whenever the features change.
+
+    Returns (scores, explained fractions, loadings, support): support[i, a] is the share of axis a's loading
+    weight on features object i has, 1 for a complete object and near 0 when its position on a is a guess."""
+    has = ~np.isnan(X)
+    n_obj, d = X.shape
+    k = min(n, d)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mu = np.nan_to_num(np.nanmean(X, axis=0))
+        C = np.where(has, X - mu, 0.0)
+        pairs = has.T.astype(float) @ has  # objects having both features
+        cov = np.where(pairs >= min(MIN_PAIRS, n_obj), np.nan_to_num((C.T @ C) / pairs), 0.0)
+    var, V = np.linalg.eigh(cov)
+    var, V = np.clip(var[::-1], 0, None), V[:, ::-1]  # largest first; pairwise covariances can dip below 0
+    vt = V[:, :k].T
+    vt = vt * np.where(vt[np.arange(k), np.abs(vt).argmax(axis=1)] < 0, -1, 1)[:, None]
+    total = var.sum()
+    explained = var[:k] / total if total else np.zeros(k)
+    noise = var[k:].mean() if d > k else 0.0  # probabilistic PCA's noise: the variance the n axes leave
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ridge = np.where(var[:k] > 0, noise / var[:k], 0.0)
+
+    scores = np.zeros((n_obj, k))
+    support = has.astype(float) @ (vt ** 2).T
+    patterns, which = np.unique(has, axis=0, return_inverse=True)
+    for p, pattern in enumerate(patterns):  # objects missing the same features share one solve
+        if not pattern.any():
+            continue
+        rows = np.flatnonzero(which.ravel() == p)
+        A = vt[:, pattern] @ vt[:, pattern].T + np.diag(ridge)
+        scores[rows] = np.linalg.lstsq(A, vt[:, pattern] @ C[np.ix_(rows, np.flatnonzero(pattern))].T, rcond=None)[0].T * (1 + ridge)
+    return scores, explained, vt, support
+
+
+def distances(X, i):
+    """Each row's distance from row i: rms of the differences over the features both have (NaN where none).
+    Returns (distance, number of shared features, shared mask)."""
+    q = X[i]
+    shared = ~np.isnan(X) & ~np.isnan(q)
+    n_shared = shared.sum(axis=1)
+    d2 = np.where(shared, (X - q) ** 2, 0).sum(axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.sqrt(d2 / n_shared), n_shared, shared
+
+
 def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst"):
     """Scaled matrix (NaN where missing) over the population and the features with any spread."""
     unknown = set(groups) - set(GROUPS)
@@ -138,20 +220,8 @@ def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=N
     ids = sorted(raw)
     feats = [f for f in FEATURES if f[1] in groups]
     X = np.array([[_value(raw[oid], name, t) for name, _, t, _ in feats] for oid in ids], dtype=float).reshape(len(ids), len(feats))
-    keep, columns = [], []
-    for j, (name, group, _, label) in enumerate(feats):
-        col = X[:, j]
-        present = col[~np.isnan(col)]
-        if len(present) < 2:
-            continue
-        med = np.median(present)
-        q1, q3 = np.percentile(present, [25, 75])
-        scale = (q3 - q1) / 1.349 or present.std()
-        if not scale:
-            continue
-        X[:, j] = np.clip((col - med) / scale, -CLIP, CLIP)
-        keep.append(j)
-        columns.append({"name": name, "group": group, "label": label, "coverage": len(present) / len(ids)})
+    keep, coverage = scale(X)
+    columns = [{"name": feats[j][0], "group": feats[j][1], "label": feats[j][3], "coverage": c} for j, c in zip(keep, coverage)]
     return {"ids": ids, "X": X[:, keep], "columns": columns, "raw": raw, "labels": truth_labels(truth)}
 
 
@@ -172,16 +242,13 @@ def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_l
     ids, X, cols = m["ids"], m["X"], m["columns"]
     if len(ids) < 3 or X.shape[1] < 2:
         return {"objects": [], "columns": cols, "explained": [], "loadings": []}
-    Z = np.nan_to_num(X)  # missing at the median
-    Z = Z - Z.mean(axis=0)
-    _, s, vt = np.linalg.svd(Z, full_matrices=False)
-    pcs = Z @ vt[:2].T
-    explained = (s ** 2 / (s ** 2).sum())[:2]
+    pcs, explained, vt, support = pca(X)
     matched = tns.cached()
     loadings = [sorted(({"feature": c["name"], "label": c["label"], "weight": float(w)} for c, w in zip(cols, vt[i])),
                        key=lambda d: -abs(d["weight"])) for i in range(2)]
     return {
         "objects": [{"object_id": oid, "x": float(pcs[i, 0]), "y": float(pcs[i, 1]), "n_features": int((~np.isnan(X[i])).sum()),
+                     "support": [round(float(v), 3) for v in support[i]],
                      **_label(m["labels"], oid), "tns": _tns(matched, oid)} for i, oid in enumerate(ids)],
         "columns": cols, "explained": [float(e) for e in explained], "loadings": loadings,
     }
@@ -208,11 +275,7 @@ def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_G
         raise KeyError(object_id)
     i = ids.index(object_id)
     q = X[i]
-    shared = ~np.isnan(X) & ~np.isnan(q)
-    n_shared = shared.sum(axis=1)
-    d2 = np.where(shared, (X - q) ** 2, 0).sum(axis=1)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        dist = np.sqrt(d2 / n_shared)
+    dist, n_shared, shared = distances(X, i)
     ok = n_shared >= max(1, MIN_SHARED * (~np.isnan(q)).sum())
     ok[i] = False
     if pool == "labeled":

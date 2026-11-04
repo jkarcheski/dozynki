@@ -11,3 +11,4 @@ alerce>=2.3
 babamul
 cryptography  # encrypts stored YSE PZ logins
 google-cloud-bigquery>=3.25  # Pitt-Google source (optional)
+pytest  # tests: python -m pytest tests

@@ -33,8 +33,10 @@
 <main class="lab-main">
   <section class="card wide">
     <div class="card-head">
-      <h2>Feature map <details class="info"><summary title="More info">i</summary><div class="info-body">The first two principal components of the feature vectors (missing values at the median). Nearby points have similar features;
-      the axes are linear mixes of them, listed below. Click a point to list its nearest neighbors.
+      <h2>Feature map <details class="info"><summary title="More info">i</summary><div class="info-body">The first two principal components of the feature vectors. Nearby points have similar features;
+      the axes are linear mixes of them, listed below. Missing values aren't filled in: each object is placed from the features
+      it has, and a faded point lacks most of what an axis is made of, so its position along that axis is mostly a guess
+      (it sits near the middle). Features fewer than 5% of objects have are left out. Click a point to list its nearest neighbors.
       TNS matches are ANTARES's, cached when an object is labeled, by "Check TNS", or by building the TNS list in the vetter; they never enter the features.</div></details></h2>
       <span class="find">
         <input id="find" placeholder="object id" spellcheck="false" list="ids">

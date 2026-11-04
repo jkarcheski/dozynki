@@ -118,10 +118,20 @@ function renderChips() {
   $("#ids").innerHTML = DATA.objects.map((o) => `<option value="${esc(o.object_id)}">`).join("");
 }
 
+// How much of each axis an object's own features carry (similar.pca's support); positions an object's
+// features barely touch are guesses, drawn faint.
+const support = (o) => Math.min(...(o.support || [1]));
+const fade = (objs, base) => objs.map((o) => base * (0.12 + 0.88 * Math.min(1, support(o) / 0.5)));
+const supportNote = (o) => {
+  if (!o.support || support(o) >= 0.5) return "";
+  const pct = (v) => `${Math.round(100 * v)}%`;
+  return `<br><i>position partly a guess: its features carry ${pct(o.support[0])} of PC1, ${pct(o.support[1])} of PC2</i>`;
+};
+
 function renderMap() {
   const hover = (o) => `<b>${esc(o.object_id)}</b><br>${esc(o.klass ?? "unlabeled")}${o.subclass ? ` · ${esc(o.subclass)}` : ""}`
     + `${o.alt_classes.length ? ` (could be ${esc(o.alt_classes.join(", "))})` : ""}`
-    + `${o.tns ? `<br>TNS ${esc(o.tns.name)} · ${esc(o.tns.type ?? "unclassified")}` : ""}<br>${o.n_features} of ${DATA.columns.length} features`;
+    + `${o.tns ? `<br>TNS ${esc(o.tns.name)} · ${esc(o.tns.type ?? "unclassified")}` : ""}<br>${o.n_features} of ${DATA.columns.length} features${supportNote(o)}`;
   const points = (objs) => ({ x: objs.map((o) => o.x), y: objs.map((o) => o.y), customdata: objs.map((o) => o.object_id),
                               text: objs.map(hover), hovertemplate: "%{text}<extra></extra>" });
   const trace = (objs, k, name) => ({
@@ -129,7 +139,7 @@ function renderMap() {
     x: objs.map((o) => o.x), y: objs.map((o) => o.y), customdata: objs.map((o) => o.object_id),
     text: objs.map(hover), hovertemplate: "%{text}<extra></extra>",
     marker: {
-      color: color(k), symbol: k ? SYMBOLS[k] : "circle", size: k ? 8 : 5, opacity: k ? 0.85 : 0.6,
+      color: color(k), symbol: k ? SYMBOLS[k] : "circle", size: k ? 8 : 5, opacity: fade(objs, k ? 0.85 : 0.6),
       line: { color: k === "unsure" ? color(k) : cssVar("--card"), width: k === "unsure" ? 1.5 : 0.5 },
     },
   });
@@ -139,11 +149,11 @@ function renderMap() {
   if (state.colorby === "tns") {
     const none = shown.filter((o) => !o.tns);
     if (none.length) traces.push({ type: "scatter", mode: "markers", name: "no TNS match", ...points(none),
-                                   marker: { color: color(null), size: 4, opacity: 0.5 } });
+                                   marker: { color: color(null), size: 4, opacity: fade(none, 0.5) } });
     for (const g of TNS_GROUPS) {
       const objs = shown.filter((o) => o.tns && tnsGroup(o.tns) === g);
       if (objs.length) traces.push({ type: "scatter", mode: "markers", name: `${g.name} (${objs.length})`, ...points(objs),
-        marker: { color: color(g.color), symbol: g.symbol, size: 10, opacity: 0.9, line: { color: cssVar("--card"), width: 0.5 } } });
+        marker: { color: color(g.color), symbol: g.symbol, size: 10, opacity: fade(objs, 0.9), line: { color: cssVar("--card"), width: 0.5 } } });
     }
   } else {
     if (state.unlabeled) traces.push(trace(DATA.objects.filter((o) => !o.klass), null, "unlabeled"));
@@ -251,12 +261,20 @@ function bindSeg(sel, get, set) {
   });
 }
 
+// Clicks can outrun the server (toggling feature groups quickly, say), and answers can come back out of
+// order; each request takes a number, and an answer is only used if no newer request has gone out since.
+let loadSeq = 0, selectSeq = 0;
+
 async function select(id) {
   if (!id) return;
+  const seq = ++selectSeq;
   try {
-    NN = await api(`/api/similar/${encodeURIComponent(id)}?k=${state.k}&pool=${state.pool}&${query()}`);
+    const nn = await api(`/api/similar/${encodeURIComponent(id)}?k=${state.k}&pool=${state.pool}&${query()}`);
+    if (seq !== selectSeq) return;
+    NN = nn;
     state.selected = id;
   } catch (e) {
+    if (seq !== selectSeq) return;
     NN = null;
     toast(`Could not find neighbors of ${id}: ${e.message}`, 6000);
   }
@@ -264,14 +282,18 @@ async function select(id) {
 }
 
 async function load() {
+  const seq = ++loadSeq;
+  selectSeq++;  // neighbors asked for under the old settings no longer match the map
   try {
-    DATA = await api(`/api/similar?${query()}`);
+    const data = await api(`/api/similar?${query()}`);
+    if (seq !== loadSeq) return;
+    DATA = data;
     state.groups = state.groups || DATA.default_groups;
     const still = DATA.objects.some((o) => o.object_id === state.selected);
     if (still) await select(state.selected);
     else { NN = null; state.selected = null; render(); }
   } catch (e) {
-    toast(`Could not load objects: ${e.message}`, 6000);
+    if (seq === loadSeq) toast(`Could not load objects: ${e.message}`, 6000);
   }
 }
 
