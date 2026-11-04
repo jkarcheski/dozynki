@@ -32,40 +32,28 @@
 
   <section class="card" id="jobs">
     <div class="card-head"><h2>Jobs</h2><span id="saved" class="hint"></span></div>
-    <form id="settings" class="daily-settings">
-      <label class="row"><input type="checkbox" name="enabled"> Run every day at <input type="time" name="time" required>
-        <span class="muted">(this server's local time)</span></label>
-
-      <fieldset>
-        <legend>Run last night through saved filters</legend>
-        <div id="filters" class="checks"></div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Watchlist</legend>
-        <label class="row"><input type="checkbox" name="watchlist"> Recheck watched objects; ones with new alerts go back to your queue</label>
-      </fieldset>
-
-      <fieldset>
-        <legend>ALeRCE supernovae</legend>
-        <label class="row"><input type="checkbox" name="alerce_sn"> Add new LSST objects whose top ALeRCE class is SN to the list
-          <b id="sn-list"></b></label>
-        <div class="row nums">
-          <label>p ≥ <input type="number" name="sn_min_prob" min="0" max="1" step="0.05"></label>
-          <label>detections ≥ <input type="number" name="sn_min_det" min="1" step="1"></label>
-          <label>first seen in the last <input type="number" name="sn_days" min="1" max="30" step="1"> nights</label>
-          <label>at most <input type="number" name="sn_max" min="1" max="2000" step="1"> a day, most probable first</label>
-        </div>
-        <div class="hint" id="sn-hint"></div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Email</legend>
-        <label class="row"><input type="checkbox" name="email"> Email me the report</label>
-        <div class="hint" id="email-hint"></div>
-      </fieldset>
+    <form id="schedule" class="daily-settings">
+      <div class="row"><label><input type="checkbox" name="enabled"> Run every day at</label>
+        <input type="time" name="time" required> <span class="muted">(this server's local time)</span></div>
+      <div class="row"><label><input type="checkbox" name="email"> Email me the report</label>
+        <span class="hint" id="email-hint"></span></div>
       <button class="primary" type="submit">Save</button>
     </form>
+
+    <div class="daily-settings">
+      <div id="job-list" class="job-list"></div>
+      <button id="add-job" type="button">+ Add a job</button>
+      <div id="job-pick" hidden>
+        <div class="wiz-ask">What kind of job would you like to run?</div>
+        <div id="job-kinds" class="wiz-choices"></div>
+        <button id="pick-cancel" type="button" class="small">Cancel</button>
+      </div>
+      <form id="job-edit" hidden>
+        <div class="wiz-ask" id="job-title"></div>
+        <div id="job-fields"></div>
+        <div class="row"><button class="primary" type="submit">Save job</button> <button id="edit-cancel" type="button">Cancel</button></div>
+      </form>
+    </div>
   </section>
 </main>
 <div id="toast"></div>

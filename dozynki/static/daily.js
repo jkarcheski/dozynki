@@ -1,4 +1,5 @@
-// Daily page: your daily jobs' reports, newest first, and the settings for which jobs run and when.
+// Daily page: your daily jobs' reports, newest first; when they run and whether they're emailed; and the jobs,
+// added one at a time by picking a kind from JOBS.
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -85,34 +86,106 @@ function renderReports() {
     : "");
 }
 
-function renderSettings() {
-  const s = state.settings, form = $("#settings");
-  for (const el of form.elements) {
-    if (!el.name || !(el.name in s)) continue;
-    if (el.type === "checkbox") el.checked = !!s[el.name];
-    else el.value = s[el.name];
-  }
-  const missing = s.filters.filter((f) => !state.saved_filters.includes(f));
-  $("#filters").innerHTML = state.saved_filters.concat(missing).map((f) =>
-    `<label><input type="checkbox" value="${esc(f)}" ${s.filters.includes(f) ? "checked" : ""}> ${esc(f)}${missing.includes(f) ? ' <span class="muted">(deleted)</span>' : ""}</label>`).join("")
-    || `<span class="muted">No saved filters yet: save one in the <a href="/rejection">filter lab</a>.</span>`;
-  $("#sn-list").textContent = state.sn_list;
-  $("#sn-hint").textContent = `From ALeRCE's ${state.sn_classifier}, a stamp classifier; about 1,400 objects a night pass p ≥ 0.7 and a quarter of them have 2+ detections. ` +
-    "The list's name says it was picked by a broker, which a blind label should keep in mind.";
-  $("#email-hint").textContent = state.emails
-    ? "Sent to your address in DOZYNKI_REPORT_EMAIL through the DOZYNKI_SMTP_* server, both set in .env."
-    : `To email your reports, add ${state.labeler}=<address> to DOZYNKI_REPORT_EMAIL in .env (and set the DOZYNKI_SMTP_* server); the address is never stored in the database.`;
-  $("#settings [name=email]").disabled = !state.emails;
+// The kinds of job, in the order "Add a job" offers them. Each says whether it is on in the settings, sums itself
+// up in one line, draws its options and reads them back as the settings it sets; off is what removing it sets.
+const JOBS = [
+  {
+    key: "filters",
+    title: "Run last night through saved filters",
+    blurb: "Like Filtered mode's whole-night run; the report counts what passes and is left to vet.",
+    on: (s) => s.filters.length > 0,
+    summary: (s) => s.filters.map(esc).join(", "),
+    fields: (s) => {
+      const missing = s.filters.filter((f) => !state.saved_filters.includes(f));
+      return `<div class="checks">${state.saved_filters.concat(missing).map((f) =>
+        `<label><input type="checkbox" name="filter" value="${esc(f)}" ${s.filters.includes(f) ? "checked" : ""}> ${esc(f)}${missing.includes(f) ? ' <span class="muted">(deleted)</span>' : ""}</label>`).join("")
+        || `<span class="muted">No saved filters yet: save one in the <a href="/rejection">filter lab</a>.</span>`}</div>`;
+    },
+    read: (form) => {
+      const filters = [...form.querySelectorAll("[name=filter]:checked")].map((el) => el.value);
+      if (!filters.length) throw new Error("pick at least one filter");
+      return { filters };
+    },
+    off: { filters: [] },
+  },
+  {
+    key: "watchlist",
+    title: "Recheck my watchlist",
+    blurb: "Watched objects with new alerts go back to your queue.",
+    on: (s) => s.watchlist,
+    summary: () => "watched objects with new alerts go back to your queue",
+    fields: () => `<p class="muted">Nothing to set: every object you're watching is rechecked in ANTARES.</p>`,
+    read: () => ({ watchlist: true }),
+    off: { watchlist: false },
+  },
+  {
+    key: "alerce_sn",
+    title: "ALeRCE's new supernovae",
+    blurb: "New LSST objects whose top ALeRCE class is SN, added to an object list to vet.",
+    on: (s) => s.alerce_sn,
+    summary: (s) => `SN on top at p ≥ ${s.sn_min_prob}, ${s.sn_min_det}+ detections, first seen in the last ${s.sn_days} nights; ` +
+      `up to ${s.sn_max} a day onto the list ${esc(state.sn_list)}`,
+    fields: (s) => `<div class="row nums">
+        <label>p ≥ <input type="number" name="sn_min_prob" min="0" max="1" step="0.05" value="${s.sn_min_prob}"></label>
+        <label>detections ≥ <input type="number" name="sn_min_det" min="1" step="1" value="${s.sn_min_det}"></label>
+        <label>first seen in the last <input type="number" name="sn_days" min="1" max="30" step="1" value="${s.sn_days}"> nights</label>
+        <label>at most <input type="number" name="sn_max" min="1" max="2000" step="1" value="${s.sn_max}"> a day, most probable first</label>
+      </div>
+      <div class="hint">From ALeRCE's ${esc(state.sn_classifier)}, a stamp classifier; about 1,400 objects a night pass p ≥ 0.7 and
+        a quarter of them have 2+ detections. The list ${esc(state.sn_list)} is picked by a broker, which a blind label should keep in mind.</div>`,
+    read: (form) => Object.fromEntries(["sn_min_prob", "sn_min_det", "sn_days", "sn_max"]
+      .map((k) => [k, +form.elements[k].value]).concat([["alerce_sn", true]])),
+    off: { alerce_sn: false },
+  },
+];
+let editing = null;  // the job whose options are open
+
+async function save(change) {
+  state.settings = await api("/api/daily/settings", { method: "POST", body: { ...state.settings, ...change } });
+  renderJobs();
 }
 
-function readSettings() {
-  const form = $("#settings"), out = {};
-  for (const el of form.elements) {
-    if (!el.name) continue;
-    out[el.name] = el.type === "checkbox" ? el.checked : el.type === "number" ? +el.value : el.value;
-  }
-  out.filters = [...document.querySelectorAll("#filters input:checked")].map((el) => el.value);
-  return out;
+function renderSchedule() {
+  const s = state.settings, form = $("#schedule");
+  form.elements.enabled.checked = s.enabled;
+  form.elements.time.value = s.time;
+  form.elements.email.checked = s.email && state.emails;
+  form.elements.email.disabled = !state.emails;
+  $("#email-hint").textContent = state.emails
+    ? "to your address in DOZYNKI_REPORT_EMAIL, through the DOZYNKI_SMTP_* server (.env)"
+    : `add ${state.labeler}=<address> to DOZYNKI_REPORT_EMAIL in .env, and set the DOZYNKI_SMTP_* server; the address is never stored in the database`;
+}
+
+function renderJobs() {
+  const s = state.settings, on = JOBS.filter((j) => j.on(s)), left = JOBS.filter((j) => !j.on(s));
+  $("#job-list").innerHTML = on.map((j) => `<div class="job"><div><b>${esc(j.title)}</b><div class="muted">${j.summary(s)}</div></div>
+      <span class="job-actions"><button type="button" class="small" data-edit="${j.key}">Edit</button>
+      <button type="button" class="small" data-remove="${j.key}">Remove</button></span></div>`).join("")
+    || `<p class="muted">No jobs yet: add one, and the report says what's new each morning.</p>`;
+  $("#job-list").querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => edit(b.dataset.edit)));
+  $("#job-list").querySelectorAll("[data-remove]").forEach((b) => (b.onclick = async () => {
+    try { await save(JOBS.find((j) => j.key === b.dataset.remove).off); toast("Job removed"); }
+    catch (err) { toast("Couldn't remove: " + err.message, 5000); }
+  }));
+  $("#job-kinds").innerHTML = left.map((j) => `<button type="button" class="choice" data-kind="${j.key}">
+      <span class="c-label">${esc(j.title)}</span><span class="impact">${esc(j.blurb)}</span></button>`).join("");
+  $("#job-kinds").querySelectorAll("[data-kind]").forEach((b) => (b.onclick = () => edit(b.dataset.kind)));
+  $("#add-job").hidden = !left.length || !$("#job-pick").hidden || !$("#job-edit").hidden;
+}
+
+function edit(key) {
+  editing = JOBS.find((j) => j.key === key);
+  $("#job-pick").hidden = true;
+  $("#job-title").textContent = editing.title;
+  $("#job-fields").innerHTML = editing.fields(state.settings);
+  $("#job-edit").hidden = false;
+  renderJobs();
+}
+
+function closeEditors() {
+  editing = null;
+  $("#job-pick").hidden = $("#job-edit").hidden = true;
+  renderJobs();
 }
 
 async function load(first = false) {
@@ -126,7 +199,8 @@ async function load(first = false) {
   }
   renderReports();
   if (first) {
-    renderSettings();
+    renderSchedule();
+    renderJobs();
     $("#night").value = state.last_night;
     $("#night").max = state.last_night;
   }
@@ -136,24 +210,39 @@ async function load(first = false) {
   else if (state.reports.some((r) => !r.read_at)) api("/api/daily/read", { method: "POST" }).catch(() => {});
 }
 
-$("#settings").onsubmit = async (e) => {
+$("#schedule").onsubmit = async (e) => {
   e.preventDefault();
+  const form = e.target;
   try {
-    state.settings = await api("/api/daily/settings", { method: "POST", body: readSettings() });
+    await save({ enabled: form.elements.enabled.checked, time: form.elements.time.value, email: form.elements.email.checked });
     $("#saved").textContent = "saved";
     toast(state.settings.enabled ? `Saved; the jobs run every day at ${state.settings.time}` : "Saved; the daily run is off");
   } catch (err) {
     toast("Save failed: " + err.message, 5000);
   }
 };
-$("#settings").oninput = () => ($("#saved").textContent = "unsaved changes");
+$("#schedule").oninput = () => ($("#saved").textContent = "unsaved changes");
+
+$("#add-job").onclick = () => {
+  $("#job-pick").hidden = false;
+  renderJobs();
+};
+$("#pick-cancel").onclick = $("#edit-cancel").onclick = closeEditors;
+$("#job-edit").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await save(editing.read(e.target));
+    toast(`Saved: ${editing.title}`);
+    closeEditors();
+  } catch (err) {
+    toast("Couldn't save the job: " + err.message, 5000);
+  }
+};
 
 $("#run-now").onclick = async () => {
   const night = $("#night").value;
   $("#run-now").disabled = true;
   try {
-    await api("/api/daily/settings", { method: "POST", body: readSettings() });
-    $("#saved").textContent = "saved";
     await api("/api/daily/run", { method: "POST", body: { night: night || null } });
     toast("Running the daily jobs");
     load();
