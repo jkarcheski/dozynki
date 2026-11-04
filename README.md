@@ -33,7 +33,9 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 2. **Blind pass** - the combined ZTF+LSST light curve
    (difference flux on a common nJy scale), ANTARES cutouts, a Legacy Survey DR10 field image, and an
    *independent* crossmatch (LS DR10 with photo-z and DLR host ranking, Gaia DR3,
-   PS1, Milliquas, SIMBAD, NED, optional SkyBoT).
+   PS1, Milliquas, SIMBAD, NED, optional SkyBoT). In the sci mag view the light curve also shows
+   archival photometry at the position: ZTF data releases (IRSA) and Pan-STARRS1 DR2 single-epoch
+   detections (MAST), total magnitudes for events that never reached TNS.
 3. **Reveal** – committing a label reveals broker opinions: ALeRCE
    classifier probabilities (each classifier version separately), LSST
    reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and its
@@ -265,6 +267,7 @@ dozynki/
   sources.py        queue sources (selection functions): random sample, night samples
   lists.py          object lists: resolve alert IDs, diaObjectIds, loci and coordinates to LSST objects
   crossmatch.py     independent catalog crossmatch + DLR
+  archival.py       archival light curves at the position: ZTF data releases, Pan-STARRS1 DR2
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
   sky.py            sky map data

@@ -5,7 +5,7 @@ evidence (always shown) and broker opinions (hidden until a blind label exists).
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from . import crossmatch, db
+from . import archival, crossmatch, db
 from .brokers import alerce, antares, babamul_client, yse
 
 # Per-point fields that are classifier / ML outputs rather than measurements.
@@ -56,11 +56,13 @@ def load(object_id, refresh=False):
             # cached before per-alert positions were kept: fetch them separately so the
             # rest of the evidence the object was labeled with stays as it was
             _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             jobs = [
                 pool.submit(_cached, object_id, "alerce", lambda: alerce.fetch(object_id, ant.get("ztf_object_id")), refresh),
                 pool.submit(_cached, object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
                 pool.submit(_cached, object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"]), refresh),
+                pool.submit(_cached, object_id, "archival", lambda: archival.run(ant["ra"], ant["dec"]),
+                            refresh or _archival_failed(object_id)),
             ]
             for j in jobs:
                 j.result()
@@ -69,6 +71,12 @@ def load(object_id, refresh=False):
             _inflight.pop(object_id, None)
         ev.set()
     return _gather(object_id)
+
+
+def _archival_failed(object_id):
+    """A cached archival search with a survey that failed (e.g. IRSA down): try it again."""
+    hit = db.cache_get(object_id, "archival")
+    return hit is not None and bool(hit["data"]["errors"])
 
 
 def _tns_names(object_id, ant):
@@ -100,7 +108,7 @@ def load_antares(object_id):
 
 
 def _gather(object_id):
-    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "skybot", "positions")}
+    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "archival", "skybot", "positions")}
 
 
 def fill_missing_xmatch(object_id):
@@ -210,6 +218,8 @@ def evidence(object_id, raw):
         "babamul_enabled": bool(bab.get("enabled")),
         # measurements of YSE PZ's nearest transient; its name, status and class are opinions
         "yse_photometry": ((raw.get("yse") or {}).get("data") or {}).get("photometry") or [],
+        # ZTF data releases and Pan-STARRS1 DR2 at the position (archival.py): total magnitudes
+        "archival": (raw.get("archival") or {}).get("data") or {"points": [], "errors": {}},
         "fetched_at": {k: (v or {}).get("fetched_at") for k, v in raw.items()},
     }
 

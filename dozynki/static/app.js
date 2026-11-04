@@ -749,7 +749,8 @@ function renderLightcurve(ev) {
       hovertemplate: `%{x:.3f}<br>%{y:.3g}<extra>${survey} ${band} ${kind}</extra>`,
     });
   }
-  traces.push(...yseTraces(ev.yse_photometry));
+  traces.push(...yseTraces(ev.yse_photometry), ...archivalTraces(ev.archival));
+  $("#lc-archival").textContent = archivalNote(ev.archival);
   const css = getComputedStyle(document.documentElement);
   const ink = css.getPropertyValue("--ink"), line = css.getPropertyValue("--line");
   const layout = {
@@ -1395,6 +1396,35 @@ function yseTraces(photometry) {
       hovertemplate: `%{x:.3f}<br>%{y:.3g}<extra>YSE PZ ${esc(telescope)} ${esc(label)}</extra>`,
     };
   });
+}
+
+// Archival light curves at the position (archival.py): ZTF data releases (x) and Pan-STARRS1 DR2 (+).
+// Total magnitudes on single images, so only in the sci mag view, beside LSST sci mag and ZTF ref+diff.
+const ARCHIVAL = { ztf_dr: { name: "ZTF DR", symbol: "x-thin" }, ps1: { name: "PS1 DR2", symbol: "cross-thin" } };
+
+function archivalTraces(arch) {
+  if (lcMode !== "sci" || !arch?.points?.length) return [];
+  const groups = {};
+  for (const p of arch.points) (groups[`${p.survey}|${p.band}`] ||= []).push(p);
+  return Object.entries(groups).map(([key, pts]) => {
+    const [survey, band] = key.split("|");
+    const color = BAND_COLORS[band] || "#888";
+    return {
+      x: pts.map((p) => p.mjd), y: pts.map((p) => p.mag), customdata: pts.map(() => ""),
+      error_y: { array: pts.map((p) => p.mag_err), visible: true, thickness: 1, width: 0, color },
+      mode: "markers", type: "scatter", name: `${ARCHIVAL[survey].name} ${band} (archival)`, opacity: 0.8,
+      marker: { color, size: 7, symbol: ARCHIVAL[survey].symbol, line: { width: 1.5, color } },
+      hovertemplate: `%{x:.3f}<br>%{y:.2f}<extra>${ARCHIVAL[survey].name} ${band}</extra>`,
+    };
+  });
+}
+
+// Under the light curve: how many archival points there are, and which surveys couldn't be reached.
+function archivalNote(arch) {
+  if (!arch) return "";
+  const n = (s) => arch.points.filter((p) => p.survey === s).length;
+  const counts = Object.entries(ARCHIVAL).map(([s, a]) => arch.errors[s] ? `${a.name} unavailable` : `${a.name} ${n(s)}`);
+  return `Archival at the position (sci mag view): ${counts.join(", ")}.`;
 }
 
 // ---------- commit ----------
