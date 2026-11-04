@@ -8,6 +8,7 @@ close in these features, not "labeled the same".
 
 - projection(): a 2D PCA projection (numpy SVD) of every object, fit around missing values (pca()), with how
   much of each axis an object's own features support, so the page can fade positions that are mostly guesswork.
+- Any single feature can be switched off (off=), on top of choosing groups.
 - neighbors(): the k nearest objects to one, by rms difference over the features both have,
   so an object without Rubin details is compared on what it does have.
 
@@ -59,6 +60,9 @@ FEATURES = [
     ("lc_last_over_peak", "lightcurve", same, "last / peak flux"),
     ("lc_n_bands", "lightcurve", same, "bands detected"),
     ("lc_mag_minus_sci", "lightcurve", same, "difference − science mag (median)"),
+    ("color_gr_equiv", "lightcurve", same, "color (as g − r)"),
+    ("rise_rate_mag_per_day", "lightcurve", same, "fastest rise (mag/day)"),
+    ("mag_latest", "lightcurve", same, "latest difference mag"),
     ("extendedness_median", "morphology", same, "extendedness"),
     ("frac_dipole", "morphology", same, "fraction dipole"),
     ("any_glint", "morphology", same, "glint trail"),
@@ -68,12 +72,15 @@ FEATURES = [
     ("frac_pixel_flagged", "morphology", same, "fraction pixel-flagged"),
     ("pos_rms_arcsec", "morphology", log1p, "position rms (″)"),
     ("trail_max_arcsec", "morphology", log1p, "trail length (″)"),
+    ("template_ratio", "morphology", log10, "template / peak difference flux"),
     ("gaia_star_sep", "context", log1p, "Gaia star sep (″)"),
     ("gaia_sep", "context", log1p, "Gaia sep (″)"),
     ("milliquas_sep", "context", log1p, "Milliquas sep (″)"),
     ("ztf_ps1_sgscore", "context", same, "PS1 star/galaxy score"),
     ("ztf_ps1_dist", "context", log1p, "PS1 distance (″)"),
     ("host_d_dlr", "context", log1p, "host d_DLR"),
+    ("ls_host_sep", "context", log1p, "Legacy Survey host sep (″)"),
+    ("antares_galaxy_sep", "context", log1p, "galaxy catalog sep (″)"),
     ("antares_bright_star", "context", same, "bright star (ANTARES)"),
     ("antares_gaia_variable", "context", same, "Gaia variable (ANTARES)"),
     ("sso_associated", "context", same, "solar-system association"),
@@ -83,6 +90,8 @@ FEATURES = [
     ("lsst_reliability_max", "broker", same, "LSST reliability (max)"),
     ("ztf_drb_mean", "broker", same, "ZTF drb (mean)"),
     ("scimma_quality", "broker", same, "SCIMMA quality tag"),
+    ("alerce_stamp_p_bogus", "broker", same, "ALeRCE stamp P(bogus)"),
+    ("alerce_stamp_p_agn", "broker", same, "ALeRCE stamp P(AGN)"),
 ]
 LABELS = {name: label for name, _, _, label in FEATURES}
 
@@ -109,7 +118,8 @@ _lc_memo = {}  # object_id -> (antares fetched_at, lightcurve())
 
 
 def _raw(object_ids):
-    """{object_id: rejection.features() + lightcurve()} for the objects with a cached ANTARES payload."""
+    """{object_id: rejection.features() + lightcurve()} for the objects with a cached ANTARES payload, with the
+    ALeRCE stamp probabilities the page uses taken out of their dict."""
     feats = rejection.features_for(object_ids)
     stamps = {r["object_id"]: r["fetched_at"] for r in db.query("SELECT object_id, fetched_at FROM cache WHERE kind = 'antares'")}
     out = {}
@@ -119,7 +129,8 @@ def _raw(object_ids):
         hit = _lc_memo.get(oid)
         if hit is None or hit[0] != stamps.get(oid):
             hit = _lc_memo[oid] = (stamps.get(oid), lightcurve(db.cache_get(oid, "antares")["data"]["points"]))
-        out[oid] = {**f, **hit[1]}
+        probs = f.get("alerce_stamp_probs") or {}
+        out[oid] = {**f, **hit[1], "alerce_stamp_p_bogus": probs.get("bogus"), "alerce_stamp_p_agn": probs.get("AGN")}
     return out
 
 
@@ -210,15 +221,19 @@ def distances(X, i):
         return np.sqrt(d2 / n_shared), n_shared, shared
 
 
-def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst"):
-    """Scaled matrix (NaN where missing) over the population and the features with any spread."""
+def build(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst", off=()):
+    """Scaled matrix (NaN where missing) over the population and the features with any spread, from the
+    features in groups that aren't switched off."""
     unknown = set(groups) - set(GROUPS)
     if unknown:
         raise ValueError(f"unknown feature groups {sorted(unknown)}")
+    unknown = set(off) - set(LABELS)
+    if unknown:
+        raise ValueError(f"unknown features {sorted(unknown)}")
     ids = sorted(population_ids(all_sources, object_list, vetted, survey))
     raw = _raw(ids)
     ids = sorted(raw)
-    feats = [f for f in FEATURES if f[1] in groups]
+    feats = [f for f in FEATURES if f[1] in groups and f[0] not in off]
     X = np.array([[_value(raw[oid], name, t) for name, _, t, _ in feats] for oid in ids], dtype=float).reshape(len(ids), len(feats))
     keep, coverage = scale(X)
     columns = [{"name": feats[j][0], "group": feats[j][1], "label": feats[j][3], "coverage": c} for j, c in zip(keep, coverage)]
@@ -236,9 +251,9 @@ def _label(labels, oid):
             "alt_classes": lab["alt_classes"] if lab else []}
 
 
-def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst"):
+def projection(truth="blind", all_sources=False, groups=DEFAULT_GROUPS, object_list=None, vetted=None, survey="lsst", off=()):
     """Every object's first two principal components, with the loadings that explain the axes."""
-    m = build(truth, all_sources, groups, object_list, vetted, survey)
+    m = build(truth, all_sources, groups, object_list, vetted, survey, off)
     ids, X, cols = m["ids"], m["X"], m["columns"]
     if len(ids) < 3 or X.shape[1] < 2:
         return {"objects": [], "columns": cols, "explained": [], "loadings": []}
@@ -267,9 +282,9 @@ def _display(raw):
 
 
 def neighbors(object_id, k=8, truth="blind", all_sources=False, groups=DEFAULT_GROUPS, pool="labeled", object_list=None, vetted=None,
-              survey="lsst"):
+              survey="lsst", off=()):
     """The k nearest objects to one: rms of scaled differences over the features both objects have."""
-    m = build(truth, all_sources, groups, object_list, vetted, survey)
+    m = build(truth, all_sources, groups, object_list, vetted, survey, off)
     ids, X, labels = m["ids"], m["X"], m["labels"]
     if object_id not in ids:
         raise KeyError(object_id)

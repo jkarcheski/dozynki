@@ -170,7 +170,9 @@ def test_distances_symmetric():
 
 FLAGS = {"any_glint", "antares_bright_star", "antares_gaia_variable", "sso_associated", "lc_n_bands"}
 SHARES = {"frac_negative", "frac_dipole", "frac_measurement_flagged", "frac_pixel_flagged", "extendedness_median",
-          "ztf_ps1_sgscore", "lsst_reliability_mean", "lsst_reliability_max", "ztf_drb_mean", "scimma_quality", "lc_last_over_peak"}
+          "ztf_ps1_sgscore", "lsst_reliability_mean", "lsst_reliability_max", "ztf_drb_mean", "scimma_quality", "lc_last_over_peak",
+          "alerce_stamp_p_bogus", "alerce_stamp_p_agn"}
+SIGNED = {"lc_mag_minus_sci", "color_gr_equiv", "rise_rate_mag_per_day"}
 
 
 def fake_objects(n=120, seed=0):
@@ -184,7 +186,7 @@ def fake_objects(n=120, seed=0):
                 f[name] = int(r.random() < 0.2)
             elif name in SHARES:
                 f[name] = float(r.random())
-            elif name == "lc_mag_minus_sci":
+            elif name in SIGNED:
                 f[name] = float(r.normal(0, 1))
             else:
                 f[name] = float(r.lognormal(1, 1))
@@ -267,6 +269,27 @@ def test_group_order_does_not_matter(objects):
 def test_unknown_group_is_refused(objects):
     with pytest.raises(ValueError):
         similar.projection(groups=["lightcurve", "nope"])
+
+
+def test_switching_features_off(objects):
+    """A feature switched off is gone from the map and the distances; the others are untouched by it."""
+    off = ["n_det", "gaia_sep"]
+    p = similar.projection(off=off)
+    names = {c["name"] for c in p["columns"]}
+    assert names and not names & set(off)
+    full = similar.build()
+    keep = [j for j, c in enumerate(full["columns"]) if c["name"] not in off]
+    assert np.array_equal(similar.build(off=off)["X"], full["X"][:, keep], equal_nan=True)
+    assert all(n["shared"] <= len(names) for n in similar.neighbors("obj001", off=off)["neighbors"])
+
+
+def test_switching_off_a_feature_outside_the_groups_changes_nothing(objects):
+    assert similar.projection(groups=["lightcurve"], off=["gaia_sep"]) == similar.projection(groups=["lightcurve"])
+
+
+def test_unknown_feature_is_refused(objects):
+    with pytest.raises(ValueError):
+        similar.projection(off=["nope"])
 
 
 def test_object_not_in_population(objects):

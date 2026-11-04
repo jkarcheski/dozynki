@@ -1088,27 +1088,32 @@ def _groups(groups):
     return [g for g in groups.split(",") if g] if groups else similar.DEFAULT_GROUPS
 
 
+def _off(off):
+    return [f for f in off.split(",") if f]
+
+
 @app.get("/api/similar")
 def similar_map(request: Request, truth: str = "blind", all_sources: bool = False, groups: str = "", object_list: str = "",
-                vetted: str = "", survey: str = "lsst"):
+                vetted: str = "", survey: str = "lsst", off: str = ""):
     """Every object's position on the first two principal components of its features, with its truth label."""
     try:
-        out = similar.projection(truth, all_sources, _groups(groups), object_list or None, _vetted(request, vetted), survey)
+        out = similar.projection(truth, all_sources, _groups(groups), object_list or None, _vetted(request, vetted), survey, _off(off))
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {**out, "groups": similar.GROUPS, "default_groups": similar.DEFAULT_GROUPS, "classes": CLASSES}
+    features = [{"name": name, "group": group, "label": label} for name, group, _, label in similar.FEATURES]
+    return {**out, "groups": similar.GROUPS, "default_groups": similar.DEFAULT_GROUPS, "features": features, "classes": CLASSES}
 
 
 @app.get("/api/similar/{object_id}")
 def similar_neighbors(object_id: str, request: Request, k: int = 8, truth: str = "blind", all_sources: bool = False,
                       groups: str = "", pool: str = "labeled", object_list: str = "", vetted: str = "",
-                      survey: str = "lsst"):
+                      survey: str = "lsst", off: str = ""):
     """The k objects closest to one in feature space. Nothing is stored."""
     if pool not in ("labeled", "all"):
         raise HTTPException(400, "pool must be labeled or all")
     try:
         return similar.neighbors(object_id, max(1, min(k, 24)), truth, all_sources, _groups(groups), pool, object_list or None,
-                                 _vetted(request, vetted), survey)
+                                 _vetted(request, vetted), survey, _off(off))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except KeyError:

@@ -52,7 +52,7 @@ function fmt(v) {
 // ---------- state ----------
 
 function defaultState() {
-  return { truth: "blind", all_sources: false, object_list: "", vetted: "", survey: "lsst", unlabeled: true, hidden: [], groups: null, pool: "labeled", k: 8, selected: null,
+  return { truth: "blind", all_sources: false, object_list: "", vetted: "", survey: "lsst", unlabeled: true, hidden: [], groups: null, off: [], pool: "labeled", k: 8, selected: null,
            colorby: "label" };
 }
 
@@ -69,7 +69,7 @@ function saveState() {
 }
 
 const query = () => new URLSearchParams({ truth: state.truth, ...Population.params(state),
-  groups: (state.groups || []).join(",") }).toString();
+  groups: (state.groups || []).join(","), off: state.off.join(",") }).toString();
 
 // ---------- rendering ----------
 
@@ -115,7 +115,29 @@ function renderChips() {
     state.groups = next;
     load();
   });
+  renderFeatures();
   $("#ids").innerHTML = DATA.objects.map((o) => `<option value="${esc(o.object_id)}">`).join("");
+}
+
+// Single features of the groups that are on; one that is on but has too few objects here (or no spread) is
+// left out by similar.scale, and shown struck through.
+function renderFeatures() {
+  const kept = new Set(DATA.columns.map((c) => c.name));
+  const groups = Object.keys(DATA.groups).filter((g) => state.groups.includes(g));
+  $("#features").innerHTML = groups.map((g) => `<div class="fgroup"><span class="muted">${esc(DATA.groups[g])}</span> ${
+    DATA.features.filter((f) => f.group === g).map((f) => {
+      const off = state.off.includes(f.name), unused = !off && !kept.has(f.name);
+      const tip = off ? "off: click to use it" : unused ? "on, but too few objects here have it (or it never varies), so it is left out" : "click to leave it out";
+      return `<button data-f="${esc(f.name)}" class="${off ? "" : "on"}${unused ? " unused" : ""}" title="${esc(f.name)} · ${tip}">${esc(f.label)}</button>`;
+    }).join("")}</div>`).join("");
+  const nOff = DATA.features.filter((f) => state.groups.includes(f.group) && state.off.includes(f.name)).length;
+  $("#pick-count").textContent = nOff ? `(${nOff} off)` : "";
+  $("#features").querySelectorAll("button").forEach((b) => b.onclick = () => {
+    const f = b.dataset.f;
+    if (!state.off.includes(f) && kept.has(f) && kept.size <= 2) { toast("Keep at least two features"); return; }
+    state.off = state.off.includes(f) ? state.off.filter((x) => x !== f) : [...state.off, f];
+    load();
+  });
 }
 
 // How much of each axis an object's own features carry (similar.pca's support); positions an object's
@@ -299,6 +321,7 @@ async function load() {
 
 async function init() {
   state = loadState();
+  state.off = state.off || [];
   const fromUrl = new URLSearchParams(location.search).get("object");
   if (fromUrl) state.selected = fromUrl;
   bindSeg("#truth", () => state.truth, (v) => { state.truth = v; load(); });

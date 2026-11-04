@@ -28,3 +28,10 @@
 #compare-table th, #compare-table td { white-space: nowrap; }
 #compare-table th.q, #compare-table td.q { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 #compare-table td.grp { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 8px; }
+#pick { display: block; }
+#pick summary { cursor: pointer; font-size: 13px; }
+#features { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+#features .fgroup { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+#features .fgroup > .muted { font-size: 12px; min-width: 11em; }
+#features button:not(.on) { color: var(--muted); }
+#features button.unused { text-decoration: line-through; opacity: .6; }
