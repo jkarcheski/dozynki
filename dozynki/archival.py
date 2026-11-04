@@ -8,14 +8,16 @@ Two position searches, neither needing a login:
 Both are total brightness, so the vetter draws them in the sci mag view only. Detections only: neither
 service gives upper limits.
 
-A failed survey is reported in `errors` and retried when the object is next loaded (assemble.py); after a
-timeout or server error it is skipped for DOWN_SECONDS, so an outage doesn't stall every object.
+A failed survey is reported in `errors` and retried when the object is loaded once the failure is older than
+DOWN_SECONDS (assemble.py). The two surveys are searched at the same time, and after any failure a survey
+is skipped for DOWN_SECONDS, so an outage doesn't stall every object.
 """
 
 import io
 import math
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import requests
@@ -69,18 +71,26 @@ def ps1(ra, dec):
 SURVEYS = {"ztf_dr": ztf, "ps1": ps1}
 
 
-def run(ra, dec):
-    out = {"points": [], "errors": {}}
-    for name, fetch in SURVEYS.items():
+def _fetch(name, ra, dec):
+    """One survey's points; any failure skips it for DOWN_SECONDS (IRSA reports its own outages as 400s)."""
+    try:
+        return SURVEYS[name](ra, dec), None
+    except Exception as e:
         with _down_lock:
-            if _down.get(name, 0) > time.time():
-                out["errors"][name] = "skipped: it failed a moment ago"
-                continue
-        try:
-            out["points"] += fetch(ra, dec)
-        except Exception as e:
-            out["errors"][name] = f"{type(e).__name__}: {e}"
-            if isinstance(e, requests.Timeout) or (isinstance(e, requests.HTTPError) and e.response.status_code >= 500):
-                with _down_lock:
-                    _down[name] = time.time() + DOWN_SECONDS
+            _down[name] = time.time() + DOWN_SECONDS
+        return [], f"{type(e).__name__}: {e}"
+
+
+def run(ra, dec):
+    """Both surveys at once, so the search takes as long as the slower one."""
+    out = {"points": [], "errors": {}}
+    with _down_lock:
+        names = [name for name in SURVEYS if _down.get(name, 0) <= time.time()]
+    for name in SURVEYS.keys() - names:
+        out["errors"][name] = "skipped: it failed a moment ago"
+    with ThreadPoolExecutor(max_workers=len(SURVEYS)) as pool:
+        for name, (points, error) in zip(names, pool.map(lambda name: _fetch(name, ra, dec), names)):
+            out["points"] += points
+            if error:
+                out["errors"][name] = error
     return out

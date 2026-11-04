@@ -4,6 +4,7 @@ evidence (always shown) and broker opinions (hidden until a blind label exists).
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 import requests
 
@@ -93,9 +94,13 @@ def load(object_id, refresh=False):
 
 
 def _archival_failed(object_id):
-    """A cached archival search with a survey that failed (e.g. IRSA down): try it again."""
+    """A cached archival search with a survey that failed (e.g. IRSA down), long enough ago to try it again:
+    not on every open, which would make even a cached object wait on the broken survey each time."""
     hit = db.cache_get(object_id, "archival")
-    return hit is not None and bool(hit["data"]["errors"])
+    if hit is None or not hit["data"]["errors"]:
+        return False
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(hit["fetched_at"])
+    return age.total_seconds() > archival.DOWN_SECONDS
 
 
 def _tns_names(object_id, ant):

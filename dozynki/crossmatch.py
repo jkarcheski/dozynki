@@ -6,6 +6,7 @@ in `errors` rather than blocking the page.
 
 import io
 import math
+import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -22,6 +23,11 @@ from .config import DATALAB_ANON_TOKEN, DATALAB_QUERY, HTTP_TIMEOUT, XMATCH_RADI
 QUERY_TIMEOUT = 45
 DOWN_SECONDS = 300  # after a catalog times out, skip it for this long instead of waiting out every query
 RUBIN_OBS_CODE = "X05"
+# catalogs whose server is checked with a quick connect before the query, so a host that is down costs
+# PROBE_TIMEOUT instead of QUERY_TIMEOUT (and SIMBAD's client, which retries, much more)
+HOSTS = {"gaia": "vizier.cds.unistra.fr", "ps1": "vizier.cds.unistra.fr", "milliquas": "vizier.cds.unistra.fr",
+         "simbad": "simbad.cds.unistra.fr", "ned": "ned.ipac.caltech.edu", "first": "ssp.imcce.fr", "last": "ssp.imcce.fr"}
+PROBE_TIMEOUT = 5
 
 
 def _clean(v):
@@ -199,6 +205,17 @@ _down = {}  # catalog name -> time.time() until which it is skipped
 _down_lock = threading.Lock()
 
 
+def _probed(name, fn, args):
+    """fn(*args), once name's server (if it has one in HOSTS) answers a connect; a Timeout if it doesn't,
+    so _run_jobs skips it for DOWN_SECONDS like any other timeout."""
+    if name in HOSTS:
+        try:
+            socket.create_connection((HOSTS[name], 443), PROBE_TIMEOUT).close()
+        except OSError as e:
+            raise requests.ConnectTimeout(f"{HOSTS[name]} unreachable ({type(e).__name__})") from None
+    return fn(*args)
+
+
 def _run_jobs(jobs, out):
     with _down_lock:
         down = {name: until for name, until in _down.items() if until > time.time() and name in jobs}
@@ -209,7 +226,7 @@ def _run_jobs(jobs, out):
     if not jobs:
         return out
     pool = ThreadPoolExecutor(max_workers=len(jobs))
-    futures = {name: pool.submit(fn, *args) for name, (fn, args) in jobs.items()}
+    futures = {name: pool.submit(_probed, name, fn, args) for name, (fn, args) in jobs.items()}
     wait(futures.values(), timeout=QUERY_TIMEOUT)
     for name, f in futures.items():
         if not f.done():
