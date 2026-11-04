@@ -218,6 +218,9 @@ def evidence(object_id, raw):
         "babamul_enabled": bool(bab.get("enabled")),
         # measurements of YSE PZ's nearest transient; its name, status and class are opinions
         "yse_photometry": ((raw.get("yse") or {}).get("data") or {}).get("photometry") or [],
+        # whether HST, JWST, Chandra, Spitzer have imaged the position, as YSE PZ recorded it: facts, not opinions
+        "yse_archives": yse.archives(((raw.get("yse") or {}).get("data") or {}).get("header")),
+        "yse_url": ((raw.get("yse") or {}).get("data") or {}).get("url"),  # the labeler's YSE PZ page for it, if any
         # ZTF data releases and Pan-STARRS1 DR2 at the position (archival.py): total magnitudes
         "archival": (raw.get("archival") or {}).get("data") or {"points": [], "errors": {}},
         "fetched_at": {k: (v or {}).get("fetched_at") for k, v in raw.items()},

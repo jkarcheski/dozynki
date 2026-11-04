@@ -132,6 +132,13 @@ def parse_photometry(text):
     return header, points
 
 
+def archives(header):
+    """YSE PZ's archive flags for the transient ({"hst": True, "spitzer": None, ...}), from its has_<archive>
+    fields (filled by YSE PZ's own MAST, Chandra and Spitzer searches): True, False, or None for not checked."""
+    values = {"True": True, "False": False}
+    return {k[4:]: values.get(v) for k, v in (header or {}).items() if k.startswith("has_")}
+
+
 def page_url(slug):
     return f"{YSE_PZ_URL}/transient_detail/{slug}/"
 

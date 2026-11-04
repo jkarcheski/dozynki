@@ -42,7 +42,7 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
    ZTF association (flagged when it disagrees with ANTARES), and the object's YSE PZ transient,
    found by its TNS name (name, status, classification, redshift), for labelers who added their own YSE PZ login on
    their profile page. That transient's photometry is evidence: it is on the light curve (diamonds) from
-   the blind pass on.
+   the blind pass on, and YSE PZ's archive flags (HST, JWST, Chandra, Spitzer) are badges in the crossmatch.
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 

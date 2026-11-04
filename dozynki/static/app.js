@@ -669,6 +669,8 @@ async function loadObject(oid) {
     `<a target="_blank" href="https://lsst.alerce.online/object/${ev.object_id}">ALeRCE</a>`,
     ev.ztf_object_id ? `<a target="_blank" href="https://alerce.online/object/${ev.ztf_object_id}">ZTF ${ev.ztf_object_id}</a>` : "",
     `<a target="_blank" href="https://www.legacysurvey.org/viewer?ra=${ev.ra}&dec=${ev.dec}&layer=ls-dr10&zoom=16&mark=${ev.ra},${ev.dec}">LS viewer</a>`,
+    // labeled without the transient's name, which the blind pass doesn't show; the page itself has YSE PZ's class
+    ev.yse_url ? `<a target="_blank" href="${esc(ev.yse_url)}" title="Its YSE PZ page shows YSE PZ's classification">YSE PZ</a>` : "",
     `<span class="muted">${fmt(ev.ra, 5)}, ${fmt(ev.dec, 5)} · queued via ${esc(cur.queue.source)}</span>`,
   ].join("");
   if (ev.xmatch?.radius_arcsec) $("#xm-radius").value = ev.xmatch.radius_arcsec;
@@ -1190,6 +1192,19 @@ function table(rows, cols, opts = {}) {
   return `<div class="tablewrap"><table data-t="${opts.id || ""}"><tr>${head}</tr>${body}</table></div>`;
 }
 
+// YSE PZ's record of archival imaging at the position: green = has data, ✗ = checked and none, ? = not checked.
+const ARCHIVE_NAMES = { hst: "HST", jwst: "JWST", chandra: "Chandra", spitzer: "Spitzer" };
+
+function yseArchivesLine(archives) {
+  const order = Object.keys(ARCHIVE_NAMES);
+  const rank = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
+  const entries = Object.entries(archives || {}).sort(([a], [b]) => rank(a) - rank(b));
+  if (!entries.length) return "";
+  const pill = ([k, v]) => `<span class="pill ${v ? "ok" : ""}" title="${v ? "has data" : v === false ? "no data" : "not checked"}">`
+    + `${esc(ARCHIVE_NAMES[k] || k)}${v ? "" : v === false ? " ✗" : ": ?"}</span>`;
+  return `<div style="font-size:12px">Archives (YSE PZ): ${entries.map(pill).join("")}</div>`;
+}
+
 function renderXmatch(ev) {
   const xm = ev.xmatch;
   if (!xm) { $("#xmatch").innerHTML = `<div class="muted">no crossmatch</div>`; return; }
@@ -1204,6 +1219,7 @@ function renderXmatch(ev) {
     ${ssoBits.join("") || `<span class="pill">no pipeline SSO association</span>`}
     ${ev.ztf_object_id ? `<span class="pill">ANTARES ZTF assoc: ${esc(ev.ztf_object_id)}</span>` : ""}
   </div>`;
+  html += yseArchivesLine(ev.yse_archives);
   html += `<div id="skybot-out" style="font-size:12px">${renderSkybot(ev.skybot)}</div>`;
   html += classSummary(xm);
   const chosen = form.host && form.host.ls_id;
