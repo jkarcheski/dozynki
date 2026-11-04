@@ -876,9 +876,11 @@ def leaderboard(days: int = 7):
 
 
 @app.get("/api/coverage")
-def get_coverage(request: Request):
-    """Per night: LSST objects first alerting then (counted in the background) and how many are vetted."""
-    return coverage.summary(_who(request))
+def get_coverage(request: Request, survey: str = "lsst"):
+    """Per night: LSST (or ZTF) objects first alerting then (counted in the background) and how many are vetted."""
+    if survey not in coverage.SURVEYS:
+        raise HTTPException(400, f"survey must be one of {', '.join(coverage.SURVEYS)}")
+    return coverage.summary(_who(request), survey)
 
 
 @app.get("/api/achievements")

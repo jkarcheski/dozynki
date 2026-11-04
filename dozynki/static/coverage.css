@@ -32,3 +32,5 @@
 .cv-details { margin-top: 10px; font-size: 12px; }
 .cv-details summary { cursor: pointer; color: var(--muted); }
 .cv-details .tablewrap { max-height: 260px; overflow: auto; }
+#cv-hint { margin-left: auto; }
+#cv-survey button { font-size: 12px; padding: 1px 8px; }

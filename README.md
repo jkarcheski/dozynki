@@ -53,7 +53,8 @@ alert came on one Rubin night (dayObs: noon to noon UTC). Batches are recorded i
 card shows how much of each night has been vetted. Night samples are left out of the filter lab and
 compare pages' default population, which is the uniform random sample.
 
-**Coverage.** The landing page's Coverage card shows the share of LSST objects vetted. The first load of a fresh install counts every night, which takes a while; the card
+**Coverage.** The landing page's Coverage card shows the share of LSST objects vetted, or of ZTF objects with the
+LSST/ZTF switch (ZTF nights are UTC dates). The first load of a fresh install counts every night, which takes a while; the card
 fills in as it goes.
 
 **Random and Filtered modes.** The vetter's mode switch picks what you see. *Random* is everything sampled,

@@ -131,6 +131,11 @@ CREATE TABLE IF NOT EXISTS night_sizes (
     n_objects   INTEGER NOT NULL,      -- LSST objects whose first ANTARES alert came that night (coverage.py)
     counted_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ztf_night_sizes (
+    night       TEXT PRIMARY KEY,      -- UTC date, YYYY-MM-DD
+    n_objects   INTEGER NOT NULL,      -- ZTF objects whose first ANTARES alert came that night (coverage.py)
+    counted_at  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS object_lists (
     name        TEXT PRIMARY KEY,      -- chosen when the list is loaded (lists.py)
     owner       TEXT,                  -- labeler who loaded it, the only one who may add to or delete it

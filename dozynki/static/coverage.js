@@ -1,5 +1,5 @@
-// Landing page Coverage card: share of LSST objects vetted, overall and per night, from /api/coverage (coverage.py).
-// A month calendar with one circle per Rubin night, shaded by the share of that night's objects vetted.
+// Landing page Coverage card: share of LSST or ZTF objects vetted, overall and per night, from /api/coverage (coverage.py).
+// A month calendar with one circle per night (Rubin dayObs, or UTC date for ZTF), shaded by the share of that night's objects vetted.
 
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -16,6 +16,12 @@
     { max: Infinity, label: "all" },
   ];
   const step = (share) => (share >= 1 ? 4 : STEPS.findIndex((s) => share < s.max));
+  const SURVEY_KEY = "dozynki.coverage.survey";
+  const HINTS = { lsst: "LSST objects by the Rubin night of their first ANTARES alert · hover a night",
+    ztf: "ZTF objects by the UTC night of their first ANTARES alert · hover a night" };
+  let survey = "lsst", timer = null;
+  try { if (localStorage.getItem(SURVEY_KEY) === "ztf") survey = "ztf"; } catch {}
+  const NAME = () => survey.toUpperCase();
 
   function pct(k, n) {
     if (!n) return "—";
@@ -30,7 +36,7 @@
     else if (r.vetted) cls += ` s${step(r.vetted / r.size)}`;
     if (r.mine) cls += " mine";
     const label = r.size === null ? `${r.night}: not counted yet` + (r.vetted ? `; ${r.vetted} vetted` : "")
-      : r.size === 0 ? `${r.night}: no LSST objects first alerted`
+      : r.size === 0 ? `${r.night}: no ${NAME()} objects first alerted`
       : `${r.night}: ${pct(r.vetted, r.size)} of ${fmt(r.size)} objects vetted (${fmt(r.vetted)}; you ${fmt(r.mine)})`;
     return `<span class="${cls}" data-tip="${esc(label)}" aria-label="${esc(label)}" role="img"></span>`;
   }
@@ -65,9 +71,9 @@
   function render(c) {
     const t = c.total;
     $("#cv-hero").innerHTML = t.size
-      ? `<b>${pct(t.vetted, t.size)}</b><span>of ${fmt(t.size)} LSST objects vetted: ${fmt(t.vetted)} by everyone, `
+      ? `<b>${pct(t.vetted, t.size)}</b><span>of ${fmt(t.size)} ${NAME()} objects vetted: ${fmt(t.vetted)} by everyone, `
         + `<strong>${fmt(t.mine)} (${pct(t.mine, t.size)}) by you</strong></span>`
-      : `<b>—</b><span>no night has been counted yet</span>`;
+      : `<b>—</b><span>${c.nights.length ? "no night has been counted yet" : `no ${NAME()} objects queued yet`}</span>`;
     const notes = [];
     if (t.nights_counted < t.nights) notes.push(`${t.nights_counted} of ${t.nights} nights counted${c.counting ? ", counting…" : ""}`);
     if (c.error) notes.push(`ANTARES didn't answer (${esc(c.error.slice(0, 120))}); trying again in a few minutes`);
@@ -97,14 +103,28 @@
   }
 
   async function load() {
+    clearTimeout(timer);
+    const want = survey;
+    $("#cv-hint").textContent = HINTS[want];
+    document.querySelectorAll("#cv-survey button").forEach((b) => b.classList.toggle("on", b.dataset.v === want));
     try {
-      const r = await fetch("/api/coverage");
+      const r = await fetch(`/api/coverage?survey=${want}`);
       if (!r.ok) throw new Error(`${r.status}: ${(await r.text()).slice(0, 200)}`);
-      if (render(await r.json())) setTimeout(load, 15000); // pick up nights as they're counted
+      const c = await r.json();
+      if (want !== survey) return; // switched while this was loading
+      if (render(c)) timer = setTimeout(load, 15000); // pick up nights as they're counted
     } catch (e) {
       $("#cv-note").textContent = e.message;
     }
   }
+
+  $("#cv-survey").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-v]");
+    if (!b || b.dataset.v === survey) return;
+    survey = b.dataset.v;
+    try { localStorage.setItem(SURVEY_KEY, survey); } catch {}
+    load();
+  });
 
   tooltips();
   load();
