@@ -21,6 +21,9 @@ header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding
 .tabs a.brand { color: var(--ink); font-size: 14px; margin-right: 8px; padding-left: 0; }
 .tabs a.brand:hover { background: none; }
 .tabs .stale { margin-left: 8px; font-size: 12px; padding: 2px 8px; border-radius: 10px; color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); cursor: help; }
+/* search box (app.py's _nav): any page, opens the object in the vetter */
+header > form.find input { width: 190px; padding: 3px 8px; font-size: 13px; }
+header > form.find input.busy { opacity: .6; cursor: progress; }
 /* profile link: pinned to the header's top-right corner, with room kept for it however the header wraps */
 header:has(> a.who) { padding-right: 150px; }
 header > a.who { position: absolute; top: 10px; right: 16px; max-width: 124px; overflow: hidden; text-overflow: ellipsis;

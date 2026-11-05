@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, similar, sky, sources, tns
+from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, search, similar, sky, sources, tns
 from . import daily, nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, pittgoogle, yse
@@ -131,7 +131,11 @@ def _nav(active, request):
                'title="You are vetting as a guest. Make a profile to be on the leaderboard and share filters.">guest · sign in</a>')
     # the profile link sits outside the tab bar, so CSS can pin it to the header's right-hand end
     # daily-alert.js pops up on every page when the latest daily report has jobs that failed
-    return (f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>{who}'
+    # the search box opens what it finds in the vetter (/vet?find=...; app.js resolves it there)
+    find = ('<form class="find" action="/vet" method="get" role="search">'
+            '<input type="search" name="find" placeholder="TNS name or LSST ID" aria-label="Find an object by TNS name or LSST ID" '
+            'title="SN 2025abc, AT2025abc, a diaObjectId, lsst:&lt;diaSourceId&gt;, an ANTARES locus or RA Dec"></form>')
+    return (f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>{find}{who}'
             '<script src="/static/daily-alert.js" defer></script>')
 
 
@@ -910,6 +914,17 @@ def tns_list_build(body: TnsList):
 @app.get("/api/tns/list")
 def tns_list_status():
     return tns.status()
+
+
+@app.get("/api/search")
+def search_object(q: str):
+    """The object a TNS name, LSST ID, locus or position names, queued if new (search.py)."""
+    try:
+        return search.find(q)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # a broker or TNS that errors or times out
+        raise HTTPException(502, f"lookup failed ({type(e).__name__})")
 
 
 @app.get("/api/farm")

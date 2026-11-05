@@ -89,9 +89,37 @@ async function init() {
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
   document.addEventListener("keydown", onKey);
   refreshStats();
-  // /vet?object=<diaObjectId> opens that object (links from the filter lab)
+  // /vet?object=<diaObjectId> opens that object (links from the filter lab); /vet?find=<name>, the tab bar's search box
   const linked = new URLSearchParams(location.search).get("object");
-  linked ? loadObject(linked) : next();
+  const find = new URLSearchParams(location.search).get("find");
+  const box = document.querySelector("form.find input");
+  document.querySelector("form.find").onsubmit = (e) => { e.preventDefault(); findObject(box.value); };
+  box.oninput = () => box.setCustomValidity("");
+  if (find) box.value = find;
+  find ? findObject(find, true) : linked ? loadObject(linked) : next();
+}
+
+// The tab bar's search box: what a TNS name or LSST ID names (search.py), opened here. The title shows
+// the name as typed, not TNS's (its SN prefix would give away a classification in blind mode).
+async function findObject(q, first = false) {
+  const box = document.querySelector("form.find input");
+  q = q.trim();
+  if (!q) return;
+  box.classList.add("busy");
+  let r;
+  try {
+    r = await api(`/api/search?${new URLSearchParams({ q })}`);
+  } catch (e) {
+    box.setCustomValidity(e.message);
+    box.reportValidity();
+    if (first) next(); // opened from another page: carry on with the queue
+    return;
+  } finally {
+    box.classList.remove("busy");
+  }
+  history.replaceState(null, "", `/vet?object=${encodeURIComponent(r.object_id)}`);
+  const far = r.sep != null && r.kind === "tns" ? ` (${r.sep.toFixed(1)}″ away)` : "";
+  loadObject(r.object_id, r.object_id === q ? "" : `${q}${far}`);
 }
 
 function buildLabelBar() {
@@ -635,9 +663,9 @@ let loadToken = 0;
 const clearPanels = () => ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"]
   .forEach((s) => ($(s).innerHTML = ""));
 
-async function loadObject(oid) {
+async function loadObject(oid, alias = "") {
   window.scrollTo({ top: 0 }); // each new target starts at the cutouts
-  $("#obj-title").textContent = `LSST ${oid}`;
+  $("#obj-title").textContent = `LSST ${oid}${alias ? ` · ${alias}` : ""}`;
   $("#lc").innerHTML = `<div class="loading">Fetching the light curve from ANTARES…</div>`;
   clearPanels();
   renderPending([]);
