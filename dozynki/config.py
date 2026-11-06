@@ -39,6 +39,7 @@ REPORT_EMAILS = _per_labeler("DOZYNKI_REPORT_EMAIL")
 SLACK_WEBHOOKS = _per_labeler("DOZYNKI_SLACK_WEBHOOK")
 
 ANTARES_API = "https://api.antares.noirlab.edu/v2"
+FINK_LSST_API = "https://api.lsst.fink-portal.org/api/v1"
 # Pitt-Google's BigQuery archive of the LSST alert stream; queries are billed to your own project
 PITTGOOGLE_TABLE = os.environ.get("PITTGOOGLE_TABLE", "pitt-alert-broker.lsst.alerts_v10_0")
 PITTGOOGLE_BILLING_PROJECT = os.environ.get("PITTGOOGLE_BILLING_PROJECT", "")

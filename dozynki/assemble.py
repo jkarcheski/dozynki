@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import requests
 
 from . import archival, crossmatch, db
-from .brokers import alerce, antares, babamul_client, yse
+from .brokers import alerce, antares, babamul_client, fink, yse
 
 # Per-point fields that are classifier / ML outputs rather than measurements.
 OPINION_POINT_FIELDS = {"reliability", "rb", "drb"}
@@ -45,6 +45,10 @@ def _alerce(object_id, ant):
     return alerce.fetch(lsst_id, ant.get("ztf_object_id"))
 
 
+def _fink(object_id):
+    return fink.fetch(None if antares.is_ztf_object(object_id) else object_id)
+
+
 def _fetch_antares(item):
     data = _light_curve(item)
     data["thumbs"] = {}
@@ -76,9 +80,10 @@ def load(object_id, refresh=False):
             # cached before per-alert positions were kept: fetch them separately so the
             # rest of the evidence the object was labeled with stays as it was
             _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=5) as pool:
             jobs = [
                 pool.submit(_cached, object_id, "alerce", lambda: _alerce(object_id, ant), refresh),
+                pool.submit(_cached, object_id, "fink", lambda: _fink(object_id), refresh),
                 pool.submit(_cached, object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
                 pool.submit(_cached, object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"]), refresh),
                 pool.submit(_cached, object_id, "archival", lambda: archival.run(ant["ra"], ant["dec"]),
@@ -132,7 +137,7 @@ def load_antares(object_id):
 
 
 # what load() fetches after ANTARES, as the vetter names them while they're still coming
-SLOW = {"alerce": "ALeRCE", "babamul": "Babamul", "xmatch": "crossmatch", "archival": "archival light curves"}
+SLOW = {"alerce": "ALeRCE", "fink": "Fink", "babamul": "Babamul", "xmatch": "crossmatch", "archival": "archival light curves"}
 
 
 def quick(object_id, labeler):
@@ -147,7 +152,7 @@ def quick(object_id, labeler):
 
 
 def _gather(object_id):
-    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "babamul", "xmatch", "archival", "skybot", "positions")}
+    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "fink", "babamul", "xmatch", "archival", "skybot", "positions")}
 
 
 def fill_missing_xmatch(object_id):
@@ -256,6 +261,7 @@ def refresh_brokers(object_id, labeler=None):
     item = db.get_queue_item(object_id)
     ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh=True)["data"]
     _cached(object_id, "alerce", lambda: _alerce(object_id, ant), refresh=True)
+    _cached(object_id, "fink", lambda: _fink(object_id), refresh=True)
     _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
     if labeler:
         with_yse(object_id, _gather(object_id), labeler, refresh=True)
@@ -309,6 +315,7 @@ def opinions(raw):
             "ztf_drb_mean": sum(ztf_drb) / len(ztf_drb) if ztf_drb else None,
         },
         "alerce": (raw["alerce"] or {}).get("data"),
+        "fink": (raw.get("fink") or {}).get("data"),
         "antares": {"tags": ant.get("tags"), "catalogs": ant.get("catalogs"), "catalog_matches": ant.get("catalog_matches")},
         "babamul": {k: bab.get(k) for k in ("enabled", "found", "properties", "reliability", "cross_matches", "errors")}
         | {"ztf_match": {k: v for k, v in (bab.get("ztf_match") or {}).items() if k != "forced_phot"} or None},

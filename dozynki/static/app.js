@@ -1382,7 +1382,7 @@ function renderOpinions() {
   const el = $("#opinions");
   if (!cur.revealed || !cur.opinions) {
     $("#op-state").textContent = "hidden";
-    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">ALeRCE probabilities, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
+    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">ALeRCE probabilities, Fink classifier scores, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
     return;
   }
   $("#op-state").textContent = "";
@@ -1398,6 +1398,7 @@ function renderOpinions() {
       html += `<h3>ALeRCE ${survey}: ${esc(name)} <span class="muted">v${esc(e.version)}</span></h3>${probBars(e.probs)}`;
     }
   }
+  html += renderFink(op.fink || {});
   const an = op.antares || {};
   html += `<h3>ANTARES</h3><div>${(an.tags || []).map((t) => `<span class="pill">${esc(t)}</span>`).join("") || `<span class="muted">no tags</span>`}</div>
     <div style="font-size:12px">catalogs: ${(an.catalogs || []).map(esc).join(", ") || "none"}</div>`;
@@ -1417,6 +1418,20 @@ function renderOpinions() {
   }
   html += renderYse(op.yse || {});
   el.innerHTML = html;
+}
+
+// Fink's per-alert scores, newest first: CATS broad class, SuperNNova SN vs others, early SN Ia
+function renderFink(f) {
+  let html = `<h3>Fink</h3>`;
+  if (!f.lsst) return html + (f.errors?.lsst ? `<div class="muted" style="font-size:12px">${esc(f.errors.lsst).slice(0, 200)}</div>`
+    : `<div class="muted" style="font-size:12px">LSST objects only</div>`);
+  const a = f.lsst.latest;
+  html += `<div><span class="pill">CATS: ${esc(a.cats_class ?? "—")}${a.cats_class ? ` ${fmt(a.cats_score)}` : ""}</span>`
+    + `<span class="pill">SNN SN vs others: ${fmt(a.snn_sn_vs_others)}</span><span class="pill">early SN Ia: ${fmt(a.early_snia)}</span></div>`;
+  const rows = [...f.lsst.alerts].reverse().map((r) => `<tr><td>${fmt(r.mjd, 2)}</td><td>${esc(r.cats_class ?? "—")}</td>`
+    + `<td>${fmt(r.cats_score)}</td><td>${fmt(r.snn_sn_vs_others)}</td><td>${fmt(r.early_snia)}</td></tr>`).join("");
+  return html + `<details style="font-size:12px"><summary>${f.lsst.alerts.length} alerts</summary><table>`
+    + `<tr><th>MJD</th><th>CATS</th><th>p</th><th>SNN</th><th>early Ia</th></tr>${rows}</table></details>`;
 }
 
 // YSE PZ header values are Django natural keys, e.g. "['Following']"

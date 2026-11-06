@@ -34,6 +34,9 @@ def _broker_summary(raw):
         for clf, entry in ((op["alerce"] or {}).get(survey) or {}).items():
             out[f"broker_alerce_{survey}_{clf}_top"] = entry["top"]
             out[f"broker_alerce_{survey}_{clf}_probs"] = json.dumps(entry["probs"])
+    latest = ((op["fink"] or {}).get("lsst") or {}).get("latest") or {}
+    for k in ("cats_class", "cats_score", "snn_sn_vs_others", "early_snia"):
+        out[f"broker_fink_lsst_{k}"] = latest.get(k)
     return out
 
 

@@ -19,10 +19,10 @@ from contextlib import contextmanager
 import pytest
 
 from dozynki import archival, assemble, crossmatch, db
-from dozynki.brokers import alerce, antares, babamul_client, yse
+from dozynki.brokers import alerce, antares, babamul_client, fink, yse
 
 # seconds each stubbed service takes; distinct so the totals say which ones were waited on in turn
-DELAY = {"locus": 0.30, "thumbs": 0.10, "alerce": 0.15, "babamul": 0.20, "xmatch": 0.40,
+DELAY = {"locus": 0.30, "thumbs": 0.10, "alerce": 0.15, "fink": 0.15, "babamul": 0.20, "xmatch": 0.40,
          "archival_ztf": 0.25, "archival_ps1": 0.25, "yse": 0.20}
 SLACK = 0.12  # thread start-up, sqlite, json; well under the smallest gap between the shapes tested
 
@@ -82,6 +82,7 @@ def stubbed(monkeypatch):
     monkeypatch.setattr(antares, "get_locus", after("locus", lambda locus_id: _antares_payload(locus_id)))
     monkeypatch.setattr(antares, "thumbnails", after("thumbs", {"science": "x", "template": "x", "difference": "x"}))
     monkeypatch.setattr(alerce, "fetch", after("alerce", {"lsst": None, "ztf": None, "errors": {}}))
+    monkeypatch.setattr(fink, "fetch", after("fink", {"lsst": None, "errors": {}}))
     monkeypatch.setattr(babamul_client, "fetch", after("babamul", {"enabled": False}))
     monkeypatch.setattr(crossmatch, "run", after("xmatch", {"errors": {}, "host_candidates": []}))
     monkeypatch.setitem(archival.SURVEYS, "ztf_dr", after("archival_ztf", []))
@@ -129,7 +130,7 @@ def test_cold_open_breakdown(stubbed, monkeypatch):
 
 def test_cold_open_waits_in_this_order(stubbed):
     """The current shape: ANTARES (locus, then one thumbnail call per survey with detections), then ALeRCE,
-    Babamul, crossmatch and archival (its ZTF and PS1 at once) together, then YSE PZ.
+    Fink, Babamul, crossmatch and archival (its ZTF and PS1 at once) together, then YSE PZ.
 
     If this starts failing because the total dropped, the pipeline got more parallel: update the expected sum.
     """
@@ -139,19 +140,19 @@ def test_cold_open_waits_in_this_order(stubbed):
     took = time.perf_counter() - t0
     # the stub light curve has LSST and ZTF detections, so two thumbnail calls
     antares_part = DELAY["locus"] + 2 * DELAY["thumbs"]
-    parallel_part = max(DELAY["alerce"], DELAY["babamul"], DELAY["xmatch"], DELAY["archival_ztf"], DELAY["archival_ps1"])
+    parallel_part = max(DELAY["alerce"], DELAY["fink"], DELAY["babamul"], DELAY["xmatch"], DELAY["archival_ztf"], DELAY["archival_ps1"])
     expected = antares_part + parallel_part + DELAY["yse"]
     print(f"\ncold open {took:.3f} s; expected {antares_part:.2f} ANTARES + {parallel_part:.2f} parallel + {DELAY['yse']:.2f} YSE PZ")
     assert took == pytest.approx(expected, abs=SLACK)
 
 
 def test_the_parallel_group_overlaps(stubbed):
-    """ALeRCE, Babamul, crossmatch and archival run side by side: the group costs its slowest member, not the sum."""
+    """ALeRCE, Fink, Babamul, crossmatch and archival run side by side: the group costs its slowest member, not the sum."""
     oid = _queued()
     t0 = time.perf_counter()
     assemble.load(oid)
     took = time.perf_counter() - t0 - DELAY["locus"] - 2 * DELAY["thumbs"]
-    serial = DELAY["alerce"] + DELAY["babamul"] + DELAY["xmatch"] + DELAY["archival_ztf"] + DELAY["archival_ps1"]
+    serial = DELAY["alerce"] + DELAY["fink"] + DELAY["babamul"] + DELAY["xmatch"] + DELAY["archival_ztf"] + DELAY["archival_ps1"]
     assert took < serial - 0.3
 
 
@@ -170,7 +171,7 @@ def test_cached_open_with_a_long_light_curve():
     """The cached path on a big payload (5000 points), timed step by step: cache read, evidence(), opinions()."""
     oid = _queued()
     db.cache_put(oid, "antares", _antares_payload(f"ANT_{oid}", 5000))
-    for kind in ("alerce", "babamul", "xmatch"):
+    for kind in ("alerce", "fink", "babamul", "xmatch"):
         db.cache_put(oid, kind, {"errors": {}})
     db.cache_put(oid, "archival", {"points": [], "errors": {}})
     t = Timer("cached open, 5000-point light curve")
@@ -286,7 +287,7 @@ def test_quick_shows_the_light_curve_before_the_rest(stubbed):
     took = time.perf_counter() - t0
     print(f"\nquick open {took:.3f} s")
     assert took == pytest.approx(DELAY["locus"] + 2 * DELAY["thumbs"], abs=SLACK)
-    assert pending == ["ALeRCE", "Babamul", "crossmatch", "archival light curves", "YSE PZ"]
+    assert pending == ["ALeRCE", "Fink", "Babamul", "crossmatch", "archival light curves", "YSE PZ"]
     ev = assemble.evidence(oid, raw)
     assert len(ev["points"]) == 500 and ev["thumbs"] and ev["xmatch"] is None
     assemble.opinions(raw)  # blind mode off shows opinions straight away: they must build from the partial data
