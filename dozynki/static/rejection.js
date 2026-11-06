@@ -547,6 +547,45 @@ const QUESTIONS = {
     choices: [{ label: "Yes, over 60 days", params: { max_days: 60 } }, { label: "Yes, over 100 days", params: { max_days: 100 } },
       { label: "Yes, over 200 days", params: { max_days: 200 } }, { label: "No", params: null }],
   },
+  ps1_persistent: {
+    node: (p) => `In Pan-STARRS1 (2009–2014), ${p.min_n}+ times?`,
+    ask: "Drop objects where something was already there in 2009–2014?",
+    why: "Pan-STARRS1 single-exposure detections within 1.5″ of the position. A new transient on empty sky has none; stars, AGN and bright galaxy cores do. Needs the archival search (5–30 s an object), run only after every other rule keeps it.",
+    choices: [{ label: "Yes, any detection", params: { min_n: 1 } }, { label: "Yes, 3 or more", params: { min_n: 3 } },
+      { label: "Yes, 10 or more", params: { min_n: 10 } }, { label: "No", params: null }],
+  },
+  no_brighter_than_ps1: {
+    node: (p) => `Less than ${p.min_delta} mag brighter than in Pan-STARRS1?`,
+    ask: "Drop objects that look the same as they did in 2009–2014?",
+    why: "Latest LSST total magnitude against Pan-STARRS1's median in the same band. A transient on a galaxy brightens it; an AGN or star sits near its old level. Objects with nothing in Pan-STARRS1 are kept. Needs the archival search.",
+    choices: [{ label: "Yes, unless 0.3 mag brighter", params: { min_delta: 0.3 } }, { label: "Yes, unless 0.5 mag brighter", params: { min_delta: 0.5 } },
+      { label: "Yes, unless 1 mag brighter", params: { min_delta: 1 } }, { label: "No", params: null }],
+  },
+  ztf_archival_variable: {
+    node: (p) => `Varying by over ${p.max_rms} mag in ZTF's archive?`,
+    ask: "Drop objects that were already varying in ZTF (2018 on)?",
+    why: "Scatter of ZTF's data-release light curve beyond its errors, in a band with 10+ points. AGN and variable stars wander; empty sky and quiet galaxies don't. Needs the archival search.",
+    choices: [{ label: "Yes, over 0.05 mag", params: { max_rms: 0.05 } }, { label: "Yes, over 0.1 mag", params: { max_rms: 0.1 } },
+      { label: "Yes, over 0.2 mag", params: { max_rms: 0.2 } }, { label: "No", params: null }],
+  },
+  tns_known: {
+    node: () => "Already on TNS?",
+    ask: "Drop objects someone already reported to TNS?",
+    why: "ANTARES's match to its copy of TNS. Answer no if you want to check known transients. ANTARES applies this cut itself.",
+    choices: [{ label: "Yes, drop them", params: {} }, { label: "No, keep them", params: null }],
+  },
+  not_tns_known: {
+    node: () => "Not on TNS?",
+    ask: "Keep only objects already reported to TNS?",
+    why: "The opposite of the question before: only objects ANTARES matched to TNS. ANTARES applies this cut itself.",
+    choices: [{ label: "Yes, only TNS objects", params: {} }, { label: "No", params: null }],
+  },
+  tns_classified: {
+    node: () => "Already classified on TNS?",
+    ask: "Drop objects TNS already has a classification for?",
+    why: "Its TNS match has a type (SN Ia, TDE, ...): someone already took a spectrum.",
+    choices: [{ label: "Yes, drop them", params: {} }, { label: "No, keep them", params: null }],
+  },
   alerce_stamp_agn: {
     node: (p) => `ALeRCE P(AGN) above ${p.max_p}?`,
     ask: "Use ALeRCE's stamp classifier to drop AGN?",
@@ -655,7 +694,8 @@ const QUESTIONS = {
 };
 // Questionnaire order, which is also the built pipeline's order: catalog facts, then data quality, then broker scores.
 const QUESTION_ORDER = ["declination", "faint_now", "faint", "bright", "sso_association", "trailed", "glint", "gaia_star", "antares_bright_star", "antares_gaia_variable", "ztf_ps1_star",
-  "milliquas_agn", "antares_nuclear", "nuclear", "not_nuclear", "in_template", "long_history", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
+  "milliquas_agn", "antares_nuclear", "nuclear", "not_nuclear", "in_template", "long_history", "ps1_persistent", "no_brighter_than_ps1", "ztf_archival_variable",
+  "tns_known", "not_tns_known", "tns_classified", "galactic_plane", "ecliptic", "negative_flux", "dipole", "extended_diff", "bad_psf_fit", "sharp", "oversized", "measurement_flags",
   "low_snr", "position_scatter", "min_detections", "min_lsst_detections", "min_nights", "min_span",
   "red", "blue", "long_rise", "fast_rise", "not_fast_rise",
   "lsst_reliability", "alerce_stamp_bogus", "alerce_stamp_agn", "scimma_quality"];

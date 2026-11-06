@@ -9,18 +9,20 @@ to 'pending' (kept) or 'filtered' (rejected; screen_result names the step, and w
 is dropped: db.forget_rejected). An object that can't be fetched goes to 'pending' with screen_result 'error',
 so a broker outage hides nothing. Random mode never serves screened objects.
 Objects from a whole-night run (nightrun.py) are also filtered out when none of their
-detections fall on the night.
+detections fall on the night. The archival search (archival.py, 5-30 s an object) runs only for a
+filter with an archival rule, and only once every other rule has kept the object.
 """
 
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from . import assemble, db, details, rejection
+from . import archival, assemble, db, details, rejection
 from .brokers import alerce
 
 WORKERS = 8
 FETCH_FOR = {"alerce_stamp_bogus": "alerce", "alerce_stamp_agn": "alerce", "nuclear": "ls_hosts", "not_nuclear": "ls_hosts"}  # fetched only for these rules
+ARCHIVAL_RULES = {"ps1_persistent", "no_brighter_than_ps1", "ztf_archival_variable"}  # fetched last, only if still kept
 _lock = threading.Lock()
 _running = False
 
@@ -63,6 +65,14 @@ def _screen_one(row):
         db.set_screened(oid, "filtered", "no_alert_that_night")
         return
     decisions = rejection.apply(feats, screen["pipeline"])
+    if raw["archival"] is None and any(s["rule"] in ARCHIVAL_RULES for s in screen["pipeline"]) \
+            and not rejection.first_rejection(decisions):
+        ant = raw["antares"]["data"]
+        try:
+            assemble._cached(oid, "archival", lambda: archival.run(ant["ra"], ant["dec"]))
+            decisions = rejection.apply(rejection.features(oid), screen["pipeline"])
+        except Exception:
+            pass  # no archival data: those rules see none, and keep it
     db.save_pipeline(screen["version"], screen["pipeline"])
     db.save_rejections(oid, screen["version"], decisions)
     first = rejection.first_rejection(decisions)

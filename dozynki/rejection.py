@@ -111,6 +111,54 @@ def _rise(dets):
     return peak["mjd"] - pos[0]["mjd"], max(rates, default=None)
 
 
+ARCHIVAL_MIN_POINTS = 10  # ZTF data-release points in one band for its scatter to mean anything
+
+
+def _archival(raw):
+    """(points by survey, whether each survey answered) from the cached archival search; None if not fetched."""
+    hit = (raw.get("archival") or {}).get("data")
+    if hit is None:
+        return None, {}
+    by = {}
+    for p in hit["points"]:
+        by.setdefault(p["survey"], []).append(p)
+    return by, {s: s not in hit["errors"] for s in ("ps1", "ztf_dr")}
+
+
+def _ps1_brightening(lsst, ps1):
+    """Pan-STARRS1's median magnitude minus the latest LSST science (total) magnitude in the same band:
+    how much brighter it is now than in 2009-2014. None without such a pair."""
+    for p in sorted(lsst, key=lambda p: p["mjd"], reverse=True):
+        old = [q["mag"] for q in ps1 if q["band"] == p.get("band")]
+        if p.get("sci_mag") is not None and old:
+            return _median(old) - p["sci_mag"]
+    return None
+
+
+def _excess_rms(points):
+    """Largest scatter beyond the errors, in any band with ARCHIVAL_MIN_POINTS points (mag)."""
+    out = []
+    for band in {p["band"] for p in points}:
+        mags = [p["mag"] for p in points if p["band"] == band]
+        if len(mags) >= ARCHIVAL_MIN_POINTS:
+            mean = sum(mags) / len(mags)
+            var = sum((m - mean) ** 2 for m in mags) / (len(mags) - 1)
+            err = _median(p["mag_err"] for p in points if p["band"] == band) or 0
+            out.append(math.sqrt(max(0.0, var - err ** 2)))
+    return max(out, default=None)
+
+
+def _tns(object_id, ant, cats):
+    """(ANTARES lists a TNS match, it has a classification): the class from the cached TNS matches or
+    ANTARES's catalog matches; None while neither has it."""
+    if "tns_public_objects" not in (ant.get("catalogs") or []):
+        return False, False
+    matches = (db.cache_get(object_id, "tns") or {}).get("data") or (cats or {}).get("tns_public_objects") or []
+    if any("type" in m for m in matches):
+        return True, any(m.get("type") for m in matches)
+    return True, None
+
+
 def features(object_id):
     """Flat feature dict for one object from its cached payloads, or None if not fetched."""
     raw = assemble._gather(object_id)
@@ -131,6 +179,8 @@ def features(object_id):
     cats = details.catalogs(object_id)
     sky = crossmatch.context(ev["ra"], ev["dec"])
     hosts = details.hosts(object_id)
+    arch, answered = _archival(raw)
+    tns_listed, tns_classified = _tns(object_id, ant, cats)
     rise_days, rise_rate = _rise(dets)
     det = details.get(object_id, ant)
     lsst_details = [det[p["alert_id"]] for p in lsst if p.get("alert_id") in det] if det is not None else []
@@ -160,6 +210,12 @@ def features(object_id):
         # difference magnitudes of positive LSST and ZTF detections
         "mag_peak": min((p["mag"] for p in dets if p.get("mag") is not None), default=None),
         "mag_latest": max(((p["mjd"], p["mag"]) for p in dets if p.get("mag") is not None), default=(None, None))[1],
+        # archival total brightness at the position (archival.py): None until searched or if the survey failed
+        "ps1_n": len(arch.get("ps1", [])) if arch is not None and answered["ps1"] else None,
+        "ps1_brightening": _ps1_brightening(lsst, arch.get("ps1", [])) if arch is not None and answered["ps1"] else None,
+        "ztf_dr_excess_rms": _excess_rms(arch.get("ztf_dr", [])) if arch is not None and answered["ztf_dr"] else None,
+        "tns_listed": tns_listed,
+        "tns_classified": tns_classified,
         "color_gr_equiv": color,
         "color_bands": color_bands,
         "template_ratio": _template_ratio(lsst, det or {}),
@@ -293,6 +349,18 @@ RULES = {r.name: r for r in [
     Rule("antares_nuclear", "on a galaxy: ANTARES matched SDSS galaxies, 2MASS extended sources or RC3 within max_sep arcsec "
          "(it matches within about 1), or ZTF's nearest PS1 source is a galaxy (score < 0.5) that close",
          {"max_sep": 1.0}, lambda f, max_sep: _antares_nuclear(f, max_sep)),
+    Rule("ps1_persistent", "Pan-STARRS1 (2009-2014) detected a source at the position (1.5 arcsec) in at least min_n "
+         "single exposures: something was already there (stars, AGN, galaxy cores)",
+         {"min_n": 3}, lambda f, min_n: None if f["ps1_n"] is None else f["ps1_n"] >= min_n),
+    Rule("no_brighter_than_ps1", "the latest LSST total magnitude is less than min_delta brighter than Pan-STARRS1's "
+         "median in the same band: it looks as it did in 2009-2014", {"min_delta": 0.5},
+         lambda f, min_delta: None if f["ps1_brightening"] is None else f["ps1_brightening"] < min_delta),
+    Rule("ztf_archival_variable", "ZTF data-release light curve (2018 on) scatters by more than max_rms mag beyond its "
+         "errors in some band: a long-lived variable", {"max_rms": 0.1},
+         lambda f, max_rms: None if f["ztf_dr_excess_rms"] is None else f["ztf_dr_excess_rms"] > max_rms),
+    Rule("tns_known", "ANTARES matched a TNS object: already reported", {}, lambda f: f["tns_listed"]),
+    Rule("tns_classified", "its TNS match has a classification: already typed", {}, lambda f: f["tns_classified"]),
+    Rule("not_tns_known", "ANTARES matched no TNS object (keeps only reported ones)", {}, lambda f: not f["tns_listed"]),
     Rule("antares_bright_star", "ANTARES matched the locus to its bright guide star catalog", {},
          lambda f: f["antares_bright_star"]),
     Rule("antares_gaia_variable", "ANTARES matched the locus to the Gaia DR3 variability catalog", {},
@@ -334,6 +402,8 @@ LISTING_ES = {
     # ANTARES lists the catalogs it matched within about 1 arcsec, so a cut at least that wide is
     # the same as its match; a narrower one needs the separation, from the full fetch (None: run later)
     "milliquas_agn": lambda max_sep: [{"bool": {"must_not": {"term": {"catalogs": "milliquas"}}}}] if max_sep >= 1 else None,
+    "tns_known": lambda: [{"bool": {"must_not": {"term": {"catalogs": "tns_public_objects"}}}}],
+    "not_tns_known": lambda: [{"term": {"catalogs": "tns_public_objects"}}],
     "declination": lambda min_dec, max_dec: [{"range": {"dec": {"gte": min_dec, "lte": max_dec}}}],
     # the catalog half only: ZTF's PS1 galaxies wait for the full fetch, which applies the whole rule
     "antares_nuclear": lambda max_sep: [{"bool": {"must_not": {"terms": {"catalogs": list(GALAXY_CATALOGS)}}}}] if max_sep >= 1 else None,

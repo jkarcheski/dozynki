@@ -152,6 +152,15 @@ Filter rules come from light curve, broker scores, and metadata brokers already 
   and change by a fraction. Together with `long_history` (detected over more than 100 days) and
   `alerce_stamp_agn` (ALeRCE's stamp classifier, broker output), these are the AGN cuts beyond Milliquas.
   Objects cached before template flux was kept get it from "Fetch them".
+- **Archival history at the position** (`archival.py`, Pan-STARRS1 2009-2014 and ZTF data releases,
+  total magnitudes within 1.5″): `ps1_persistent` (something was there in 2009-2014), `no_brighter_than_ps1`
+  (the latest LSST total magnitude is within `min_delta` of Pan-STARRS1's in the same band: it looks as it
+  did then) and `ztf_archival_variable` (ZTF's light curve scatters beyond its errors). The search takes
+  5-30 s, so screening runs it only for a filter with one of these rules, and only after every other rule
+  has kept the object.
+- **TNS** through ANTARES's match: `tns_known` (already reported; applied in the night query),
+  `not_tns_known` (only reported ones) and `tns_classified` (already typed). YSE PZ isn't used for filters:
+  it needs each labeler's own login and looks objects up only by TNS name.
 - **Nuclearity**: offset from the Legacy Survey host galaxy (lowest DLR within 10″) for `nuclear` and
   `not_nuclear` (keep only nuclear). Not broker data, but one quick Data Lab query (cache kind `ls_hosts`),
   made only when a filter uses these rules; objects with the full crossmatch use its host candidates.

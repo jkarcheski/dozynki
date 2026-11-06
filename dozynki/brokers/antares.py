@@ -186,6 +186,7 @@ CATALOG_FIELDS = {
     "milliquas": ("type", "z", "qpct"),
     "vsx": ("type",),
     "gaia_dr3_variability": ("class",),
+    "tns_public_objects": ("name", "type"),
 }
 
 
