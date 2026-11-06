@@ -220,9 +220,21 @@ Each object is a vector of the filter lab's features (`rejection.features()`) pl
 numbers from the cached ANTARES points (peak flux, rise and fade time, last/peak flux, bands, difference minus
 science magnitude). Features are transformed by hand (log for heavy tails), scaled by median and IQR and clipped
 at 5σ, and never weighted or fit to labels, so "similar" means close in these features, not labeled the same.
-Toggle feature groups in the header; broker scores (reliability, drb, SCIMMA tag) are off by default.
+Toggle feature groups in the header; broker scores (reliability, drb, SCIMMA tag), sky position and archival
+history are off by default.
 
-- **Feature map**: the first two principal components (numpy SVD, missing values at the median), colored by
+- **Host galaxy** (catalog context): the Legacy Survey host's photo-z, r magnitude and half-light radius.
+  Legacy Survey's −99 photo-z placeholder and photo-z intervals wider than 1 count as missing, as do
+  magnitudes fainter than 25 (noise: DR10 reaches about 24.5 in r).
+- **Archival history** (for objects whose archival search has run): Pan-STARRS1 detections at the position,
+  its median r magnitude, how much brighter LSST is now than Pan-STARRS1 was in the same band, and the ZTF
+  archive's scatter beyond its errors. Medians need 3+ Pan-STARRS1 points in one band and never mix bands,
+  "now" is the median of LSST's latest night, and the ZTF scatter is from the median absolute deviation, so
+  a stray detection or a few bad epochs don't become a value. A feature fewer than 5% of objects have is
+  left out of the map.
+
+- **Feature map**: the first two principal components, fit around missing values without filling them in
+  (an object is placed from the features it has, and faded where that is mostly guesswork), colored by
   class, with the features that make up each axis. Click a point to select it.
 - **Nearest neighbors**: the k closest labeled (or all) objects to the selected one, by the rms scaled
   difference over the features both have, so an object without Rubin details is compared on what it has. Each

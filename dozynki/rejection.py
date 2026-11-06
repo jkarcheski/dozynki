@@ -112,6 +112,9 @@ def _rise(dets):
 
 
 ARCHIVAL_MIN_POINTS = 10  # ZTF data-release points in one band for its scatter to mean anything
+PS1_MIN_POINTS = 3  # Pan-STARRS1 detections in a band for its median to stand against a stray one
+HOST_MAG_LIMIT = 25.0  # fainter Legacy Survey magnitudes are noise (DR10 reaches about 24.5 in r)
+HOST_ZPHOT_MAX_WIDTH = 1.0  # a photo-z whose 68% interval is wider says nothing
 
 
 def _archival(raw):
@@ -125,27 +128,51 @@ def _archival(raw):
     return by, {s: s not in hit["errors"] for s in ("ps1", "ztf_dr")}
 
 
+def _ps1_mags(ps1, band):
+    """Pan-STARRS1 magnitudes in one band, or [] if fewer than PS1_MIN_POINTS (one stray detection isn't a source)."""
+    mags = [q["mag"] for q in ps1 if q["band"] == band]
+    return mags if len(mags) >= PS1_MIN_POINTS else []
+
+
 def _ps1_brightening(lsst, ps1):
-    """Pan-STARRS1's median magnitude minus the latest LSST science (total) magnitude in the same band:
-    how much brighter it is now than in 2009-2014. None without such a pair."""
+    """Pan-STARRS1's median magnitude minus LSST's science (total) magnitude now, in the same band: how much
+    brighter it is than in 2009-2014. "Now" is the median over the latest night with an LSST detection in a
+    band Pan-STARRS1 has enough of, so neither side rests on one point. None without such a band."""
     for p in sorted(lsst, key=lambda p: p["mjd"], reverse=True):
-        old = [q["mag"] for q in ps1 if q["band"] == p.get("band")]
-        if p.get("sci_mag") is not None and old:
-            return _median(old) - p["sci_mag"]
+        old = _ps1_mags(ps1, p.get("band"))
+        if p.get("sci_mag") is None or not old:
+            continue
+        night = [q["sci_mag"] for q in lsst if q.get("band") == p["band"] and q.get("sci_mag") is not None
+                 and math.floor(q["mjd"]) == math.floor(p["mjd"])]
+        return _median(old) - _median(night)
     return None
 
 
 def _excess_rms(points):
-    """Largest scatter beyond the errors, in any band with ARCHIVAL_MIN_POINTS points (mag)."""
+    """Largest scatter beyond the errors, in any band with ARCHIVAL_MIN_POINTS points (mag). The scatter is
+    1.4826 x the median absolute deviation, so a few bad epochs don't read as variability."""
     out = []
     for band in {p["band"] for p in points}:
         mags = [p["mag"] for p in points if p["band"] == band]
         if len(mags) >= ARCHIVAL_MIN_POINTS:
-            mean = sum(mags) / len(mags)
-            var = sum((m - mean) ** 2 for m in mags) / (len(mags) - 1)
+            med = _median(mags)
+            scatter = 1.4826 * _median(abs(m - med) for m in mags)
             err = _median(p["mag_err"] for p in points if p["band"] == band) or 0
-            out.append(math.sqrt(max(0.0, var - err ** 2)))
+            out.append(math.sqrt(max(0.0, scatter ** 2 - err ** 2)))
     return max(out, default=None)
+
+
+def _host_props(host):
+    """The Legacy Survey host's photo-z, r magnitude and half-light radius (arcsec), each None where it's
+    a placeholder (-99 photo-z), unconstrained (photo-z interval wider than HOST_ZPHOT_MAX_WIDTH) or noise
+    (fainter than HOST_MAG_LIMIT)."""
+    if not host:
+        return None, None, None
+    z, lo, hi = host.get("z_phot_median"), host.get("z_phot_l68"), host.get("z_phot_u68")
+    z = z if z is not None and z >= 0 and lo is not None and hi is not None and lo >= 0 and hi - lo <= HOST_ZPHOT_MAX_WIDTH else None
+    mag = host.get("mag_r")
+    mag = mag if mag is not None and math.isfinite(mag) and mag <= HOST_MAG_LIMIT else None
+    return z, mag, host.get("shape_r")
 
 
 def _tns(object_id, ant, cats):
@@ -180,6 +207,7 @@ def features(object_id):
     sky = crossmatch.context(ev["ra"], ev["dec"])
     hosts = details.hosts(object_id)
     arch, answered = _archival(raw)
+    host_z, host_mag, host_size = _host_props(hosts[0] if hosts else None)
     tns_listed, tns_classified = _tns(object_id, ant, cats)
     rise_days, rise_rate = _rise(dets)
     det = details.get(object_id, ant)
@@ -213,6 +241,10 @@ def features(object_id):
         # archival total brightness at the position (archival.py): None until searched or if the survey failed
         "ps1_n": len(arch.get("ps1", [])) if arch is not None and answered["ps1"] else None,
         "ps1_brightening": _ps1_brightening(lsst, arch.get("ps1", [])) if arch is not None and answered["ps1"] else None,
+        "ps1_median_mag_r": _median(_ps1_mags(arch.get("ps1", []), "r")) if arch is not None and answered["ps1"] else None,
+        "host_z_phot": host_z,
+        "host_mag_r": host_mag,
+        "host_size_arcsec": host_size,
         "ztf_dr_excess_rms": _excess_rms(arch.get("ztf_dr", [])) if arch is not None and answered["ztf_dr"] else None,
         "tns_listed": tns_listed,
         "tns_classified": tns_classified,

@@ -38,6 +38,7 @@ GROUPS = {
     "lightcurve": "Light curve",
     "morphology": "Rubin pipeline measurements",
     "context": "Catalog context",
+    "history": "Archival history",
     "sky": "Sky position",
     "broker": "Broker scores",
 }
@@ -84,6 +85,14 @@ FEATURES = [
     ("antares_bright_star", "context", same, "bright star (ANTARES)"),
     ("antares_gaia_variable", "context", same, "Gaia variable (ANTARES)"),
     ("sso_associated", "context", same, "solar-system association"),
+    ("host_z_phot", "context", same, "host photo-z"),
+    ("host_mag_r", "context", same, "host r mag"),
+    ("host_size_arcsec", "context", log1p, "host half-light radius (″)"),
+    # Pan-STARRS1 2009-2014 and ZTF data releases at the position (archival.py), for objects searched
+    ("ps1_n", "history", log1p, "Pan-STARRS1 detections"),
+    ("ps1_median_mag_r", "history", same, "Pan-STARRS1 r mag (median)"),
+    ("ps1_brightening", "history", same, "brighter than Pan-STARRS1 (mag)"),
+    ("ztf_dr_excess_rms", "history", log1p, "ZTF archive scatter beyond errors (mag)"),
     ("abs_gal_b", "sky", same, "|Galactic b| (°)"),
     ("abs_ecl_lat", "sky", same, "|ecliptic β| (°)"),
     ("lsst_reliability_mean", "broker", same, "LSST reliability (mean)"),
