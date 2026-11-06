@@ -749,7 +749,10 @@ WATCHLIST_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "n_det", "last_m
 
 def _watchlist(request, since):
     """Your watched objects, each with its detection count and latest detected magnitude from the cached light curve."""
-    rows = db.watchlist(_who(request), _since(since))
+    return _with_last_detection(db.watchlist(_who(request), _since(since)))
+
+
+def _with_last_detection(rows):
     for r in rows:
         cached = db.cache_get(r["object_id"], "antares")
         dets = [p for p in (cached["data"]["points"] if cached else []) if p["kind"] == "detection" and p.get("mag") is not None]
@@ -779,6 +782,23 @@ def watchlist_csv(request: Request, since: str = ""):
     writer.writeheader()
     writer.writerows(rows)
     name = f"watchlist{'_since_' + since if since else ''}.csv"
+    return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+TRANSIENT_COLUMNS = ["object_id", "antares_locus", "ra", "dec", "n_det", "last_mag", "last_band", "last_mjd", "klass",
+                     "alt_classes", "subclass", "confidence", "flags", "notes", "phase", "labeled_at"]
+
+
+@app.get("/api/transients.csv")
+def transients_csv(request: Request, also: bool = False):
+    """Your transient candidates by your latest label on each object: transient as the primary label, or with
+    also=true, another primary label with transient as a "could also be". Built per request, like the watchlist's."""
+    rows = _with_last_detection(db.transients(_who(request), also))
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, TRANSIENT_COLUMNS)
+    writer.writeheader()
+    writer.writerows(rows)
+    name = "transients_also.csv" if also else "transients.csv"
     return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 

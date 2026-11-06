@@ -434,6 +434,19 @@ def watchlist(labeler, since=None):
         ORDER BY l.created_at DESC""", (labeler, since, since))
 
 
+def transients(labeler, also=False):
+    """This labeler's objects whose latest label is transient, newest first; also=True instead keeps those
+    with another primary class that list transient as a "could also be"."""
+    test = ("l.klass != 'transient' AND EXISTS (SELECT 1 FROM json_each(l.alt_classes) WHERE value = 'transient')"
+            if also else "l.klass = 'transient'")
+    return query(f"""
+        SELECT l.object_id, q.antares_locus, q.ra, q.dec, l.klass, l.alt_classes, l.subclass, l.confidence, l.flags,
+               l.notes, l.phase, l.created_at AS labeled_at
+        FROM labels l LEFT JOIN queue q USING (object_id)
+        WHERE l.id IN (SELECT MAX(id) FROM labels WHERE labeler = ? GROUP BY object_id) AND {test}
+        ORDER BY l.created_at DESC""", (labeler,))
+
+
 def cache_get(object_id, kind):
     rows = query("SELECT payload, fetched_at FROM cache WHERE object_id = ? AND kind = ?", (object_id, kind))
     if not rows:
