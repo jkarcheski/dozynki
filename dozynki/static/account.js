@@ -1,4 +1,4 @@
-// DOZYNKI profile page: sign in, make a profile, reset a password, your YSE PZ login. Plain JS, no build step.
+// DOZYNKI profile page: sign in, make a profile, reset a password, your YSE PZ login and Lasair token. Plain JS, no build step.
 
 const $ = (s) => document.querySelector(s);
 
@@ -45,26 +45,29 @@ function showYse(username) {
   $("#yse-form").reset();
 }
 
-// The outcome of a save or test, in a box under the card, so a wrong password can't go unnoticed.
-function yseStatus(ok, text) {
-  const el = $("#yse-status");
+// The outcome of a save or test, in a box under the card ("yse" or "lasair"), so a wrong password can't go unnoticed.
+function cardStatus(card, ok, text) {
+  const el = $(`#${card}-status`);
   el.hidden = !text;
   el.className = ok ? "good" : "bad";
   el.textContent = text ? `${ok ? "✓" : "✗"} ${text}` : "";
 }
 
-// Run a YSE PZ request with the button disabled; report its outcome.
-async function yseAction(button, request, ok) {
+// Run a card's request with the button disabled; report its outcome.
+async function cardAction(card, button, request, ok) {
   button.disabled = true;
-  yseStatus(true, "");
+  cardStatus(card, true, "");
   try {
     ok(await request());
   } catch (ex) {
-    yseStatus(false, ex.message);
+    cardStatus(card, false, ex.message);
   } finally {
     button.disabled = false;
   }
 }
+
+const yseStatus = (ok, text) => cardStatus("yse", ok, text);
+const yseAction = (button, request, ok) => cardAction("yse", button, request, ok);
 
 async function initYse() {
   const form = $("#yse-form");
@@ -86,6 +89,34 @@ async function initYse() {
   showYse((await api("/api/account/yse")).username);
 }
 
+function showLasair(savedAt) {
+  $("#lasair-on").hidden = !savedAt;
+  $("#lasair-form").hidden = !!savedAt;
+  $("#lasair-when").textContent = savedAt ? `on ${savedAt.slice(0, 10)}` : "";
+  $("#lasair-form").reset();
+}
+
+async function initLasair() {
+  const form = $("#lasair-form");
+  const say = (ok, text) => cardStatus("lasair", ok, text);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    cardAction("lasair", form.querySelector("button"), () => api("/api/account/lasair", data), (r) => {
+      showLasair(r.saved_at);
+      say(true, "Lasair accepted the token. It's saved; the vetter will use it.");
+    });
+  };
+  $("#lasair-test").onclick = () => cardAction("lasair", $("#lasair-test"), () => api("/api/account/lasair/check", {}),
+    () => say(true, "Lasair still accepts the token."));
+  $("#lasair-change").onclick = () => { $("#lasair-on").hidden = true; form.hidden = false; say(true, ""); };
+  $("#lasair-forget").onclick = () => cardAction("lasair", $("#lasair-forget"), async () => {
+    const r = await fetch("/api/account/lasair", { method: "DELETE" });
+    if (!r.ok) throw new Error(`couldn't remove it (HTTP ${r.status})`);
+  }, () => { showLasair(null); say(true, "Removed. The vetter no longer fetches from Lasair for you."); });
+  showLasair((await api("/api/account/lasair")).saved_at);
+}
+
 async function init() {
   const cfg = await api("/api/config");
   const token = new URLSearchParams(location.hash.slice(1)).get("reset");
@@ -102,14 +133,14 @@ async function init() {
 
   if (!cfg.accounts) {
     $("#off-labeler").textContent = cfg.labeler;
-    show("off", "yse");
-    await initYse();
+    show("off", "yse", "lasair");
+    await Promise.all([initYse(), initLasair()]);
   } else if (token) {
     show("reset");
   } else if (cfg.signed_in) {
     $("#me-handle").textContent = cfg.labeler;
-    show("me", "yse");
-    await initYse();
+    show("me", "yse", "lasair");
+    await Promise.all([initYse(), initLasair()]);
   } else {
     show("guest");
   }

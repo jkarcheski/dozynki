@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, search, similar, sky, sources, tns
 from . import daily, nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
-from .brokers import antares, pittgoogle, yse
+from .brokers import antares, lasair, pittgoogle, yse
 from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
                      XMATCH_RADIUS_ARCSEC)
 from .filters import DATE_MODES, Filters
@@ -361,6 +361,57 @@ def forget_yse_login(request: Request):
     return {"username": None}
 
 
+@app.get("/api/account/lasair")
+def lasair_token(request: Request):
+    can = not ACCOUNTS or bool(request.state.user)
+    return {"can_add": can, "saved_at": lasair.saved_at(_who(request)) if can else None}
+
+
+class LasairToken(BaseModel):
+    token: str
+
+
+def _lasair_labeler(request):
+    if ACCOUNTS and not request.state.user:
+        raise HTTPException(403, "sign in to add a Lasair token")
+    who = _who(request)
+    if accounts._limited(("lasair", who), 10, 900):  # each check is one of the token's 100 Lasair calls an hour
+        raise HTTPException(429, "too many attempts; try again in 15 minutes")
+    return who
+
+
+@app.post("/api/account/lasair")
+def save_lasair_token(body: LasairToken, request: Request):
+    who = _lasair_labeler(request)
+    try:
+        lasair.save_token(who, body.token)
+    except lasair.TokenError as e:
+        raise HTTPException(400, str(e))
+    return {"saved_at": lasair.saved_at(who)}
+
+
+@app.post("/api/account/lasair/check")
+def check_lasair_token(request: Request):
+    """Try the saved token with Lasair now."""
+    who = _lasair_labeler(request)
+    token = lasair.token_for(who)
+    if not token:
+        raise HTTPException(404, "no Lasair token saved")
+    try:
+        lasair.check_token(token)
+    except lasair.TokenError as e:
+        raise HTTPException(400, str(e))
+    return {"saved_at": lasair.saved_at(who)}
+
+
+@app.delete("/api/account/lasair")
+def forget_lasair_token(request: Request):
+    if ACCOUNTS and not request.state.user:
+        raise HTTPException(403, "sign in to remove a Lasair token")
+    lasair.forget_token(_who(request))
+    return {"saved_at": None}
+
+
 class FilterParams(BaseModel):
     min_det: int = 1
     date_from: str | None = None
@@ -600,7 +651,7 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
             assemble.load_in_background(object_id, _who(request))
             loading = True
     else:
-        raw, pending = assemble.with_yse(object_id, assemble.load(object_id, refresh=refresh), _who(request), refresh), []
+        raw, pending = assemble.with_profile(object_id, assemble.load(object_id, refresh=refresh), _who(request), refresh), []
     ev = assemble.evidence(object_id, raw)
     labels = db.labels_for(object_id, _who(request))
     revealed = not _blind(request) or _has_blind_label(object_id, _who(request))
@@ -619,7 +670,7 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
 def reveal(object_id: str, request: Request):
     if _blind(request) and not _has_blind_label(object_id, _who(request)):
         raise HTTPException(403, "commit a blind label first")
-    return assemble.opinions(assemble.with_yse(object_id, assemble.load(object_id), _who(request)))
+    return assemble.opinions(assemble.with_profile(object_id, assemble.load(object_id), _who(request)))
 
 
 class Label(BaseModel):

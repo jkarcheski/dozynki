@@ -5,11 +5,12 @@ A *source* assigns at most one class to each object:
   label:final:<labeler>          that labeler's latest label (any phase)
   alerce:<survey>:<classifier>   ALeRCE's top class from the cached payload
   fink:lsst:cats                 Fink's CATS broad class for the object's latest alert
+  lasair:sherlock                Lasair's Sherlock contextual class
   tns                            the TNS type of the object ANTARES matched it to (tns.py), when TNS has one
 
 Each source keeps its own class names (ALeRCE says "SN", not "transient"), so the
 matrix need not be square. Agreement is decided after mapping both sides onto the
-DOZYNKI taxonomy (labels.py) with ALERCE_CLASSES, FINK_CATS_CLASSES or tns.TNS_TYPES, or onto a coarser
+DOZYNKI taxonomy (labels.py) with ALERCE_CLASSES, FINK_CATS_CLASSES, SHERLOCK_CLASSES or tns.TNS_TYPES, or onto a coarser
 grouping: real vs not real, or transient vs not transient. The subclass view compares
 transient subclasses of objects both sources call transient. Classes that do not map
 ("unsure", unknown ALeRCE classes, unclassified TNS objects) are left out and counted.
@@ -45,6 +46,10 @@ ALERCE_SUBCLASSES = {
 # "Long" (SLSN, TDE, ...) says nothing about the transient subclass.
 FINK_CATS_CLASSES = {"SN-like": "transient", "Fast": "transient", "Long": "transient", "Periodic": "star", "Non-periodic": "agn"}
 FINK_CATS_SUBCLASSES = {"SN-like": "sn_like", "Fast": "fast"}
+# Sherlock classes (brokers/lasair.py) -> DOZYNKI classes. Its SN only means "near a galaxy, off the nucleus",
+# so it gets no subclass; NT is a nuclear transient (could be AGN); ORPHAN and UNCLEAR map to nothing.
+SHERLOCK_CLASSES = {"SN": "transient", "NT": "transient", "CV": "transient", "AGN": "agn", "VS": "star", "BS": "star"}
+SHERLOCK_SUBCLASSES = {"NT": "nuclear", "CV": "cv_nova"}
 
 VIEWS = {
     "class": None,
@@ -80,6 +85,10 @@ def sources():
             for r in db.query("SELECT payload FROM cache WHERE kind = 'fink'"))
     if n:
         out.append({"id": "fink:lsst:cats", "label": "Fink LSST · CATS (latest alert)", "kind": "fink", "n": n})
+    n = sum(bool(((json.loads(r["payload"]).get("lsst") or {}).get("classification")))
+            for r in db.query("SELECT payload FROM cache WHERE kind = 'lasair'"))
+    if n:
+        out.append({"id": "lasair:sherlock", "label": "Lasair · Sherlock", "kind": "lasair", "n": n})
     matched = tns.cached()
     if matched:
         n = sum(bool(m.get("type")) for m in matched.values())
@@ -117,6 +126,14 @@ def load(source):
             if top:
                 out[r["object_id"]] = {"cls": top, "mapped": FINK_CATS_CLASSES.get(top), "subclass": FINK_CATS_SUBCLASSES.get(top),
                                        "alt": [], "p": latest.get("cats_score"), "probs": {top: latest.get("cats_score")}}
+        return out
+    if kind == "lasair":
+        out = {}
+        for r in db.query("SELECT object_id, payload FROM cache WHERE kind = 'lasair'"):
+            top = (json.loads(r["payload"]).get("lsst") or {}).get("classification")
+            if top:
+                out[r["object_id"]] = {"cls": top, "mapped": SHERLOCK_CLASSES.get(top), "subclass": SHERLOCK_SUBCLASSES.get(top),
+                                       "alt": [], "p": None}
         return out
     if kind == "tns":
         out = {}

@@ -19,7 +19,7 @@ from contextlib import contextmanager
 import pytest
 
 from dozynki import archival, assemble, crossmatch, db
-from dozynki.brokers import alerce, antares, babamul_client, fink, yse
+from dozynki.brokers import alerce, antares, babamul_client, fink, lasair, yse
 
 # seconds each stubbed service takes; distinct so the totals say which ones were waited on in turn
 DELAY = {"locus": 0.30, "thumbs": 0.10, "alerce": 0.15, "fink": 0.15, "babamul": 0.20, "xmatch": 0.40,
@@ -89,6 +89,7 @@ def stubbed(monkeypatch):
     monkeypatch.setitem(archival.SURVEYS, "ps1", after("archival_ps1", []))
     monkeypatch.setattr(archival, "_down", {})
     monkeypatch.setattr(yse, "login_for", lambda labeler: ("user", "pw"))
+    monkeypatch.setattr(lasair, "token_for", lambda labeler: None)
     monkeypatch.setattr(yse, "fetch", after("yse", {"enabled": True, "found": False}))
     monkeypatch.setattr(assemble, "_tns_names", lambda object_id, ant: [])
 

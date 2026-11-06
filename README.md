@@ -46,6 +46,10 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
    found by its TNS name (name, status, classification, redshift), for labelers who added their own YSE PZ login on
    their profile page. That transient's photometry is evidence: it is on the light curve (diamonds) from
    the blind pass on, and YSE PZ's archive flags (HST, JWST, Chandra, Spitzer) are badges in the crossmatch.
+   Lasair's Sherlock contextual class (SN, NT, AGN, VS, CV, ...: from host and star catalogs, not the light
+   curve) is fetched with the Lasair API token a labeler adds on their profile page. It's cached once per object
+   and shown to everyone; an ordinary Lasair account gets 100 calls an hour, and a throttled fetch is retried
+   after half an hour.
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 
@@ -259,7 +263,8 @@ random sample is used unless the "objects" picker says otherwise (everything que
 `http://127.0.0.1:8765/compare` (or the "Compare" tab) draws a confusion matrix between
 any two label sources: each labeler's first blind or latest labels, every ALeRCE
 classifier found in the cache (top class), Fink's CATS broad class for the latest alert (mapped by
-`FINK_CATS_CLASSES`; "Non-periodic" counts as AGN), and TNS: the type of the TNS object ANTARES matched an object to,
+`FINK_CATS_CLASSES`; "Non-periodic" counts as AGN), Lasair's Sherlock class (`SHERLOCK_CLASSES`; ORPHAN and
+UNCLEAR are left out), and TNS: the type of the TNS object ANTARES matched an object to,
 mapped onto DOZYNKI classes and transient subclasses by `TNS_TYPES` in `dozynki/tns.py` (unclassified TNS
 objects are left out and counted). Nothing is stored. Code lives in `dozynki/compare.py`.
 - View all classes, or collapse to real vs not real, or transient vs not transient, or compare transient
@@ -328,7 +333,7 @@ The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/
 ```
 dozynki/
   app.py            FastAPI endpoints
-  compare.py        confusion matrices between label sources (labelers, ALeRCE, Fink, TNS)
+  compare.py        confusion matrices between label sources (labelers, ALeRCE, Fink, Lasair, TNS)
   tns.py            TNS via ANTARES's match: type mapping, cached matches, the TNS object list
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
@@ -341,7 +346,7 @@ dozynki/
                     slack.py send it
   sky.py            sky map data
   similar.py        feature vectors, PCA map and nearest neighbors (similar-objects page)
-  brokers/          antares.py, alerce.py, babamul_client.py, fink.py, yse.py (YSE PZ)
+  brokers/          antares.py, alerce.py, babamul_client.py, fink.py, lasair.py (Sherlock), yse.py (YSE PZ)
   db.py             SQLite (data/dozynki.sqlite): queue, cache, labels
   export.py         training-set export
   labels.py         taxonomy

@@ -120,6 +120,11 @@ CREATE TABLE IF NOT EXISTS yse_logins (
     password    TEXT NOT NULL,         -- encrypted (yse.py); YSE PZ's API needs it back, so it can't be a hash
     saved_at    TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lasair_tokens (
+    labeler     TEXT PRIMARY KEY,      -- as in yse_logins
+    token       TEXT NOT NULL,         -- encrypted with the YSE PZ key (lasair.py)
+    saved_at    TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash  TEXT PRIMARY KEY,      -- sha256 of the cookie value
     user_id     INTEGER NOT NULL,

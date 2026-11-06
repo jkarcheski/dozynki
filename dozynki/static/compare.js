@@ -1,4 +1,4 @@
-// DOZYNKI label comparison: confusion matrix of two label sources (labelers, ALeRCE classifiers, Fink CATS, TNS types). Plain JS, no build step.
+// DOZYNKI label comparison: confusion matrix of two label sources (labelers, ALeRCE classifiers, Fink CATS, Lasair Sherlock, TNS types). Plain JS, no build step.
 
 const STORE_KEY = "dozynki.compare.v1";
 

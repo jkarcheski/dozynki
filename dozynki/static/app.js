@@ -1382,7 +1382,7 @@ function renderOpinions() {
   const el = $("#opinions");
   if (!cur.revealed || !cur.opinions) {
     $("#op-state").textContent = "hidden";
-    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">ALeRCE probabilities, Fink classifier scores, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
+    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">ALeRCE probabilities, Fink classifier scores, Lasair's Sherlock context, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
     return;
   }
   $("#op-state").textContent = "";
@@ -1399,6 +1399,7 @@ function renderOpinions() {
     }
   }
   html += renderFink(op.fink || {});
+  html += renderLasair(op.lasair);
   const an = op.antares || {};
   html += `<h3>ANTARES</h3><div>${(an.tags || []).map((t) => `<span class="pill">${esc(t)}</span>`).join("") || `<span class="muted">no tags</span>`}</div>
     <div style="font-size:12px">catalogs: ${(an.catalogs || []).map(esc).join(", ") || "none"}</div>`;
@@ -1432,6 +1433,18 @@ function renderFink(f) {
     + `<td>${fmt(r.cats_score)}</td><td>${fmt(r.snn_sn_vs_others)}</td><td>${fmt(r.early_snia)}</td></tr>`).join("");
   return html + `<details style="font-size:12px"><summary>${f.lsst.alerts.length} alerts</summary><table>`
     + `<tr><th>MJD</th><th>CATS</th><th>p</th><th>SNN</th><th>early Ia</th></tr>${rows}</table></details>`;
+}
+
+// Sherlock's contextual class from Lasair, shared by everyone; fetched with the labeler's own token
+function renderLasair(l) {
+  let html = `<h3>Lasair · Sherlock</h3>`;
+  const note = (t) => html + `<div class="muted" style="font-size:12px">${t}</div>`;
+  if (!l) return note("not fetched yet");
+  if (l.enabled === false) return note(`add your Lasair token on your <a href="/account">profile</a> to fetch it`);
+  if (l.errors?.login) return html + `<div class="err">Lasair didn't accept your saved token: update it on your <a href="/account">profile</a></div>`;
+  if (!l.lsst) return note(esc(l.errors?.lsst || "LSST objects only").slice(0, 200));
+  return html + `<div><span class="pill">${esc(l.lsst.classification ?? "—")}</span></div>`
+    + (l.lsst.description ? `<div style="font-size:12px">${esc(l.lsst.description)}</div>` : "");
 }
 
 // YSE PZ header values are Django natural keys, e.g. "['Following']"

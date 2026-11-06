@@ -37,6 +37,7 @@ def _broker_summary(raw):
     latest = ((op["fink"] or {}).get("lsst") or {}).get("latest") or {}
     for k in ("cats_class", "cats_score", "snn_sn_vs_others", "early_snia"):
         out[f"broker_fink_lsst_{k}"] = latest.get(k)
+    out["broker_lasair_sherlock"] = ((op["lasair"] or {}).get("lsst") or {}).get("classification")
     return out
 
 

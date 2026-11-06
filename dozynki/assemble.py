@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import requests
 
 from . import archival, crossmatch, db
-from .brokers import alerce, antares, babamul_client, fink, yse
+from .brokers import alerce, antares, babamul_client, fink, lasair, yse
 
 # Per-point fields that are classifier / ML outputs rather than measurements.
 OPINION_POINT_FIELDS = {"reliability", "rb", "drb"}
@@ -130,6 +130,37 @@ def with_yse(object_id, raw, labeler, refresh=False):
     return raw | {"yse": _cached(object_id, yse.cache_kind(labeler), fetch, refresh)}
 
 
+LASAIR_RETRY_SECONDS = 1800  # a failed or throttled Lasair fetch is tried again after this long
+
+
+def with_lasair(object_id, raw, labeler, refresh=False):
+    """raw plus Lasair's Sherlock classification ("lasair"), one cache entry per object whoever fetched it.
+    Fetched with labeler's token when there's none yet, it failed a while ago, or refresh; without a token,
+    whatever is cached, else {"enabled": False}. A rejected token's error is shown to its owner, not cached."""
+    hit = db.cache_get(object_id, "lasair")
+    token = lasair.token_for(labeler)
+    if token and (refresh or hit is None or _lasair_failed(hit)):
+        new = lasair.fetch(None if antares.is_ztf_object(object_id) else object_id, token)
+        if new["errors"].get("login"):
+            return raw | {"lasair": {"data": new, "fetched_at": None}}
+        if new["lsst"] or hit is None or hit["data"]["errors"]:
+            db.cache_put(object_id, "lasair", new)
+            hit = db.cache_get(object_id, "lasair")
+    return raw | {"lasair": hit or {"data": {"enabled": False}, "fetched_at": None}}
+
+
+def _lasair_failed(hit):
+    if not hit["data"]["errors"]:
+        return False
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(hit["fetched_at"])
+    return age.total_seconds() > LASAIR_RETRY_SECONDS
+
+
+def with_profile(object_id, raw, labeler, refresh=False):
+    """raw plus what labeler's own logins fetch: YSE PZ and Lasair."""
+    return with_lasair(object_id, with_yse(object_id, raw, labeler, refresh), labeler, refresh)
+
+
 def load_antares(object_id):
     """Only the ANTARES payload (light curve, cutouts, catalogs), cached as load() caches it."""
     item = db.get_queue_item(object_id)
@@ -142,17 +173,20 @@ SLOW = {"alerce": "ALeRCE", "fink": "Fink", "babamul": "Babamul", "xmatch": "cro
 
 def quick(object_id, labeler):
     """What the vetter can show at once: the ANTARES light curve and cutouts (fetched if need be) and whatever
-    else is already cached, plus the names of what isn't yet; load() and with_yse() fetch the rest."""
+    else is already cached, plus the names of what isn't yet; load() and with_profile() fetch the rest."""
     load_antares(object_id)
     raw = _gather(object_id)
     raw["yse"] = (db.cache_get(object_id, yse.cache_kind(labeler)) if yse.login_for(labeler)
                   else {"data": {"enabled": False}, "fetched_at": None})
-    pending = [name for kind, name in SLOW.items() if raw[kind] is None] + (["YSE PZ"] if raw["yse"] is None else [])
+    raw["lasair"] = db.cache_get(object_id, "lasair") or (None if lasair.token_for(labeler)
+                                                          else {"data": {"enabled": False}, "fetched_at": None})
+    pending = ([name for kind, name in SLOW.items() if raw[kind] is None] + (["YSE PZ"] if raw["yse"] is None else [])
+               + (["Lasair"] if raw["lasair"] is None else []))
     return raw, pending
 
 
 def _gather(object_id):
-    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "fink", "babamul", "xmatch", "archival", "skybot", "positions")}
+    return {kind: db.cache_get(object_id, kind) for kind in ("antares", "alerce", "fink", "lasair", "babamul", "xmatch", "archival", "skybot", "positions")}
 
 
 def fill_missing_xmatch(object_id):
@@ -196,7 +230,7 @@ def _prefetch_one(object_id, labeler):
     try:
         raw = load(object_id)
         if labeler:
-            with_yse(object_id, raw, labeler)
+            with_profile(object_id, raw, labeler)
     except Exception:
         pass
     finally:
@@ -219,7 +253,7 @@ def load_in_background(object_id, labeler=None):
         try:
             raw = load(object_id)
             if labeler:
-                with_yse(object_id, raw, labeler)
+                with_profile(object_id, raw, labeler)
         except Exception:
             pass
         finally:
@@ -264,7 +298,7 @@ def refresh_brokers(object_id, labeler=None):
     _cached(object_id, "fink", lambda: _fink(object_id), refresh=True)
     _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
     if labeler:
-        with_yse(object_id, _gather(object_id), labeler, refresh=True)
+        with_profile(object_id, _gather(object_id), labeler, refresh=True)
     return ant
 
 
@@ -320,6 +354,7 @@ def opinions(raw):
         "babamul": {k: bab.get(k) for k in ("enabled", "found", "properties", "reliability", "cross_matches", "errors")}
         | {"ztf_match": {k: v for k, v in (bab.get("ztf_match") or {}).items() if k != "forced_phot"} or None},
         "yse": _yse_opinion((raw.get("yse") or {}).get("data") or {}),
+        "lasair": (raw.get("lasair") or {}).get("data"),
     }
 
 

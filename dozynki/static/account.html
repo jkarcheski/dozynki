@@ -50,6 +50,29 @@
     <div id="yse-status" role="status" hidden></div>
   </section>
 
+  <section class="card" id="lasair" hidden>
+    <h2>Lasair</h2>
+    <p class="muted">With your <a href="https://lasair.lsst.ac.uk" target="_blank">Lasair</a> API token, the vetter
+      fetches Sherlock's contextual classification (from host and star catalogs, not the light curve) with the
+      broker opinions. It's the same whoever's token fetched it, so everyone sees what's been fetched; your token
+      fetches what isn't yet. Your token is on your Lasair profile page; an ordinary account gets 100 calls an hour.</p>
+    <div id="lasair-on" hidden>
+      <p>Token saved <span id="lasair-when"></span></p>
+      <div class="buttons">
+        <button id="lasair-test">Test token</button>
+        <button id="lasair-change">Change token</button>
+        <button id="lasair-forget">Remove my Lasair token</button>
+      </div>
+    </div>
+    <form id="lasair-form">
+      <label>Lasair API token <input name="token" type="password" autocomplete="off" required></label>
+      <p class="hint">Checked with Lasair before it's saved (one of the hour's calls). DOZYNKI keeps it encrypted;
+        whoever runs this server could decrypt it.</p>
+      <button class="primary">Check and save</button>
+    </form>
+    <div id="lasair-status" role="status" hidden></div>
+  </section>
+
   <section id="guest" hidden>
     <p class="muted intro">You're vetting as a guest. Guest labels count toward the totals as one "guests" group.
       Make a profile to be on the leaderboard under your own handle, keep your queue on any browser, and
