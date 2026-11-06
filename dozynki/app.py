@@ -131,12 +131,12 @@ def _nav(active, request):
                'title="You are vetting as a guest. Make a profile to be on the leaderboard and share filters.">guest · sign in</a>')
     # the profile link sits outside the tab bar, so CSS can pin it to the header's right-hand end
     # daily-alert.js pops up on every page when the latest daily report has jobs that failed
-    # the search box opens what it finds in the vetter (/vet?find=...; app.js resolves it there)
+    # the search box (find.js) marks what it finds on the page, or opens it in the vetter; without JS, /vet?find=...
     find = ('<form class="find" action="/vet" method="get" role="search">'
             '<input type="search" name="find" placeholder="TNS name or LSST ID" aria-label="Find an object by TNS name or LSST ID" '
             'title="SN 2025abc, AT2025abc, a diaObjectId, lsst:&lt;diaSourceId&gt;, an ANTARES locus or RA Dec"></form>')
     return (f'<nav class="tabs"><a href="/" class="brand">DOZYNKI</a>{tabs}{stale}</nav>{find}{who}'
-            '<script src="/static/daily-alert.js" defer></script>')
+            '<script src="/static/daily-alert.js" defer></script><script src="/static/find.js" defer></script>')
 
 
 def _page(path, request):
@@ -923,6 +923,8 @@ def search_object(q: str):
         return search.find(q)
     except LookupError as e:
         raise HTTPException(404, str(e))
+    except search.Unavailable as e:
+        raise HTTPException(503, str(e))
     except Exception as e:  # a broker or TNS that errors or times out
         raise HTTPException(502, f"lookup failed ({type(e).__name__})")
 

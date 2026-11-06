@@ -162,6 +162,13 @@ async function init() {
   $("#list").onclick = onTableClick;
   $("#csv").onclick = downloadCsv;
   $("#recheck").onclick = recheck;
+  // the tab bar's search box: mark the object's row
+  window.onFind = (hit) => {
+    if (Find.mark(hit.object_id)) return null;
+    const since = $("#since").value;
+    return objects.some((o) => o.object_id === hit.object_id) ? "is on your watchlist, but hidden by the filters"
+      : `isn't on your watchlist${since ? ` (flagged since ${since})` : ""}`;
+  };
   setRange("night");
 }
 

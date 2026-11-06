@@ -24,6 +24,13 @@ header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding
 /* search box (app.py's _nav): any page, opens the object in the vetter */
 header > form.find input { width: 190px; padding: 3px 8px; font-size: 13px; }
 header > form.find input.busy { opacity: .6; cursor: progress; }
+header > form.find { position: relative; }
+header > form.find .find-note { position: absolute; top: calc(100% + 6px); right: 0; z-index: 6; width: min(300px, 90vw); padding: 8px 10px;
+  font-size: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgb(0 0 0 / .15); }
+header > form.find .find-note a { color: var(--accent); }
+/* rows and links find.js marks as the object searched for */
+.found, tr.found > td { background: color-mix(in srgb, var(--accent) 18%, transparent) !important; }
+tr.found > td:first-child, li.found { box-shadow: inset 3px 0 0 var(--accent); }
 /* profile link: pinned to the header's top-right corner, with room kept for it however the header wraps */
 header:has(> a.who) { padding-right: 150px; }
 header > a.who { position: absolute; top: 10px; right: 16px; max-width: 124px; overflow: hidden; text-overflow: ellipsis;

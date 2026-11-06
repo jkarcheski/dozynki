@@ -288,4 +288,6 @@ $("#run-now").onclick = async () => {
 };
 
 window.addEventListener("daily:changed", () => load());  // the pop-up started or finished a rerun
+// the tab bar's search box: mark the object wherever a report names it
+window.onFind = (hit) => (Find.mark(hit.object_id) ? null : "isn't in the daily reports shown here");
 load(true);

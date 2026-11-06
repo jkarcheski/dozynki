@@ -21,6 +21,7 @@ const COORDS = { eq: ["ra", "dec"], gal: ["l", "b"], ecl: ["elon", "elat"] };
 let DATA = null;
 let PIPE = null;  // the filter lab pipeline: {steps, rejectedBy: {object_id: step key or null}}, or null if not evaluated
 let state = null;
+let FOUND = null;  // what the tab bar's search box found ({object_id, ra, dec, query}), ringed on the map
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -213,6 +214,17 @@ function renderMap() {
                   marker: { ...t.marker, symbol: Array.isArray(t.marker.symbol) ? "circle" : t.marker.symbol, opacity: 1 } });
   }
 
+  // the object searched for, ringed at its own position: it may be outside the population or a hidden class
+  const found = [];
+  if (FOUND) {
+    const [x, y] = project(...fromVec(mul(FRAMES[f].m, toVec(FOUND.ra, FOUND.dec))));
+    traces.push({ type: "scatter", mode: "markers", x: [x], y: [y], customdata: [FOUND.object_id], showlegend: false,
+                  text: [`<b>${esc(FOUND.query)}</b><br>${esc(FOUND.object_id)}`], hovertemplate: "%{text}<extra></extra>",
+                  marker: { symbol: "circle-open", size: 22, color: cssVar("--accent"), line: { width: 3 } } });
+    found.push({ x, y, text: esc(FOUND.query), showarrow: true, arrowcolor: cssVar("--accent"), ax: 30, ay: -30,
+                 font: { size: 12, color: cssVar("--accent") }, bgcolor: cssVar("--card") });
+  }
+
   // longitude labels along the equator (east left)
   const ann = [-120, -60, 0, 60, 120].map((lon) => {
     const [x, y] = project(lon, 0);
@@ -223,7 +235,7 @@ function renderMap() {
   Plotly.react("map", traces, plotLayout({
     margin: { l: 10, r: 10, t: 10, b: 10 }, showlegend: true, legend: { orientation: "h", y: -0.02 },
     xaxis: { ...ax, range: [-2.9, 2.9] }, yaxis: { ...ax, range: [-1.45, 1.45], scaleanchor: "x" },
-    annotations: ann, dragmode: "zoom",
+    annotations: [...ann, ...found], dragmode: "zoom",
   }), { displaylogo: false, responsive: true });
 }
 
@@ -362,6 +374,15 @@ async function init() {
     $(id).value = state[k];
     $(id).oninput = (e) => { state[k] = +e.target.value; render(); };
   }
+  window.onFind = (hit) => {
+    FOUND = hit;
+    if (DATA) renderMap();
+    $("#map").scrollIntoView({ block: "center", behavior: "smooth" });
+    const o = DATA?.objects.find((x) => x.object_id === hit.object_id);
+    return !o ? `isn't among the objects ${Population.phrase(state)}; it is ringed at its position`
+      : !o.klass && !state.unlabeled ? "is unlabeled; it is ringed, and \"unlabeled\" shows the others"
+      : o.klass && state.hidden.includes(o.klass) ? `is ${o.klass}, a class hidden here; it is ringed anyway` : null;
+  };
   await load();
   $("#map").on("plotly_click", (ev) => {
     const id = ev.points[0]?.customdata;

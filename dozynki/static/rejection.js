@@ -14,6 +14,7 @@ const INTEGER_PARAMS = new Set(["n"]);
 let CFG = null;
 let state = null;
 let result = null;
+let foundId = null;  // what the tab bar's search box found, listed first in its leaf
 let evalToken = 0;
 
 const $ = (s) => document.querySelector(s);
@@ -725,7 +726,7 @@ function classSummary(objs) {
 }
 
 function objectList(objs) {
-  const sorted = [...objs].sort((x, y) => (y.target - x.target) || x.truth.localeCompare(y.truth));
+  const sorted = [...objs].sort((x, y) => ((y.object_id === foundId) - (x.object_id === foundId)) || (y.target - x.target) || x.truth.localeCompare(y.truth));
   const shown = sorted.slice(0, 200);
   return `<table><tr><th>object</th><th>label</th><th>target</th></tr>${shown.map((o) => `<tr>
     <td><a href="/vet?object=${encodeURIComponent(o.object_id)}" target="_blank">${esc(o.object_id)}</a></td>
@@ -974,6 +975,18 @@ async function init() {
   document.querySelectorAll("#truth button").forEach((b) => (b.onclick = () => { state.truth = b.dataset.v; changed(true); }));
   $("#sweep-param").onchange = setSweepRange;
   $("#sweep-run").onclick = runSweep;
+  // the tab bar's search box: open the tree leaf the object falls into, with it listed first
+  window.onFind = (hit) => {
+    const o = result?.objects.find((x) => x.object_id === hit.object_id);
+    if (!o) return `isn't among the labeled objects scored here (${Population.phrase(state)})`;
+    foundId = o.object_id;
+    const g = o.kept ? "kept" : Object.keys(result.steps).indexOf(o.rejected_by);
+    const leaf = $(`#tree .leaf[data-g="${g}"]`);
+    if (leaf.classList.contains("open")) leaf.click();  // closes it, so the click below lists it again
+    leaf.click();
+    Find.mark(o.object_id);
+    return null;
+  };
   await evaluatePipeline();
   if (sweepOptions().length) runSweep();
 }

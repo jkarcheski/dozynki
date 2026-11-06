@@ -89,37 +89,24 @@ async function init() {
   document.querySelectorAll("#lc-mode button").forEach((b) => (b.onclick = () => setLcMode(b.dataset.mode)));
   document.addEventListener("keydown", onKey);
   refreshStats();
-  // /vet?object=<diaObjectId> opens that object (links from the filter lab); /vet?find=<name>, the tab bar's search box
-  const linked = new URLSearchParams(location.search).get("object");
-  const find = new URLSearchParams(location.search).get("find");
-  const box = document.querySelector("form.find input");
-  document.querySelector("form.find").onsubmit = (e) => { e.preventDefault(); findObject(box.value); };
-  box.oninput = () => box.setCustomValidity("");
-  if (find) box.value = find;
-  find ? findObject(find, true) : linked ? loadObject(linked) : next();
+  // /vet?object=<diaObjectId> opens that object (links from the filter lab), titled with as=<name> when the tab
+  // bar's search box (find.js) found it on a page with nothing to mark; /vet?find=<name> is that box without JS
+  const url = new URLSearchParams(location.search);
+  window.onFind = openFound;
+  if (url.get("find")) {
+    try { return openFound({ ...(await api(`/api/search?${new URLSearchParams({ q: url.get("find") })}`)), query: url.get("find") }); }
+    catch (e) { toast(e.message, 6000); }
+  }
+  url.get("object") ? loadObject(url.get("object"), url.get("as") || "") : next();
 }
 
-// The tab bar's search box: what a TNS name or LSST ID names (search.py), opened here. The title shows
-// the name as typed, not TNS's (its SN prefix would give away a classification in blind mode).
-async function findObject(q, first = false) {
-  const box = document.querySelector("form.find input");
-  q = q.trim();
-  if (!q) return;
-  box.classList.add("busy");
-  let r;
-  try {
-    r = await api(`/api/search?${new URLSearchParams({ q })}`);
-  } catch (e) {
-    box.setCustomValidity(e.message);
-    box.reportValidity();
-    if (first) next(); // opened from another page: carry on with the queue
-    return;
-  } finally {
-    box.classList.remove("busy");
-  }
-  history.replaceState(null, "", `/vet?object=${encodeURIComponent(r.object_id)}`);
-  const far = r.sep != null && r.kind === "tns" ? ` (${r.sep.toFixed(1)}″ away)` : "";
-  loadObject(r.object_id, r.object_id === q ? "" : `${q}${far}`);
+// What the search box found, opened here. The title shows the name as typed, not TNS's (its SN prefix
+// would give away a classification in blind mode).
+function openFound(hit) {
+  history.replaceState(null, "", `/vet?object=${encodeURIComponent(hit.object_id)}`);
+  const far = hit.sep != null && hit.kind === "tns" ? ` (${hit.sep.toFixed(1)}″ away)` : "";
+  loadObject(hit.object_id, hit.object_id === hit.query ? "" : `${hit.query}${far}`);
+  return null;
 }
 
 function buildLabelBar() {

@@ -226,6 +226,16 @@ async function init() {
   $("#include-alt").onchange = (e) => { state.include_alt = e.target.checked; changed(); };
   Population.mount($("#population"), state, (p) => { Object.assign(state, p); changed(); });
   $("#show-all-dis").onclick = () => { selected = null; if (result) { renderMatrix(); renderCell(); } };
+  // the tab bar's search box: select the matrix cell the object is in, and mark it in the cell's list
+  window.onFind = (hit) => {
+    const o = result?.objects.find((x) => x.object_id === hit.object_id);
+    if (!o) return "isn't among the objects both sources label here";
+    selected = { row: o.row, col: o.col };
+    renderMatrix();
+    renderCell();
+    Find.mark(o.object_id);
+    return null;
+  };
   await run();
 }
 

@@ -335,6 +335,14 @@ async function init() {
   const find = () => select($("#find").value.trim());
   $("#find-go").onclick = find;
   $("#find").onkeydown = (e) => { if (e.key === "Enter") find(); };
+  // the tab bar's search box: the object found becomes the selected one, with its neighbors
+  window.onFind = async (hit) => {
+    if (!DATA?.objects.some((o) => o.object_id === hit.object_id)) return `isn't on this map: it isn't among the objects ${Population.phrase(state)}`;
+    $("#find").value = hit.object_id;
+    await select(hit.object_id);
+    $("#map").scrollIntoView({ block: "center", behavior: "smooth" });
+    return null;
+  };
   await load();
   $("#map").on("plotly_click", (ev) => select(ev.points[0]?.customdata));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
