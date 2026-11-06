@@ -4,11 +4,12 @@ A *source* assigns at most one class to each object:
   label:blind:<labeler>          that labeler's first blind label
   label:final:<labeler>          that labeler's latest label (any phase)
   alerce:<survey>:<classifier>   ALeRCE's top class from the cached payload
+  fink:lsst:cats                 Fink's CATS broad class for the object's latest alert
   tns                            the TNS type of the object ANTARES matched it to (tns.py), when TNS has one
 
 Each source keeps its own class names (ALeRCE says "SN", not "transient"), so the
 matrix need not be square. Agreement is decided after mapping both sides onto the
-DOZYNKI taxonomy (labels.py) with ALERCE_CLASSES or tns.TNS_TYPES, or onto a coarser
+DOZYNKI taxonomy (labels.py) with ALERCE_CLASSES, FINK_CATS_CLASSES or tns.TNS_TYPES, or onto a coarser
 grouping: real vs not real, or transient vs not transient. The subclass view compares
 transient subclasses of objects both sources call transient. Classes that do not map
 ("unsure", unknown ALeRCE classes, unclassified TNS objects) are left out and counted.
@@ -40,6 +41,10 @@ ALERCE_SUBCLASSES = {
     **dict.fromkeys(["SNIa", "SNIbc", "SNII", "SNIIn", "SESN", "SLSN"], "sn_like"),
     "TDE": "nuclear", "CV/Nova": "cv_nova", "Microlensing": "fast",
 }
+# Fink CATS broad classes (brokers/fink.py) -> DOZYNKI classes. "Non-periodic" is mostly AGN but not only;
+# "Long" (SLSN, TDE, ...) says nothing about the transient subclass.
+FINK_CATS_CLASSES = {"SN-like": "transient", "Fast": "transient", "Long": "transient", "Periodic": "star", "Non-periodic": "agn"}
+FINK_CATS_SUBCLASSES = {"SN-like": "sn_like", "Fast": "fast"}
 
 VIEWS = {
     "class": None,
@@ -71,6 +76,10 @@ def sources():
     for (survey, clf), n in sorted(seen.items()):
         out.append({"id": f"alerce:{survey}:{clf}", "label": f"ALeRCE {survey.upper()} · {clf}", "kind": "alerce", "n": n,
                     "versions": sorted(versions[(survey, clf)])})
+    n = sum(bool(_fink_latest(r["payload"]).get("cats_class"))
+            for r in db.query("SELECT payload FROM cache WHERE kind = 'fink'"))
+    if n:
+        out.append({"id": "fink:lsst:cats", "label": "Fink LSST · CATS (latest alert)", "kind": "fink", "n": n})
     matched = tns.cached()
     if matched:
         n = sum(bool(m.get("type")) for m in matched.values())
@@ -100,6 +109,15 @@ def load(source):
                 out[r["object_id"]] = {"cls": top, "mapped": ALERCE_CLASSES.get(top), "subclass": ALERCE_SUBCLASSES.get(top),
                                        "alt": [], "p": entry["probs"].get(top), "probs": entry["probs"]}
         return out
+    if kind == "fink":
+        out = {}
+        for r in db.query("SELECT object_id, payload FROM cache WHERE kind = 'fink'"):
+            latest = _fink_latest(r["payload"])
+            top = latest.get("cats_class")
+            if top:
+                out[r["object_id"]] = {"cls": top, "mapped": FINK_CATS_CLASSES.get(top), "subclass": FINK_CATS_SUBCLASSES.get(top),
+                                       "alt": [], "p": latest.get("cats_score"), "probs": {top: latest.get("cats_score")}}
+        return out
     if kind == "tns":
         out = {}
         for oid, m in tns.cached().items():
@@ -108,6 +126,10 @@ def load(source):
                         "subclass": subclass, "alt": [], "p": None, "tns": m["name"]}
         return out
     raise ValueError(f"unknown source {source!r}")
+
+
+def _fink_latest(payload):
+    return ((json.loads(payload).get("lsst") or {}).get("latest")) or {}
 
 
 def _order(keys, mapped):

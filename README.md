@@ -39,7 +39,8 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
    archival photometry at the position: ZTF data releases (IRSA) and Pan-STARRS1 DR2 single-epoch
    detections (MAST), total magnitudes for events that never reached TNS.
 3. **Reveal** – committing a label reveals broker opinions: ALeRCE
-   classifier probabilities (each classifier version separately), LSST
+   classifier probabilities (each classifier version separately), Fink's per-alert
+   classifier scores (CATS broad class, SuperNNova SN vs others, early SN Ia), LSST
    reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and its
    ZTF association (flagged when it disagrees with ANTARES), and the object's YSE PZ transient,
    found by its TNS name (name, status, classification, redshift), for labelers who added their own YSE PZ login on
@@ -257,13 +258,14 @@ random sample is used unless the "objects" picker says otherwise (everything que
 
 `http://127.0.0.1:8765/compare` (or the "Compare" tab) draws a confusion matrix between
 any two label sources: each labeler's first blind or latest labels, every ALeRCE
-classifier found in the cache (top class), and TNS: the type of the TNS object ANTARES matched an object to,
+classifier found in the cache (top class), Fink's CATS broad class for the latest alert (mapped by
+`FINK_CATS_CLASSES`; "Non-periodic" counts as AGN), and TNS: the type of the TNS object ANTARES matched an object to,
 mapped onto DOZYNKI classes and transient subclasses by `TNS_TYPES` in `dozynki/tns.py` (unclassified TNS
 objects are left out and counted). Nothing is stored. Code lives in `dozynki/compare.py`.
 - View all classes, or collapse to real vs not real, or transient vs not transient, or compare transient
   subclasses (SN-like, nuclear, CV/nova, fast) of objects both sources call transient. ALeRCE's transient
   classes map to subclasses too (`ALERCE_SUBCLASSES`); its generic "SN" and "Transient" don't.
-- "ALeRCE top p ≥" drops low-confidence broker calls; "incl. could-also-be" adds an accuracy
+- "Broker top p ≥" drops low-confidence ALeRCE and Fink calls; "incl. could-also-be" adds an accuracy
   that also accepts a match with an alternative class.
 - A table scores every source against the reference. Click a matrix cell to list its objects,
   most confident broker calls first, with links into the vetter.
@@ -326,7 +328,7 @@ The "Export" button (or `python -m dozynki.export`) writes `exports/<timestamp>/
 ```
 dozynki/
   app.py            FastAPI endpoints
-  compare.py        confusion matrices between label sources (labelers, ALeRCE, TNS)
+  compare.py        confusion matrices between label sources (labelers, ALeRCE, Fink, TNS)
   tns.py            TNS via ANTARES's match: type mapping, cached matches, the TNS object list
   assemble.py       fetch + cache per object, evidence / opinion split
   sources.py        queue sources (selection functions): random sample, night samples
@@ -339,7 +341,7 @@ dozynki/
                     slack.py send it
   sky.py            sky map data
   similar.py        feature vectors, PCA map and nearest neighbors (similar-objects page)
-  brokers/          antares.py, alerce.py, babamul_client.py, yse.py (YSE PZ)
+  brokers/          antares.py, alerce.py, babamul_client.py, fink.py, yse.py (YSE PZ)
   db.py             SQLite (data/dozynki.sqlite): queue, cache, labels
   export.py         training-set export
   labels.py         taxonomy
