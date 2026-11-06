@@ -8,7 +8,7 @@ const METRICS = [
   { key: "bogus_leak", label: "Bogus leak", hint: "bogus kept / bogus", higher: false },
 ];
 // default sweep range per parameter name
-const SWEEP_RANGE = { max_ext: [0, 1], max_chi2: [1, 10], max_ratio: [0.5, 4], min_ratio: [0, 1], min_snr: [5, 30], max_len: [0, 10], max_dist: [0, 5], min_sg: [0, 1], min_beta: [0, 30], max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30] };
+const SWEEP_RANGE = { max_ext: [0, 1], max_chi2: [1, 10], max_ratio: [0.5, 4], min_ratio: [0, 1], min_snr: [5, 30], max_len: [0, 10], max_dist: [0, 5], min_sg: [0, 1], min_beta: [0, 30], max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30], min_delta: [0, 1] };
 const INTEGER_PARAMS = new Set(["n"]);
 
 let CFG = null;

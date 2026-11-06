@@ -111,6 +111,43 @@ def _rise(dets):
     return peak["mjd"] - pos[0]["mjd"], max(rates, default=None)
 
 
+def _dayobs(mjd):
+    """Rubin's dayObs (the night's date, UTC-12h) as an MJD, so one night never splits at UTC midnight."""
+    return math.floor(mjd - 0.5)
+
+
+def _nightly_mags(dets):
+    """{"survey band": [[dayObs MJD, median mag], ...] oldest first}, from detections with mag_err < 0.2
+    (as _rise), so a single noisy point in a night doesn't decide whether it brightened."""
+    nights = {}
+    for p in dets:
+        if p.get("mag") is not None and p.get("diff_flux") and (p.get("mag_err") or 1) < 0.2:
+            nights.setdefault(f"{p['survey']} {p.get('band')}", {}).setdefault(_dayobs(p["mjd"]), []).append(p["mag"])
+    return {k: [[n, _median(m)] for n, m in sorted(v.items())] for k, v in nights.items()}
+
+
+def _not_brighter(f, brightening, min_delta):
+    """Reject unless a band detected on the newest night brightened by more than min_delta mag, where
+    brightening(nights) gives that band's change (None: can't tell). None if no band can tell."""
+    bands = f["nightly_mags"].values()
+    newest = max((nights[-1][0] for nights in bands), default=None)
+    changes = [brightening(nights) for nights in bands if nights[-1][0] == newest]
+    changes = [c for c in changes if c is not None]
+    return None if not changes else all(c <= min_delta for c in changes)
+
+
+def _since(nights, mjd):
+    """Magnitudes gained from the last night on or before dayObs mjd to the newest night (None without both)."""
+    before = [m for n, m in nights if n <= mjd]
+    return before[-1] - nights[-1][1] if before and nights[-1][0] > mjd else None
+
+
+def _rising_over(nights, n):
+    """The smallest night-to-night brightening over the last n nights (None with fewer than n + 1 nights)."""
+    last = nights[-(n + 1):]
+    return min(a[1] - b[1] for a, b in zip(last, last[1:])) if n >= 1 and len(last) == n + 1 else None
+
+
 ARCHIVAL_MIN_POINTS = 10  # ZTF data-release points in one band for its scatter to mean anything
 PS1_MIN_POINTS = 3  # Pan-STARRS1 detections in a band for its median to stand against a stray one
 HOST_MAG_LIMIT = 25.0  # fainter Legacy Survey magnitudes are noise (DR10 reaches about 24.5 in r)
@@ -253,6 +290,7 @@ def features(object_id):
         "template_ratio": _template_ratio(lsst, det or {}),
         "rise_days": rise_days,
         "rise_rate_mag_per_day": rise_rate,
+        "nightly_mags": _nightly_mags(dets),
         "abs_gal_b": abs(sky["gal_b"]),
         "abs_ecl_lat": abs(sky["ecl_lat"]),
         # Rubin pipeline measurements per LSST detection (details.py); None before they're fetched
@@ -374,6 +412,14 @@ RULES = {r.name: r for r in [
     Rule("not_fast_rise", "brightens no faster than min_rate mag/day, or has no rate (fewer than two good detections "
          "in one band half a day apart): keeps only fast risers (young SNe, fast transients)",
          {"min_rate": 0.2}, lambda f, min_rate: f["rise_rate_mag_per_day"] is None or f["rise_rate_mag_per_day"] < min_rate),
+    Rule("not_brighter_since", "the newest night is not more than min_delta mag brighter than the last night on or before "
+         "dayObs mjd, in the same band (nightly medians, difference mags; kept if no band has both)",
+         {"mjd": 61350.0, "min_delta": 0.0},
+         lambda f, mjd, min_delta: _not_brighter(f, lambda nights: _since(nights, mjd), min_delta)),
+    Rule("not_rising", "did not brighten by more than min_delta mag on each of the last n nights it was detected, in "
+         "one band (nightly medians, difference mags; kept with fewer than n + 1 nights in every band)",
+         {"n": 1, "min_delta": 0.0},
+         lambda f, n, min_delta: _not_brighter(f, lambda nights: _rising_over(nights, n), min_delta)),
     Rule("nuclear", "within max_sep arcsec of its Legacy Survey host galaxy's center (AGN, nuclear variability)",
          {"max_sep": 0.5}, lambda f, max_sep: _within(f["ls_host_sep"], max_sep) if f["ls_hosts_fetched"] else None),
     Rule("not_nuclear", "not within max_sep arcsec of a Legacy Survey host galaxy's center, or no host (keeps only nuclear: TDEs, AGN)",
