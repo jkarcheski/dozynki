@@ -768,10 +768,9 @@ function stepChip(step) {
 
 function renderSaved() {
   $("#saved").innerHTML = SAVED.length
-    ? `<tr><th>name</th><th>questions, in order</th><th>note</th><th>by</th><th>saved</th><th></th></tr>` + SAVED.map((s, i) => `<tr>
-        <td><b>${esc(s.name)}</b></td>
+    ? `<tr><th>name</th><th>questions, in order</th><th>by</th><th>saved</th><th></th></tr>` + SAVED.map((s, i) => `<tr>
+        <td><b${s.note ? ` title="${esc(s.note)}"` : ""}>${esc(s.name)}</b></td>
         <td class="wrap">${s.config.map(stepChip).join("") || '<span class="hint">none: keeps everything</span>'}</td>
-        <td class="wrap hint">${esc(s.note || "")}</td>
         <td class="hint">${esc(s.owner || "—")}</td>
         <td class="hint">${esc(s.updated_at.slice(0, 16).replace("T", " "))}</td>
         <td><button class="small" data-i="${i}" data-load>Load</button>
@@ -838,12 +837,6 @@ const wizPipeline = (upto = wiz.answers.length) => wiz.answers.slice(0, upto).fl
 
 const evalReq = (pipeline) => ({ ...requestFor(), pipeline });
 
-function wizNote() {
-  return wiz.questions.slice(0, wiz.answers.length)
-    .map((n, i) => ({ n, c: questionFor(n).choices[wiz.answers[i]] }))
-    .filter(({ c }) => c.params).map(({ n, c }) => `${n}: ${c.label.replace(/^Yes, /, "")}`).join("; ");
-}
-
 function renderWizard() {
   const el = $("#wizard");
   const token = ++wizToken;
@@ -875,7 +868,7 @@ function renderWizard() {
       <div class="wiz-summary">${pipeline.map(stepChip).join("") || '<span class="hint">none: it keeps everything</span>'}</div>
       <div class="wiz-save">
         <label>Name <input id="wiz-name" maxlength="80" placeholder="e.g. strict transients"></label>
-        <label class="grow">Note <input id="wiz-note" value="${esc(wizNote())}"></label>
+        <label class="grow">Note <input id="wiz-note" placeholder="optional, shown when you hover the name"></label>
       </div>
       <p><button class="primary" data-act="save" data-load>Save and use it</button>
         <button data-act="save">Just save</button></p>`;
