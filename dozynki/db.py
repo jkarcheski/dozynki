@@ -280,8 +280,9 @@ def add_many_screening(rows, screen):
     in one transaction, keeping their order; returns how many were new.
 
     An object another filter pulled earlier is taken over and screened again with this one, so a
-    run's counts are this filter's verdicts; one cleared from that filter's haystack comes back,
-    while labels, skips and the watchlist stay. Random-mode objects are left as they are."""
+    run's counts are this filter's verdicts; one cleared from this filter's haystack is screened again
+    too. Either way a cleared object comes back, while labels, skips and the watchlist stay.
+    Random-mode objects are left as they are."""
     t = now()
     rows = [(str(oid), locus, ra, dec, source, params, sm) for oid, locus, ra, dec, source, params, sm in rows]
     with _lock:
@@ -293,8 +294,10 @@ def add_many_screening(rows, screen):
               sm.get("last_mjd"), screen) for oid, locus, ra, dec, source, params, sm in rows])
         added = _conn.total_changes - before
         held = {r[0]: r[1] for r in _conn.execute(
-            "SELECT object_id, screen FROM queue WHERE screen IS NOT NULL AND screen != ?", (screen,))}
-        moved = [(source, json.dumps({**params, "taken_from_screen": held[oid]}), t, screen, oid)
+            "SELECT object_id, screen FROM queue WHERE screen IS NOT NULL AND (screen != ? OR EXISTS "
+            "(SELECT 1 FROM queue_status s WHERE s.object_id = queue.object_id AND s.status = 'cleared'))", (screen,))}
+        moved = [(source, json.dumps({**params, **({"taken_from_screen": held[oid]} if held[oid] != screen else {})}),
+                  t, screen, oid)
                  for oid, locus, ra, dec, source, params, sm in rows if oid in held]
         _conn.executemany("UPDATE queue SET source = ?, source_params = ?, added_at = ?, screen = ?, screen_result = NULL, "
                           "status = 'screening' WHERE object_id = ?", moved)

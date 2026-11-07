@@ -51,3 +51,16 @@ def test_object_taken_over_by_random_mode_is_not_dropped():
     db.set_screened("took1", "filtered", "gaia_star")
     assert db.get_queue_item("took1")["status"] == "pending"
     assert _kept("took1") == ({"antares"}, 1)
+
+
+def test_cleared_object_is_screened_again_by_the_same_filter():
+    rows = [(oid, None, 1.0, 2.0, "antares_night_filtered", {"run": 1}, {}) for oid in ("clr1", "clr2")]
+    db.add_many_screening(rows, "g")
+    for oid in ("clr1", "clr2"):
+        db.set_screened(oid, "pending", "kept")
+    db.set_status("clr2", "someone", "skipped")
+    assert db.clear_pending("someone", "screen = ?", ("g",)) == 1
+    db.add_many_screening([(oid, *rest[:4], {"run": 2}, {}) for oid, *rest in rows], "g")
+    assert db.get_queue_item("clr1")["status"] == "screening"
+    assert db.get_queue_item("clr2")["status"] == "pending"  # not cleared, so its verdict stands
+    assert db.query("SELECT status FROM queue_status WHERE labeler = 'someone' ORDER BY object_id") == [{"status": "skipped"}]
