@@ -1009,7 +1009,8 @@ def get_farm(request: Request):
 @app.get("/api/rejection/config")
 def rejection_config():
     return {
-        "rules": [{"name": r.name, "description": r.description, "defaults": r.defaults, "broker": r.broker}
+        "rules": [{"name": r.name, "description": r.description, "defaults": r.defaults, "broker": r.broker,
+                   "labels": r.labels}
                   for r in rejection.RULES.values()],
         "default_pipeline": rejection.resolve(rejection.DEFAULT_PIPELINE),
         "classes": CLASSES,

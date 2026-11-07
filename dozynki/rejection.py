@@ -329,6 +329,7 @@ class Rule:
     defaults: dict
     test: Callable  # (features, **params) -> True reject / False keep / None unknown
     broker: bool = False
+    labels: bool = False  # test reads the screen labeler's latest label instead of the features
 
 
 def _below(value, threshold):
@@ -337,6 +338,14 @@ def _below(value, threshold):
 
 def _within(sep, max_sep):
     return sep is not None and sep <= max_sep
+
+
+def _vetted_as(label, **classes):
+    """label is {} when the labeler hasn't labeled the object, None when there's no labeler (the filter lab)."""
+    if label is None:
+        return None
+    alts = json.loads(label.get("alt_classes") or "[]")
+    return bool(classes.get(label.get("klass"))) and "transient" not in alts
 
 
 RULES = {r.name: r for r in [
@@ -453,6 +462,10 @@ RULES = {r.name: r for r in [
     Rule("alerce_stamp_bogus", "ALeRCE LSST stamp classifier P(bogus) above max_p", {"max_p": 0.5},
          lambda f, max_p: None if "bogus" not in f["alerce_stamp_probs"] else f["alerce_stamp_probs"]["bogus"] > max_p,
          broker=True),
+    Rule("vetted_non_transient", "the filter owner already labeled it asteroid (sso), star or AGN (1 drops that class, "
+         "0 keeps it), with no transient among its \"could also be\". "
+         "Reads labels, not data, so the filter lab can't score it: there it keeps everything",
+         {"sso": 1, "star": 1, "agn": 1}, _vetted_as, labels=True),
 ]}
 
 DEFAULT_PIPELINE = [
@@ -543,13 +556,15 @@ def step_key(step):
     return step["rule"] + "".join(f"[{k}={v}]" for k, v in sorted(params.items()))
 
 
-def apply(feats, pipeline):
+def apply(feats, pipeline, label=None):
     """{step_key: decision} for every step (not just up to the first rejection),
-    so dropping or reordering a rule can be evaluated without re-running."""
+    so dropping or reordering a rule can be evaluated without re-running. label is the screen labeler's
+    latest label of the object ({} if none), for rules that read labels; None leaves those undecided."""
     out = {}
     for step in resolve(pipeline):
+        rule = RULES[step["rule"]]
         params = {k: v for k, v in step.items() if k != "rule"}
-        out[step_key(step)] = RULES[step["rule"]].test(feats, **params)
+        out[step_key(step)] = rule.test(label if rule.labels else feats, **params)
     return out
 
 

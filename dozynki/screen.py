@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import archival, assemble, db, details, rejection
 from .brokers import alerce
+from .config import LABELER
 
 WORKERS = 8
 FETCH_FOR = {"alerce_stamp_bogus": "alerce", "alerce_stamp_agn": "alerce", "nuclear": "ls_hosts", "not_nuclear": "ls_hosts"}  # fetched only for these rules
@@ -28,12 +29,22 @@ _running = False
 
 
 def resolve(name):
-    """The screen recorded with a pull: saved filter name, its pipeline then, and its version."""
+    """The screen recorded with a pull: saved filter name, its pipeline then, its version, and whose
+    labels its label rules read (the filter's owner)."""
     config = db.get_saved_pipeline(name)
     if config is None:
         raise KeyError(name)
     pipeline = rejection.resolve(config)
-    return {"name": name, "pipeline": pipeline, "version": rejection.version(pipeline)}
+    _, owner = db.saved_pipeline_owner(name)
+    return {"name": name, "pipeline": pipeline, "version": rejection.version(pipeline), "labeler": owner or LABELER}
+
+
+def _latest_label(object_id, labeler):
+    """What rejection.apply's label rules read: {} if unlabeled, None for a screen recorded without a labeler."""
+    if labeler is None:
+        return None
+    labels = db.labels_for(object_id, labeler)
+    return labels[-1] if labels else {}
 
 
 def _fetch(object_id, pipeline):
@@ -64,13 +75,14 @@ def _screen_one(row):
                          for p in raw["antares"]["data"]["points"]):
         db.set_screened(oid, "filtered", "no_alert_that_night")
         return
-    decisions = rejection.apply(feats, screen["pipeline"])
+    label = _latest_label(oid, screen.get("labeler"))
+    decisions = rejection.apply(feats, screen["pipeline"], label)
     if raw["archival"] is None and any(s["rule"] in ARCHIVAL_RULES for s in screen["pipeline"]) \
             and not rejection.first_rejection(decisions):
         ant = raw["antares"]["data"]
         try:
             assemble._cached(oid, "archival", lambda: archival.run(ant["ra"], ant["dec"]))
-            decisions = rejection.apply(rejection.features(oid), screen["pipeline"])
+            decisions = rejection.apply(rejection.features(oid), screen["pipeline"], label)
         except Exception:
             pass  # no archival data: those rules see none, and keep it
     db.save_pipeline(screen["version"], screen["pipeline"])

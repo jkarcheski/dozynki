@@ -9,7 +9,7 @@ const METRICS = [
 ];
 // default sweep range per parameter name
 const SWEEP_RANGE = { max_ext: [0, 1], max_chi2: [1, 10], max_ratio: [0.5, 4], min_ratio: [0, 1], min_snr: [5, 30], max_len: [0, 10], max_dist: [0, 5], min_sg: [0, 1], min_beta: [0, 30], max_sep: [0, 5], n: [1, 10], max_frac: [0, 1], max_rms: [0, 2], min_rel: [0, 1], max_p: [0, 1], days: [0, 30], min_b: [0, 30], min_delta: [0, 1] };
-const INTEGER_PARAMS = new Set(["n"]);
+const INTEGER_PARAMS = new Set(["n", "sso", "star", "agn"]);
 
 let CFG = null;
 let state = null;
@@ -124,7 +124,7 @@ function renderPipeline() {
     <div class="rules">${state.pipeline.map((s, i) => `
       <div class="rule ${s.on ? "" : "off"}">
         <input type="checkbox" data-i="${i}" ${s.on ? "checked" : ""} aria-label="enable ${esc(s.rule)}">
-        <span class="name">${esc(s.rule)}${rules[s.rule].broker ? '<span class="tag" title="reads broker output">broker</span>' : ""}</span>
+        <span class="name">${esc(s.rule)}${rules[s.rule].broker ? '<span class="tag" title="reads broker output">broker</span>' : ""}${rules[s.rule].labels ? '<span class="tag" title="reads the filter owner\'s labels; keeps everything here">labels</span>' : ""}</span>
         <span class="params">${Object.entries(s.params).map(([k, v]) =>
           `<label>${esc(k)} <input type="number" step="${INTEGER_PARAMS.has(k) ? 1 : "any"}" data-i="${i}" data-p="${esc(k)}" value="${v}"></label>`).join("")}</span>
         <span class="desc">${esc(rules[s.rule].description)}</span>
