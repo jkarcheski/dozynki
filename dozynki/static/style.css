@@ -75,6 +75,7 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: u
   white-space: normal; font-style: normal; text-transform: none; letter-spacing: normal; line-height: 1.45; color: var(--ink);
   background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 14px rgb(0 0 0 / .18); }
 .links a { color: var(--accent); margin-right: 10px; font-size: 12px; }
+.neighborhood a { color: var(--accent); }
 .pending-note { margin-top: 6px; padding: 4px 8px; font-size: 12px; border-left: 3px solid var(--warn);
   background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .pending-note.err { color: var(--warn); }

@@ -363,10 +363,10 @@ function renderModeStatus(r) {
 // ---------- filters (shared by sampling and by which queued object comes next) ----------
 
 const FILTER_KEY = "dozynki.filters";
-const FILTER_FIELDS = { min_det: "#f-min-det", date_mode: "#f-date-mode", date_from: "#f-date-from", date_to: "#f-date-to" };
+const FILTER_FIELDS = { min_det: "#f-min-det", date_mode: "#f-date-mode", date_from: "#f-date-from", date_to: "#f-date-to", sort: "#f-sort" };
 
 // Random mode takes everything as drawn, so the filter bar only applies in filtered mode.
-const NO_FILTERS = { min_det: 1, date_mode: "first", date_from: "", date_to: "" };
+const NO_FILTERS = { min_det: 1, date_mode: "first", date_from: "", date_to: "", sort: "" };
 
 function getFilters() {
   if (mode.mode !== "filtered") return { ...NO_FILTERS };
@@ -375,6 +375,7 @@ function getFilters() {
     date_mode: $("#f-date-mode").value,
     date_from: $("#f-date-from").value,
     date_to: $("#f-date-to").value,
+    sort: $("#f-sort").value,
   };
 }
 
@@ -1382,12 +1383,12 @@ function renderOpinions() {
   const el = $("#opinions");
   if (!cur.revealed || !cur.opinions) {
     $("#op-state").textContent = "hidden";
-    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">ALeRCE probabilities, Fink classifier scores, Lasair's Sherlock context, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
+    el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">How its nearest labeled objects were labeled, ALeRCE probabilities, Fink classifier scores, Lasair's Sherlock context, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;
     return;
   }
   $("#op-state").textContent = "";
   const op = cur.opinions;
-  let html = `<h3>Real/bogus scores</h3><div style="font-size:12px">
+  let html = renderNeighborhood(op.neighborhood) + `<h3>Real/bogus scores</h3><div style="font-size:12px">
     LSST reliability mean <b>${fmt(op.reliability.lsst_mean, 3)}</b> <span class="muted">(${op.reliability.lsst_per_alert.map((r) => fmt(r, 2)).join(", ")})</span><br>
     ZTF drb mean <b>${fmt(op.reliability.ztf_drb_mean, 3)}</b></div>`;
   const al = op.alerce || {};
@@ -1419,6 +1420,22 @@ function renderOpinions() {
   }
   html += renderYse(op.yse || {});
   el.innerHTML = html;
+}
+
+// Its K nearest labeled objects in the similar page's feature space (neighborhood.py): what they were labeled,
+// how unlike labeled objects it is, and how much its neighbors disagree.
+function renderNeighborhood(nb) {
+  const oid = cur.evidence.object_id;
+  let html = `<h3>Neighborhood</h3><div class="neighborhood">`;
+  if (!nb) return html + `<div class="muted" style="font-size:12px">no features cached yet, or no labeled object shares enough of them</div></div>`;
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  html += `<div style="font-size:12px"><b>${nb.n_transient} of ${nb.k}</b> nearest labeled are transients
+    <span class="muted">(${nb.lift == null ? "—" : fmt(nb.lift, 1) + "×"} the ${pct(nb.base)} of all ${nb.pool} labeled)</span><br>
+    less like its neighbors than <b>${pct(nb.far)}</b> of labeled objects are like theirs · neighbors mixed <b>${fmt(nb.mixed, 2)}</b> <span class="muted">(0 all one class, 1 evenly split)</span></div>
+    <div>${Object.entries(nb.classes).map(([k, n]) => `<span class="pill">${esc(k)} ${n}</span>`).join("")}</div>
+    <div style="font-size:12px">${nb.neighbors.map((n) => `<a href="/similar?object=${encodeURIComponent(n.object_id)}" title="distance ${n.distance}">${esc(n.klass)}${n.transient && n.klass !== "transient" ? "/transient" : ""}${n.tns ? ` (${esc(n.tns.name)}${n.tns.type ? " " + esc(n.tns.type) : ""})` : ""}</a>`).join(" · ")}
+      · <a href="/similar?object=${encodeURIComponent(oid)}">on the similar page</a></div></div>`;
+  return html;
 }
 
 // Fink's per-alert scores, newest first: CATS broad class, SuperNNova SN vs others, early SN Ia

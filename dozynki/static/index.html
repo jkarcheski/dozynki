@@ -51,6 +51,13 @@
     <span class="muted">between</span>
     <input id="f-date-from" type="date"> <span class="muted">and</span> <input id="f-date-to" type="date">
     <button id="f-clear" class="small">Clear</button>
+    <span class="muted">next up:</span>
+    <select id="f-sort" title="Which waiting object comes up next. The neighborhood orders compare each object with its 10 nearest labeled objects in the similar page's feature space (anyone's latest labels); Transient-like gives every 10th place to the object least like anything labeled. The neighborhood shows with the broker opinions.">
+      <option value="">oldest first</option>
+      <option value="transient">transient-like neighbors</option>
+      <option value="far">unlike anything labeled</option>
+      <option value="mixed">mixed neighbors</option>
+    </select>
     <span id="f-matching" class="muted"></span>
   </div>
 </header>

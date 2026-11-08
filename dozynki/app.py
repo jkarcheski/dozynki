@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, rejection, search, similar, sky, sources, tns
+from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, neighborhood, rejection, search, similar, sky, sources, tns
 from . import daily, nightrun
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, lasair, pittgoogle, yse
@@ -30,6 +30,7 @@ PREFETCH = 6
 app = FastAPI(title="DOZYNKI alert vetter")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 daily.start_scheduler()
+neighborhood.warm()
 blind_mode = {}  # labeler -> blind on/off; a restart goes back to BLIND_DEFAULT
 
 
@@ -620,11 +621,20 @@ def clear_queue(request: Request, min_det: int = 1, date_from: str = "", date_to
 
 @app.get("/api/next")
 def next_object(request: Request, exclude: str = "", min_det: int = 1, date_from: str = "", date_to: str = "", date_mode: str = "first",
-                screen: str = "", object_list: str = ""):
+                screen: str = "", object_list: str = "", sort: str = ""):
+    """The next object to vet: the oldest queued, or in filtered mode with sort, the first by neighborhood.py's
+    order (random mode always goes in order, so the labeled sample stays uniform for the filter lab)."""
     skip = tuple(x for x in exclude.split(",") if x)
     where, params, ready = _queue_filter(min_det, date_from, date_to, date_mode, screen, object_list)
     who = _who(request)
-    rows = db.next_pending(who, PREFETCH + 1, exclude=skip, where=where, params=params, ready=ready)
+    if sort and sort not in neighborhood.SORTS:
+        raise HTTPException(400, f"sort must be one of {neighborhood.SORTS}")
+    if sort and screen and not object_list:
+        rows = db.next_pending(who, -1, exclude=skip, where=where, params=params, ready=ready)
+        first = neighborhood.order([r["object_id"] for r in rows], sort)[:PREFETCH + 1]
+        rows = [{"object_id": oid} for oid in first]
+    else:
+        rows = db.next_pending(who, PREFETCH + 1, exclude=skip, where=where, params=params, ready=ready)
     out = {"n_matching": db.count_pending(who, where, params, ready), **_mode(screen, who, object_list)}
     if not rows:
         return {"object_id": None, **out}
@@ -659,7 +669,7 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
         "queue": item,
         "evidence": ev,
         "labels": labels,
-        "opinions": assemble.opinions(raw) if revealed else None,
+        "opinions": _opinions(object_id, raw) if revealed else None,
         "revealed": revealed,
         "pending": pending,
         "loading": loading,
@@ -670,7 +680,12 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
 def reveal(object_id: str, request: Request):
     if _blind(request) and not _has_blind_label(object_id, _who(request)):
         raise HTTPException(403, "commit a blind label first")
-    return assemble.opinions(assemble.with_profile(object_id, assemble.load(object_id), _who(request)))
+    return _opinions(object_id, assemble.with_profile(object_id, assemble.load(object_id), _who(request)))
+
+
+def _opinions(object_id, raw):
+    """The brokers' opinions, and how the object's nearest labeled objects were labeled (neighborhood.py)."""
+    return {**assemble.opinions(raw), "neighborhood": neighborhood.explain(object_id)}
 
 
 class Label(BaseModel):
