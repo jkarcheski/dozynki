@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from . import archival, crossmatch, db
+from . import archival, crossmatch, db, switches
 from .brokers import alerce, antares, babamul_client, fink, lasair, yse
 
 # Per-point fields that are classifier / ML outputs rather than measurements.
@@ -63,8 +63,9 @@ def _fetch_antares(item):
     return data
 
 
-def load(object_id, refresh=False):
-    """Fetch all sources for an object; concurrent callers share one fetch."""
+def load(object_id, refresh=False, off=frozenset()):
+    """Fetch all sources for an object except those in off (a labeler's switches.off); concurrent callers share
+    one fetch, so one waiting on another's may find a source it wants still missing until its next load."""
     with _inflight_lock:
         ev = _inflight.get(object_id)
         owner = ev is None
@@ -80,22 +81,32 @@ def load(object_id, refresh=False):
             # cached before per-alert positions were kept: fetch them separately so the
             # rest of the evidence the object was labeled with stays as it was
             _cached(object_id, "positions", lambda: antares.alert_positions(ant["locus_id"]))
-        with ThreadPoolExecutor(max_workers=5) as pool:
-            jobs = [
-                pool.submit(_cached, object_id, "alerce", lambda: _alerce(object_id, ant), refresh),
-                pool.submit(_cached, object_id, "fink", lambda: _fink(object_id), refresh),
-                pool.submit(_cached, object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
-                pool.submit(_cached, object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"]), refresh),
-                pool.submit(_cached, object_id, "archival", lambda: archival.run(ant["ra"], ant["dec"]),
-                            refresh or _archival_failed(object_id)),
-            ]
-            for j in jobs:
+        fetches = {
+            "alerce": lambda: _cached(object_id, "alerce", lambda: _alerce(object_id, ant), refresh),
+            "fink": lambda: _cached(object_id, "fink", lambda: _fink(object_id), refresh),
+            "babamul": lambda: _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh),
+            "xmatch": lambda: _xmatch(object_id, ant, off & switches.CATALOGS, refresh),
+            "archival": lambda: _cached(object_id, "archival", lambda: archival.run(ant["ra"], ant["dec"]),
+                                        refresh or _archival_failed(object_id)),
+        }
+        with ThreadPoolExecutor(max_workers=len(fetches)) as pool:
+            for j in [pool.submit(fetch) for kind, fetch in fetches.items() if kind not in off]:
                 j.result()
     finally:
         with _inflight_lock:
             _inflight.pop(object_id, None)
         ev.set()
     return _gather(object_id)
+
+
+def _xmatch(object_id, ant, skip, refresh):
+    """The object's shared crossmatch without the catalogs in skip. Catalogs an earlier load skipped (switched
+    off for whoever loaded it) are filled in now unless skip has them too, as long as nobody has labeled the
+    object: like "Retry failed catalogs", a labeled object's crossmatch stays the evidence it was labeled with."""
+    hit = _cached(object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"], skip=skip), refresh)
+    wanted = crossmatch.switched_off(hit["data"]) - skip
+    if wanted and not db.query("SELECT 1 FROM labels WHERE object_id = ? LIMIT 1", (object_id,)):
+        db.cache_put(object_id, "xmatch", crossmatch.fill_missing(hit["data"], wanted))
 
 
 def _archival_failed(object_id):
@@ -160,8 +171,11 @@ def _lasair_failed(hit):
 
 
 def with_profile(object_id, raw, labeler, refresh=False):
-    """raw plus what labeler's own logins fetch: YSE PZ and Lasair."""
-    return with_lasair(object_id, with_yse(object_id, raw, labeler, refresh), labeler, refresh)
+    """raw plus what labeler's own logins fetch, YSE PZ and Lasair, unless they switched it off."""
+    off = switches.off(labeler)
+    if "yse" not in off:
+        raw = with_yse(object_id, raw, labeler, refresh)
+    return raw if "lasair" in off else with_lasair(object_id, raw, labeler, refresh)
 
 
 def load_antares(object_id):
@@ -178,13 +192,15 @@ def quick(object_id, labeler):
     """What the vetter can show at once: the ANTARES light curve and cutouts (fetched if need be) and whatever
     else is already cached, plus the names of what isn't yet; load() and with_profile() fetch the rest."""
     load_antares(object_id)
+    off = switches.off(labeler)
     raw = _gather(object_id)
     raw["yse"] = (db.cache_get(object_id, yse.cache_kind(labeler)) if yse.login_for(labeler)
                   else {"data": {"enabled": False}, "fetched_at": None})
     raw["lasair"] = db.cache_get(object_id, "lasair") or (None if lasair.token_for(labeler)
                                                           else {"data": {"enabled": False}, "fetched_at": None})
-    pending = ([name for kind, name in SLOW.items() if raw[kind] is None] + (["YSE PZ"] if raw["yse"] is None else [])
-               + (["Lasair"] if raw["lasair"] is None else []))
+    pending = ([name for kind, name in SLOW.items() if raw[kind] is None and kind not in off]
+               + (["YSE PZ"] if raw["yse"] is None and "yse" not in off else [])
+               + (["Lasair"] if raw["lasair"] is None and "lasair" not in off else []))
     return raw, pending
 
 
@@ -203,9 +219,9 @@ def fill_missing_xmatch(object_id):
     return filled
 
 
-def rerun_xmatch(object_id, radius):
+def rerun_xmatch(object_id, radius, skip=frozenset()):
     ant = db.cache_get(object_id, "antares")["data"]
-    return _cached(object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"], radius), refresh=True)
+    return _cached(object_id, "xmatch", lambda: crossmatch.run(ant["ra"], ant["dec"], radius, skip), refresh=True)
 
 
 def skybot(object_id, refresh=False):
@@ -231,7 +247,7 @@ def prefetch(object_ids, labeler=None):
 
 def _prefetch_one(object_id, labeler):
     try:
-        raw = load(object_id)
+        raw = load(object_id, off=switches.off(labeler))
         if labeler:
             with_profile(object_id, raw, labeler)
     except Exception:
@@ -254,7 +270,7 @@ def load_in_background(object_id, labeler=None):
 
     def run():
         try:
-            raw = load(object_id)
+            raw = load(object_id, off=switches.off(labeler))
             if labeler:
                 with_profile(object_id, raw, labeler)
         except Exception:
@@ -294,12 +310,17 @@ def _with_ztf_total_mag(p):
 
 
 def refresh_brokers(object_id, labeler=None):
-    """Re-fetch broker data (not the crossmatch) after new alerts arrive; YSE PZ's only for labeler."""
+    """Re-fetch broker data (not the crossmatch) after new alerts arrive, except brokers labeler switched off;
+    YSE PZ's only for labeler."""
     item = db.get_queue_item(object_id)
     ant = _cached(object_id, "antares", lambda: _fetch_antares(item), refresh=True)["data"]
-    _cached(object_id, "alerce", lambda: _alerce(object_id, ant), refresh=True)
-    _cached(object_id, "fink", lambda: _fink(object_id), refresh=True)
-    _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
+    off = switches.off(labeler)
+    if "alerce" not in off:
+        _cached(object_id, "alerce", lambda: _alerce(object_id, ant), refresh=True)
+    if "fink" not in off:
+        _cached(object_id, "fink", lambda: _fink(object_id), refresh=True)
+    if "babamul" not in off:
+        _cached(object_id, "babamul", lambda: babamul_client.fetch(object_id), refresh=True)
     if labeler:
         with_profile(object_id, _gather(object_id), labeler, refresh=True)
     return ant
@@ -354,7 +375,7 @@ def opinions(raw):
         "alerce": (raw["alerce"] or {}).get("data"),
         "fink": (raw.get("fink") or {}).get("data"),
         "antares": {"tags": ant.get("tags"), "catalogs": ant.get("catalogs"), "catalog_matches": ant.get("catalog_matches")},
-        "babamul": {k: bab.get(k) for k in ("enabled", "found", "properties", "reliability", "cross_matches", "errors")}
+        "babamul": {k: bab.get(k) for k in ("enabled", "off", "found", "properties", "reliability", "cross_matches", "errors")}
         | {"ztf_match": {k: v for k, v in (bab.get("ztf_match") or {}).items() if k != "forced_phot"} or None},
         "yse": _yse_opinion((raw.get("yse") or {}).get("data") or {}),
         "lasair": (raw.get("lasair") or {}).get("data"),
@@ -364,7 +385,7 @@ def opinions(raw):
 def _yse_opinion(y):
     """YSE PZ's nearest match, with the header fields the vetter shows (its photometry is evidence)."""
     header = y.get("header") or {}
-    return {k: y.get(k) for k in ("enabled", "found", "matches", "tns_names", "url", "errors")} | {
+    return {k: y.get(k) for k in ("enabled", "off", "found", "matches", "tns_names", "url", "errors")} | {
         "fields": {k: header[k] for k in yse.HEADER_FIELDS if header.get(k) not in (None, "", "None", "[]")}}
 
 

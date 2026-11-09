@@ -14,6 +14,7 @@
   <div id="haystack" class="haystack"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="blind"> Blind mode</label>
+    <button id="sources-open" class="small" title="Choose which outside data sources (YSE PZ, archival light curves, brokers, crossmatch catalogs) the vetter fetches and shows for you">Sources</button>
     <span class="group mode" title="Random: every sampled object, as drawn. Filtered: a whole night is run through a saved filter from the filter lab, and you only see what passes. List: the objects of a list you loaded.">
       <span class="seg" id="mode"><button data-v="random">Random</button><button data-v="filtered">Filtered</button><button data-v="list">List</button></span>
       <select id="mode-filter" aria-label="Saved filter to screen with"></select>
@@ -63,6 +64,21 @@
   </div>
   <button id="tools-show" class="small" hidden>Show toolbar ▾</button>
 </header>
+
+<dialog id="sources-dialog" class="list-dialog sources-dialog" aria-labelledby="sources-dialog-title">
+  <form method="dialog">
+    <h2 id="sources-dialog-title">Data sources</h2>
+    <p class="muted">A source you switch off is neither fetched for you nor shown to you, so a slow or unreachable one
+      stops holding up your objects. Everyone else still gets it; a crossmatch catalog you skip is filled in when
+      someone who has it on opens the object, unless it has been labeled.</p>
+    <div id="sources-list"></div>
+    <div id="sources-result" class="err" aria-live="polite"></div>
+    <div class="row actions">
+      <button value="close" formnovalidate>Cancel</button>
+      <button id="sources-save" type="button" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="list-dialog" class="list-dialog" aria-labelledby="list-dialog-title">
   <form method="dialog">

@@ -49,6 +49,8 @@ async function api(path, opts = {}) {
 
 async function init() {
   CFG = await api("/api/config");
+  $("#sources-open").onclick = openSources;
+  $("#sources-save").onclick = saveSources;
   $("#blind").checked = CFG.blind;
   $("#blind").onchange = async (e) => {
     await api("/api/config/blind", { method: "POST", body: { blind: e.target.checked } });
@@ -176,7 +178,7 @@ function renderForm() {
 }
 
 function onKey(e) {
-  if ($("#list-dialog").open) return;
+  if ($("#list-dialog").open || $("#sources-dialog").open) return;
   if (e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") {
     if (e.key === "Enter" && e.target.id === "notes") commit();
@@ -482,6 +484,31 @@ async function pullNight() {
   } finally {
     $("#pull-night").disabled = false;
   }
+}
+
+// ---------- data sources: which outside sources this labeler has switched off (switches.py) ----------
+
+function openSources() {
+  const off = new Set(CFG.data_sources_off);
+  const groups = {};
+  for (const s of CFG.data_sources) (groups[s.group] ||= []).push(s);
+  $("#sources-list").innerHTML = Object.entries(groups).map(([group, items]) => `<fieldset><legend>${esc(group)}</legend>`
+    + items.map((s) => `<label><input type="checkbox" data-key="${esc(s.key)}" ${off.has(s.key) ? "" : "checked"}> ${esc(s.label)}</label>`).join("")
+    + `</fieldset>`).join("");
+  $("#sources-result").textContent = "";
+  $("#sources-dialog").showModal();
+}
+
+async function saveSources() {
+  const off = [...$("#sources-list").querySelectorAll("input[data-key]")].filter((b) => !b.checked).map((b) => b.dataset.key);
+  try {
+    CFG.data_sources_off = (await api("/api/config/data-sources", { method: "POST", body: { off } })).off;
+  } catch (e) {
+    $("#sources-result").textContent = e.message;
+    return;
+  }
+  $("#sources-dialog").close();
+  if (cur) loadObject(cur.evidence.object_id);
 }
 
 // ---------- object lists: any objects, by alert ID, diaObjectId, ANTARES locus or position (lists.py) ----------
@@ -1311,35 +1338,42 @@ function renderXmatch(ev) {
   html += classSummary(xm);
   const chosen = form.host && form.host.ls_id;
   const clsCol = (cat) => ["class", (r) => classChip(cat === "ls" ? lsClass(r, xm) : srcClass(cat, r))];
-  html += `<h3>Host candidates (LS DR10, ranked by d<sub>DLR</sub>)</h3>` +
+  const off = new Set(xm.off || []);  // catalogs switched off in Sources (switches.py)
+  if (!off.has("legacy_survey")) html += `<h3>Host candidates (LS DR10, ranked by d<sub>DLR</sub>)</h3>` +
     table(xm.host_candidates, [
       clsCol("ls"), ["ls_id", (r) => String(r.ls_id).slice(-7)], ["type", "type"], ["sep″", "sep", 1], ["dDLR", "d_dlr", 2],
       ["r", "mag_r", 2], ["z_phot", (r) => `${fmt(r.z_phot_median)} <span class="muted">[${fmt(r.z_phot_l68)}–${fmt(r.z_phot_u68)}]</span>`],
       ["z_spec", "z_spec", 4],
     ], { id: "hosts", rowClass: (r) => "clickable" + (String(r.ls_id) === String(chosen) ? " chosen" : "") });
-  html += `<h3>Gaia DR3</h3>` + table(xm.gaia, [
+  if (!off.has("gaia")) html += `<h3>Gaia DR3</h3>` + table(xm.gaia, [
     clsCol("gaia"), ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
   ], { id: "gaia" });
-  html += `<h3>ZTF objects (ALeRCE position search, ≤30″)</h3>`;
-  if (xm.ztf === undefined) {
-    html += `<div class="muted" style="font-size:12px">not searched for this object yet — click Search above</div>`;
-  } else {
-    const antZ = ev.ztf_object_id;
-    const near = (xm.ztf || []).filter((o) => o.sep <= 2);
-    if (near.length && !near.some((o) => o.oid === antZ)) html += `<span class="pill warn">ZTF object within 2″ that ANTARES did not associate</span>`;
-    if (antZ && xm.ztf && !xm.ztf.some((o) => o.oid === antZ)) html += `<span class="pill warn">ANTARES's ZTF assoc ${esc(antZ)} not found within radius</span>`;
-    html += table(xm.ztf, [
-      ["sep″", "sep", 1], ["oid", (r) => `<a target="_blank" href="https://alerce.online/object/${esc(r.oid)}">${esc(r.oid)}</a>`],
-      ["ndet", "ndet", 0], ["ndethist", "ndethist", 0], ["first", "firstmjd", 1], ["last", "lastmjd", 1],
-      ["", (r) => (r.oid === antZ ? `<span class="pill">ANTARES assoc</span>` : "")],
-    ], { id: "ztf" });
+  if (!off.has("ztf")) {
+    html += `<h3>ZTF objects (ALeRCE position search, ≤30″)</h3>`;
+    if (xm.ztf === undefined) {
+      html += `<div class="muted" style="font-size:12px">not searched for this object yet — click Search above</div>`;
+    } else {
+      const antZ = ev.ztf_object_id;
+      const near = (xm.ztf || []).filter((o) => o.sep <= 2);
+      if (near.length && !near.some((o) => o.oid === antZ)) html += `<span class="pill warn">ZTF object within 2″ that ANTARES did not associate</span>`;
+      if (antZ && xm.ztf && !xm.ztf.some((o) => o.oid === antZ)) html += `<span class="pill warn">ANTARES's ZTF assoc ${esc(antZ)} not found within radius</span>`;
+      html += table(xm.ztf, [
+        ["sep″", "sep", 1], ["oid", (r) => `<a target="_blank" href="https://alerce.online/object/${esc(r.oid)}">${esc(r.oid)}</a>`],
+        ["ndet", "ndet", 0], ["ndethist", "ndethist", 0], ["first", "firstmjd", 1], ["last", "lastmjd", 1],
+        ["", (r) => (r.oid === antZ ? `<span class="pill">ANTARES assoc</span>` : "")],
+      ], { id: "ztf" });
+    }
   }
-  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [clsCol("milliquas"), ["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]], { id: "milliquas" });
-  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [clsCol("simbad"), ["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]], { id: "simbad" });
-  html += `<h3>NED</h3>` + table(xm.ned, [clsCol("ned"), ["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]], { id: "ned" });
-  html += `<h3>PS1</h3>` + table(xm.ps1, [["sep″", "sep", 1], ["g", "gmag"], ["r", "rmag"], ["i", "imag"], ["z", "zmag"]], { id: "ps1" });
-  const errs = Object.entries(xm.errors || {});
+  if (!off.has("milliquas")) html += `<h3>Milliquas</h3>` + table(xm.milliquas, [clsCol("milliquas"), ["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]], { id: "milliquas" });
+  if (!off.has("simbad")) html += `<h3>SIMBAD</h3>` + table(xm.simbad, [clsCol("simbad"), ["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]], { id: "simbad" });
+  if (!off.has("ned")) html += `<h3>NED</h3>` + table(xm.ned, [clsCol("ned"), ["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]], { id: "ned" });
+  if (!off.has("ps1")) html += `<h3>PS1</h3>` + table(xm.ps1, [["sep″", "sep", 1], ["g", "gmag"], ["r", "rmag"], ["i", "imag"], ["z", "zmag"]], { id: "ps1" });
+  // "switched off": someone else had the catalog off when the object was loaded, kept out since it was labeled
+  const errs = Object.entries(xm.errors || {})
+    .map(([k, v]) => [k, v === "switched off" ? "not fetched: switched off by whoever first loaded this object" : v]);
   if (errs.length) html += `<div class="err">${errs.map(([k, v]) => `${k}: ${esc(v)}`).join("<br>")}</div>`;
+  const offNames = CFG.data_sources.filter((s) => off.has(s.key)).map((s) => esc(s.label));
+  if (offNames.length) html += `<div class="muted" style="font-size:12px"><b>Switched off</b> (Sources): ${offNames.join(" · ")}</div>`;
   $("#xmatch").innerHTML = html;
   $("#xmatch").querySelectorAll('table[data-t="hosts"] tr[data-i]').forEach((tr) => (tr.onclick = () => {
     setHost(hostFrom(xm.host_candidates[+tr.dataset.i]));
@@ -1435,32 +1469,19 @@ function renderOpinions() {
     LSST reliability mean <b>${fmt(op.reliability.lsst_mean, 3)}</b> <span class="muted">(${op.reliability.lsst_per_alert.map((r) => fmt(r, 2)).join(", ")})</span><br>
     ZTF drb mean <b>${fmt(op.reliability.ztf_drb_mean, 3)}</b></div>`;
   const al = op.alerce || {};
-  for (const survey of ["lsst", "ztf"]) {
+  for (const survey of al.off ? [] : ["lsst", "ztf"]) {
     const clfs = al[survey];
     if (!clfs) { if (al.errors?.[survey]) html += `<h3>ALeRCE ${survey}</h3><div class="err">${esc(al.errors[survey]).slice(0, 200)}</div>`; continue; }
     for (const [name, e] of Object.entries(clfs)) {
       html += `<h3>ALeRCE ${survey}: ${esc(name)} <span class="muted">v${esc(e.version)}</span></h3>${probBars(e.probs)}`;
     }
   }
-  html += renderFink(op.fink || {});
-  html += renderLasair(op.lasair);
+  if (!op.fink?.off) html += renderFink(op.fink || {});
+  if (!op.lasair?.off) html += renderLasair(op.lasair);
   const an = op.antares || {};
   html += `<h3>ANTARES</h3><div>${(an.tags || []).map((t) => `<span class="pill">${esc(t)}</span>`).join("") || `<span class="muted">no tags</span>`}</div>
     <div style="font-size:12px">catalogs: ${(an.catalogs || []).map(esc).join(", ") || "none"}</div>`;
-  const bb = op.babamul || {};
-  html += `<h3>Babamul</h3>`;
-  if (!bb.enabled) html += `<div class="muted" style="font-size:12px">not configured (set BABAMUL_API_TOKEN in .env)</div>`;
-  else if (!bb.found) html += `<div class="muted" style="font-size:12px">object not found ${esc(JSON.stringify(bb.errors || {}))}</div>`;
-  else {
-    const pr = bb.properties || {};
-    html += `<div>${["rock", "star", "near_brightstar", "stationary"].map((k) => `<span class="pill ${pr[k] ? "warn" : ""}">${k}: ${pr[k] === undefined || pr[k] === null ? "—" : pr[k]}</span>`).join("")}</div>`;
-    const zm = bb.ztf_match;
-    const antZ = cur.evidence.ztf_object_id;
-    html += `<div style="font-size:12px">ZTF match: ${zm ? esc(zm.objectId) : "none"}${(zm?.objectId || null) !== (antZ || null) ? ` <span class="pill warn">differs from ANTARES (${esc(antZ || "none")})</span>` : ""}</div>`;
-    const cm = bb.cross_matches || {};
-    const n = Object.entries(cm).filter(([, v]) => v && v.length).map(([k, v]) => `${k}: ${v.length}`).join(", ");
-    html += `<div style="font-size:12px">crossmatches: ${esc(n || "none")}</div>`;
-  }
+  html += renderBabamul(op.babamul || {});
   html += renderYse(op.yse || {});
   el.innerHTML = html;
 }
@@ -1510,7 +1531,26 @@ function renderLasair(l) {
 // YSE PZ header values are Django natural keys, e.g. "['Following']"
 const yseValue = (v) => String(v).replace(/[\[\]']/g, "");
 
+function renderBabamul(bb) {
+  if (bb.off) return "";
+  let html = `<h3>Babamul</h3>`;
+  if (!bb.enabled) html += `<div class="muted" style="font-size:12px">not configured (set BABAMUL_API_TOKEN in .env)</div>`;
+  else if (!bb.found) html += `<div class="muted" style="font-size:12px">object not found ${esc(JSON.stringify(bb.errors || {}))}</div>`;
+  else {
+    const pr = bb.properties || {};
+    html += `<div>${["rock", "star", "near_brightstar", "stationary"].map((k) => `<span class="pill ${pr[k] ? "warn" : ""}">${k}: ${pr[k] === undefined || pr[k] === null ? "—" : pr[k]}</span>`).join("")}</div>`;
+    const zm = bb.ztf_match;
+    const antZ = cur.evidence.ztf_object_id;
+    html += `<div style="font-size:12px">ZTF match: ${zm ? esc(zm.objectId) : "none"}${(zm?.objectId || null) !== (antZ || null) ? ` <span class="pill warn">differs from ANTARES (${esc(antZ || "none")})</span>` : ""}</div>`;
+    const cm = bb.cross_matches || {};
+    const n = Object.entries(cm).filter(([, v]) => v && v.length).map(([k, v]) => `${k}: ${v.length}`).join(", ");
+    html += `<div style="font-size:12px">crossmatches: ${esc(n || "none")}</div>`;
+  }
+  return html;
+}
+
 function renderYse(y) {
+  if (y.off) return "";
   let html = `<h3>YSE PZ</h3>`;
   if (!y.enabled) return html + `<div class="muted" style="font-size:12px">no YSE PZ login: add yours on your <a href="/account">profile</a></div>`;
   if (y.errors?.login) return html + `<div class="err">YSE PZ didn't accept your saved login: update it on your <a href="/account">profile</a></div>`;
@@ -1589,7 +1629,7 @@ function archivalTraces(arch) {
 
 // Under the light curve: how many archival points there are, and which surveys couldn't be reached.
 function archivalNote(arch) {
-  if (!arch) return "";
+  if (!arch || arch.off) return "";
   const n = (s) => arch.points.filter((p) => p.survey === s).length;
   const counts = Object.entries(ARCHIVAL).map(([s, a]) => arch.errors[s] ? `${a.name} unavailable` : `${a.name} ${n(s)}`);
   return `Archival at the position (sci mag view): ${counts.join(", ")}.`;

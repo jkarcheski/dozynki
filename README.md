@@ -50,6 +50,12 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
    curve) is fetched with the Lasair API token a labeler adds on their profile page. It's cached once per object
    and shown to everyone; an ordinary Lasair account gets 100 calls an hour, and a throttled fetch is retried
    after half an hour.
+
+   **Sources** (next to Blind mode) switches outside sources off for you: YSE PZ, the archival light
+   curves, each broker (ALeRCE, Fink, Lasair, Babamul) and each crossmatch catalog. A switched-off source is
+   neither fetched for you nor shown to you, so a slow or unreachable one stops holding up your objects. Others
+   still get it: a catalog you skip is filled in when someone who has it on opens the object, unless it has
+   been labeled (its crossmatch then stays the evidence it was labeled with).
 4. **Revise (optional)** – committing again stores a separate `revealed` label.
    Both are kept, so you can measure how much brokers shift your labels.
 
@@ -342,6 +348,7 @@ dozynki/
   lists.py          object lists: resolve alert IDs, diaObjectIds, loci and coordinates to LSST objects
   crossmatch.py     independent catalog crossmatch + DLR
   archival.py       archival light curves at the position: ZTF data releases, Pan-STARRS1 DR2
+  switches.py       each labeler's data-source switches (the vetter's Sources)
   rejection.py      rejection rules; evaluate.py scores pipelines against labels
   nightrun.py       Filtered mode: run a night through a saved filter; screen.py checks it in the background
   daily.py          daily jobs (filters, watchlist, ALeRCE SN), their schedule, report and reruns; mail.py and

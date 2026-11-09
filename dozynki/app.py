@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, neighborhood, rejection, search, similar, sky, sources, tns
-from . import daily, nightrun, slack
+from . import daily, nightrun, slack, switches
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, lasair, pittgoogle, yse
 from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
@@ -211,6 +211,8 @@ def get_config(request: Request):
         "signed_in": bool(request.state.user),
         "babamul_enabled": BABAMUL_ENABLED,
         "sources": list(sources.SOURCES),
+        "data_sources": switches.listing(),  # what the vetter's Sources switches can turn off
+        "data_sources_off": sorted(switches.off(_who(request))),
         "date_modes": list(DATE_MODES),
         "xmatch_radius": XMATCH_RADIUS_ARCSEC,
         "version": __version__,
@@ -225,6 +227,19 @@ class BlindToggle(BaseModel):
 def set_blind(body: BlindToggle, request: Request):
     blind_mode[_who(request)] = body.blind
     return {"blind": body.blind}
+
+
+class DataSources(BaseModel):
+    off: list[str]
+
+
+@app.post("/api/config/data-sources")
+def set_data_sources(body: DataSources, request: Request):
+    """Switch data sources off (or back on) for this labeler: not fetched for them, not shown to them."""
+    try:
+        return {"off": sorted(switches.set_off(_who(request), body.off))}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 def _accounts_on():
@@ -653,7 +668,7 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
     item = db.get_queue_item(object_id)
     if not item:
         raise HTTPException(404, "not in queue")
-    loading = False
+    loading, off = False, switches.off(_who(request))
     if quick and not refresh:
         loading = assemble.loading(object_id)  # before quick(), so loading false with pending left means it failed
         raw, pending = assemble.quick(object_id, _who(request))
@@ -661,7 +676,8 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
             assemble.load_in_background(object_id, _who(request))
             loading = True
     else:
-        raw, pending = assemble.with_profile(object_id, assemble.load(object_id, refresh=refresh), _who(request), refresh), []
+        raw, pending = assemble.with_profile(object_id, assemble.load(object_id, refresh, off), _who(request), refresh), []
+    raw = switches.hide(raw, off)
     ev = assemble.evidence(object_id, raw)
     labels = db.labels_for(object_id, _who(request))
     revealed = not _blind(request) or _has_blind_label(object_id, _who(request))
@@ -680,7 +696,9 @@ def get_object(object_id: str, request: Request, refresh: bool = False, quick: b
 def reveal(object_id: str, request: Request):
     if _blind(request) and not _has_blind_label(object_id, _who(request)):
         raise HTTPException(403, "commit a blind label first")
-    return _opinions(object_id, assemble.with_profile(object_id, assemble.load(object_id), _who(request)))
+    off = switches.off(_who(request))
+    raw = assemble.with_profile(object_id, assemble.load(object_id, off=off), _who(request))
+    return _opinions(object_id, switches.hide(raw, off))
 
 
 def _opinions(object_id, raw):
@@ -720,7 +738,7 @@ def post_label(body: Label, request: Request):
     else:
         phase = "blind" if _blind(request) else "unblinded"
     before = achievements.summary(who)
-    raw = assemble.load(body.object_id)
+    raw = assemble.load(body.object_id, off=switches.off(who))
     snap = assemble.snapshot(assemble.evidence(body.object_id, raw)) | {"blind_mode": _blind(request)}
     label_id = db.add_label(
         {
@@ -958,20 +976,22 @@ def skip(object_id: str, request: Request):
 
 
 @app.post("/api/xmatch/{object_id}")
-def xmatch(object_id: str, radius: float = XMATCH_RADIUS_ARCSEC):
+def xmatch(object_id: str, request: Request, radius: float = XMATCH_RADIUS_ARCSEC):
     if not db.get_queue_item(object_id):
         raise HTTPException(404, "not in queue")
     if not 0 < radius <= XMATCH_MAX_RADIUS_ARCSEC:
         raise HTTPException(400, f"radius must be in (0, {XMATCH_MAX_RADIUS_ARCSEC}] arcsec")
-    assemble.load(object_id)
-    return assemble.rerun_xmatch(object_id, radius)["data"]
+    off = switches.off(_who(request))
+    assemble.load(object_id, off=off)
+    hit = assemble.rerun_xmatch(object_id, radius, off & switches.CATALOGS)
+    return switches.hide({"xmatch": hit}, off)["xmatch"]["data"]
 
 
 @app.post("/api/skybot/{object_id}")
-def skybot(object_id: str, refresh: bool = False):
+def skybot(object_id: str, request: Request, refresh: bool = False):
     if not db.get_queue_item(object_id):
         raise HTTPException(404, "not in queue")
-    assemble.load(object_id)
+    assemble.load(object_id, off=switches.off(_who(request)))
     return assemble.skybot(object_id, refresh=refresh)["data"]
 
 

@@ -120,6 +120,10 @@ CREATE TABLE IF NOT EXISTS yse_logins (
     password    TEXT NOT NULL,         -- encrypted (yse.py); YSE PZ's API needs it back, so it can't be a hash
     saved_at    TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS source_switches (
+    labeler     TEXT PRIMARY KEY,
+    off         TEXT NOT NULL          -- JSON list of the data sources (switches.py) this labeler switched off
+);
 CREATE TABLE IF NOT EXISTS lasair_tokens (
     labeler     TEXT PRIMARY KEY,      -- as in yse_logins
     token       TEXT NOT NULL,         -- encrypted with the YSE PZ key (lasair.py)

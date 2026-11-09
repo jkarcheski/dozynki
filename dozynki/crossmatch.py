@@ -264,15 +264,28 @@ def _with_hosts(out):
     return out
 
 
-def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC):
+OFF = "switched off"  # a catalog's error when the labeler who loaded the object had it off (switches.py)
+
+
+def run(ra, dec, radius=XMATCH_RADIUS_ARCSEC, skip=frozenset()):
+    """Every catalog except those in skip, which are recorded with the error OFF for a later load to fill in."""
     out = {"ra": ra, "dec": dec, "radius_arcsec": radius, "context": context(ra, dec), "errors": {}}
-    _run_jobs(_jobs(ra, dec, radius), out)
+    jobs = _jobs(ra, dec, radius)
+    for name in skip & jobs.keys():
+        out[name], out["errors"][name] = None, OFF
+    _run_jobs({name: job for name, job in jobs.items() if name not in skip}, out)
     return _with_hosts(out)
 
 
-def fill_missing(out):
-    """Re-query only the catalogs that failed in a crossmatch, keeping the ones that succeeded."""
-    jobs = {name: job for name, job in _jobs(out["ra"], out["dec"], out["radius_arcsec"]).items() if name in out["errors"]}
+def switched_off(out):
+    """The catalogs a crossmatch skipped because they were switched off."""
+    return {name for name, e in (out.get("errors") or {}).items() if e == OFF}
+
+
+def fill_missing(out, names=None):
+    """Re-query only the catalogs that failed in a crossmatch (or just names among them), keeping the rest."""
+    jobs = {name: job for name, job in _jobs(out["ra"], out["dec"], out["radius_arcsec"]).items()
+            if name in out["errors"] and (names is None or name in names)}
     retry = {"errors": {}}
     _run_jobs(jobs, retry)
     errors = {name: e for name, e in out["errors"].items() if name not in jobs} | retry.pop("errors")
