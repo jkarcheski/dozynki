@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, accounts, achievements, assemble, compare, coverage, db, details, evaluate, export, farm, lists, neighborhood, rejection, search, similar, sky, sources, tns
-from . import daily, nightrun
+from . import daily, nightrun, slack
 from . import screen as screening  # `screen` is also the filtered-mode parameter name
 from .brokers import antares, lasair, pittgoogle, yse
 from .config import (ACCOUNTS, BABAMUL_ENABLED, BLIND_DEFAULT, LABELER, SECURE_COOKIES, XMATCH_MAX_RADIUS_ARCSEC,
@@ -833,7 +833,7 @@ def daily_status(request: Request):
     """Your daily jobs' settings and recent reports, and what the page needs to edit them."""
     who = _daily_labeler(request)
     return {"labeler": who, "settings": daily.settings(who), "reports": daily.reports(who), "emails": daily.emails(who),
-            "slack": daily.posts(who),
+            "slack": daily.posts(who), "slack_from": slack.where(who),
             "saved_filters": [p["name"] for p in db.saved_pipelines()], "last_night": daily.last_night(),
             "sn_list": daily.sn_list_name(who), "sn_classifier": daily.SN_CLASSIFIER}
 
@@ -894,6 +894,27 @@ def daily_slack(report_id: int, request: Request):
     if result != "sent":
         raise HTTPException(502, result)
     return {"slacked": result}
+
+
+class SlackWebhook(BaseModel):
+    webhook: str
+
+
+@app.post("/api/daily/slack-webhook")
+def save_slack_webhook(body: SlackWebhook, request: Request):
+    """Your channel's incoming webhook for daily reports; kept encrypted and never sent back to the page."""
+    try:
+        slack.save_webhook(_daily_labeler(request), body.webhook)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"slack_from": "saved"}
+
+
+@app.delete("/api/daily/slack-webhook")
+def forget_slack_webhook(request: Request):
+    who = _daily_labeler(request)
+    slack.forget_webhook(who)
+    return {"slack_from": slack.where(who)}
 
 
 @app.post("/api/daily/dismiss/{report_id}")

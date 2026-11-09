@@ -179,13 +179,17 @@ function renderSchedule() {
   form.elements.email.disabled = !state.emails;
   form.elements.slack.checked = s.slack && state.slack;
   form.elements.slack.disabled = !state.slack;
-  $("#slack-hint").textContent = (state.slack
-    ? "to your channel's incoming webhook in DOZYNKI_SLACK_WEBHOOK (.env)"
-    : `add ${state.labeler}=<incoming webhook URL> to DOZYNKI_SLACK_WEBHOOK in .env; the URL is never stored in the database`)
+  $("#slack-hint").textContent = ({
+    saved: "to the webhook you saved (kept encrypted, never shown again; paste a new one to replace it)",
+    env: "to the webhook set for you in the server's .env; paste one below to use your own",
+  }[state.slack_from] || "paste your channel's incoming webhook below (in Slack: an app with Incoming Webhooks, added to one channel)")
     + `. Everyone in the channel will see your DOZYNKI handle, ${state.labeler}: it's in the name of your ALeRCE SN list.`;
+  $("#slack-forget").hidden = state.slack_from !== "saved";
+  // email addresses are private information, which DOZYNKI never saves (FERPA): only the server's .env holds them
   $("#email-hint").textContent = state.emails
-    ? "to your address in DOZYNKI_REPORT_EMAIL, through the DOZYNKI_SMTP_* server (.env)"
-    : `add ${state.labeler}=<address> to DOZYNKI_REPORT_EMAIL in .env, and set the DOZYNKI_SMTP_* server; the address is never stored in the database`;
+    ? "to your address in DOZYNKI_REPORT_EMAIL, through the DOZYNKI_SMTP_* server (the server's .env)"
+    : "DOZYNKI doesn't save email addresses, which are private information under FERPA, so it can't take yours here. " +
+      `Whoever runs this server can add ${state.labeler}=<address> to DOZYNKI_REPORT_EMAIL in its .env, or post to Slack instead.`;
 }
 
 function renderJobs() {
@@ -256,6 +260,24 @@ $("#schedule").onsubmit = async (e) => {
   }
 };
 $("#schedule").oninput = () => ($("#saved").textContent = "unsaved changes");
+
+async function slackWebhook(method, body) {
+  try {
+    const r = await api("/api/daily/slack-webhook", { method, body });
+    state.slack_from = r.slack_from;
+    state.slack = !!r.slack_from;
+    if (method === "POST" && !state.settings.slack) await save({ slack: true });
+    $("#slack-webhook").value = "";
+    renderSchedule();
+    renderReports();
+    toast(method === "POST" ? "Slack webhook saved" : "Slack webhook removed");
+  } catch (err) {
+    toast("Couldn't save the webhook: " + err.message, 5000);
+  }
+}
+$("#slack-save").onclick = () => slackWebhook("POST", { webhook: $("#slack-webhook").value });
+$("#slack-forget").onclick = () => slackWebhook("DELETE");
+$("#slack-webhook").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#slack-save").click(); } };
 
 $("#add-job").onclick = () => {
   $("#job-pick").hidden = false;

@@ -284,10 +284,12 @@ night: the latest Rubin night that has ended (dayObs D once it is past 11:00 UTC
 whose headline counts what is new to vet, e.g. "12 new objects to vet" or "LSST produced no new alerts last night
 (2026-11-02)". The report shows on the Daily page and the Home page, the tab shows how many reports you haven't
 read, and reports are emailed through the `DOZYNKI_SMTP_*` server to the addresses in `DOZYNKI_REPORT_EMAIL`
-(`handle=address`, comma-separated; a bare address is DOZYNKI_LABELER's) and posted to Slack channels through the
-incoming webhooks in `DOZYNKI_SLACK_WEBHOOK` (`handle=<webhook URL>`, the same way). Addresses and webhooks live
-only in `.env`, never in the database. A report on Slack shows your DOZYNKI handle (it names your ALeRCE SN list),
-and the Daily page says so next to the Slack option. "Send to
+(`handle=address`, comma-separated; a bare address is DOZYNKI_LABELER's) and posted to Slack. Email addresses are
+private information, which DOZYNKI never saves, so they live only in the server's `.env` and the Daily page can't take
+one. For Slack, each labeler pastes their channel's incoming webhook on the Daily page; it is stored encrypted with
+the key that encrypts YSE PZ passwords and never sent back to the page (`DOZYNKI_SLACK_WEBHOOK` in `.env`,
+`handle=<webhook URL>`, still works for a labeler who hasn't). A report on Slack shows your DOZYNKI handle (it
+names your ALeRCE SN list), and the Daily page says so next to the Slack option. "Send to
 Slack" posts any finished report again. Guests have no daily jobs.
 
 The Jobs card puts the time, email and Slack first, then your jobs, one line each; "Add a job" asks what kind of

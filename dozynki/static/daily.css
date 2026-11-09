@@ -28,3 +28,5 @@
 #add-job { align-self: flex-start; }
 #job-pick:not([hidden]), #job-edit:not([hidden]) { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; }
 #job-pick .small { align-self: flex-start; }
+.daily-settings .slack-entry { display: flex; gap: 6px; margin-left: 22px; }
+.slack-entry input { flex: 1; min-width: 0; max-width: 460px; }

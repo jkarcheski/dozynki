@@ -162,6 +162,11 @@ CREATE TABLE IF NOT EXISTS daily_settings (
     config      TEXT NOT NULL,         -- JSON: which jobs run and when (daily.DEFAULTS)
     updated_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS slack_webhooks (
+    labeler     TEXT PRIMARY KEY,
+    webhook     TEXT NOT NULL,         -- encrypted (slack.py), with the key that encrypts YSE PZ passwords
+    saved_at    TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS daily_reports (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     labeler     TEXT NOT NULL,

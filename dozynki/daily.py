@@ -2,8 +2,9 @@
 and ALeRCE's new high-probability supernovae, summed up in one report ("12 new objects to vet").
 
 The report is kept per labeler (daily_reports) for the Daily page and the tab's unread count, emailed to
-the labeler's address in DOZYNKI_REPORT_EMAIL and posted to their Slack webhook in DOZYNKI_SLACK_WEBHOOK, if set. A scheduler thread in the server starts each
-labeler's jobs once their time of day (server's local time) has passed and the night has no report yet;
+the labeler's address in DOZYNKI_REPORT_EMAIL and posted to the Slack webhook they entered (slack.py), if set.
+Email addresses stay in .env, never in the database: no private information is saved. A scheduler thread in the
+server starts each labeler's jobs once their time of day (server's local time) has passed and the night has no report yet;
 `python -m dozynki.daily` runs them now, from a terminal or a cron job.
 
 "Last night" is the latest Rubin night that has ended: dayObs D once it is past 11:00 UTC on D+1
@@ -23,7 +24,7 @@ import requests
 
 from . import achievements, assemble, db, lists, mail, nightrun, screen, slack, sources
 from .brokers import alerce, antares
-from .config import BASE_URL, LABELER, REPORT_EMAILS, SLACK_WEBHOOKS
+from .config import BASE_URL, LABELER, REPORT_EMAILS
 
 DEFAULTS = {
     "enabled": False,
@@ -88,14 +89,14 @@ def emails(labeler):
 
 
 def posts(labeler):
-    """Whether this labeler's reports can go to Slack: their webhook is only in .env (DOZYNKI_SLACK_WEBHOOK)."""
-    return labeler.lower() in SLACK_WEBHOOKS
+    """Whether this labeler's reports can go to Slack: a webhook entered on the Daily page, or theirs in .env."""
+    return slack.where(labeler) is not None
 
 
 def send_slack(labeler, title, report):
     """Post a report to the labeler's Slack channel; returns "sent" or why it wasn't, for daily_reports.slacked."""
     try:
-        slack.post(SLACK_WEBHOOKS[labeler.lower()], slack_text(title, report))
+        slack.post(slack.webhook_for(labeler), slack_text(title, report))
         return "sent"
     except Exception as e:
         return f"not sent: {_why(e)}"
@@ -420,7 +421,7 @@ def post_report(labeler, report_id):
     if not rows:
         raise KeyError(report_id)
     if not posts(labeler):
-        raise ValueError(f"no Slack webhook for {labeler} in DOZYNKI_SLACK_WEBHOOK")
+        raise ValueError("no Slack webhook: enter yours on the Daily page")
     result = send_slack(labeler, rows[0]["headline"], json.loads(rows[0]["report"]))
     db.execute("UPDATE daily_reports SET slacked = ? WHERE id = ?", (result, report_id))
     return result

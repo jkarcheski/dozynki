@@ -39,6 +39,10 @@
         <span class="hint" id="email-hint"></span></div>
       <div class="row"><label><input type="checkbox" name="slack"> Post the report to Slack</label>
         <span class="hint" id="slack-hint"></span></div>
+      <div class="row slack-entry"><input type="password" id="slack-webhook" autocomplete="off" spellcheck="false"
+          placeholder="https://hooks.slack.com/services/…" aria-label="Slack incoming webhook URL">
+        <button type="button" id="slack-save">Save webhook</button>
+        <button type="button" id="slack-forget" class="small" hidden>Remove</button></div>
       <button class="primary" type="submit">Save</button>
     </form>
 
