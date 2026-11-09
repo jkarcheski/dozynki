@@ -851,24 +851,19 @@ async function savePipeline(name, pipeline, note) {
 
 // ---------- questionnaire ----------
 
-// wiz.at: -2 asks whether to start from the basic cut, -1 is the target question; 0.. index into
-// wiz.questions. wiz.answers[i] is a choice index; wiz.base is the start picked (null before).
+// wiz.at: -2 is the target question, -1 asks whether to start from the basic cut (the default pipeline);
+// 0.. index into wiz.questions. wiz.answers[i] is a choice index; wiz.base is the start picked (null before).
 let wiz = null;
 let wizToken = 0;
 
-// Each question's answer that reproduces the default pipeline: its step's choice, else leaving the rule out.
-function basicAnswers() {
-  return wiz.questions.map((name) => {
-    const step = CFG.default_pipeline.find((s) => s.rule === name);
-    const choices = questionFor(name).choices;
-    const i = step ? choices.findIndex((c) => c.params && sameSteps({ ...stepParams(step), ...c.params }, stepParams(step))) : -1;
-    return i >= 0 ? i : choices.findIndex((c) => !c.params);
-  });
+// Every rule, in questionnaire order; with the basic cut, not the rules it already has.
+function wizQuestions(base) {
+  const names = CFG.rules.map((r) => r.name).filter((n) => !base || !CFG.default_pipeline.some((s) => s.rule === n));
+  return [...QUESTION_ORDER.filter((n) => names.includes(n)), ...names.filter((n) => !QUESTION_ORDER.includes(n))];
 }
 
 function startWizard() {
-  const names = CFG.rules.map((r) => r.name);
-  wiz = { at: -2, base: null, answers: [], questions: [...QUESTION_ORDER.filter((n) => names.includes(n)), ...names.filter((n) => !QUESTION_ORDER.includes(n))] };
+  wiz = { at: -2, base: null, answers: [], questions: wizQuestions(false) };
   $("#wizard").hidden = false;
   $("#wiz-start").textContent = "Restart questions";
   renderWizard();
@@ -881,10 +876,11 @@ function closeWizard() {
   $("#wiz-start").textContent = "Build a filter with questions";
 }
 
-const wizPipeline = (upto = wiz.answers.length) => wiz.answers.slice(0, upto).flatMap((c, i) => {
-  const params = questionFor(wiz.questions[i]).choices[c].params;
-  return params ? [{ rule: wiz.questions[i], ...params }] : [];
-});
+const wizPipeline = (upto = wiz.answers.length) => [...(wiz.base ? CFG.default_pipeline : []),
+  ...wiz.answers.slice(0, upto).flatMap((c, i) => {
+    const params = questionFor(wiz.questions[i]).choices[c].params;
+    return params ? [{ rule: wiz.questions[i], ...params }] : [];
+  })];
 
 const evalReq = (pipeline) => ({ ...requestFor(), pipeline });
 
@@ -894,28 +890,27 @@ function renderWizard() {
   const n = wiz.questions.length;
   const nav = `<div class="wiz-nav hint">
     ${wiz.at >= -1 ? `<button class="small" data-act="back">← Back</button>` : ""}
-    ${wiz.at >= 0 && wiz.at < n ? `Question ${wiz.at + 1} of ${n}` : wiz.at === -2 ? "Where to start" : wiz.at < 0 ? "First, the goal" : "Done"}
+    ${wiz.at >= 0 && wiz.at < n ? `Question ${wiz.at + 1} of ${n}` : wiz.at === -2 ? "First, the goal" : wiz.at < 0 ? "Where to start" : "Done"}
     <span class="wiz-progress"><i style="width:${(100 * Math.max(0, wiz.at)) / n}%"></i></span>
     ${wiz.at >= 0 && wiz.at < n ? `<button class="small" data-act="finish" title="Skip to the end: questions you haven't answered leave their rule out">Finish here</button>` : ""}
     <button class="small" data-act="close">Close</button></div>`;
   let body;
   if (wiz.at === -2) {
+    body = `<div class="wiz-ask">What do you want the filter to keep?</div>
+      <p class="hint">Objects labeled with any of these classes count as targets. Every later answer shows how many targets and others it would throw away. This is the same as "Keep" in the header.</p>
+      <div class="chips wiz-targets">${targetList().map((t) => `<button data-k="${t.key}" class="${state.target.includes(t.key) ? "on" : ""}">${esc(t.label)}</button>`).join("")}</div>
+      <p><button class="primary" data-act="next">Next →</button></p>`;
+  } else if (wiz.at < 0) {
     body = `<div class="wiz-ask">Start from a basic quality cut?</div>
       <p class="hint">The basic cut drops known asteroids, Gaia stars and Milliquas AGN, mostly-negative and scattered
-        detections, single-night objects and low Rubin reliability. It's only a starting point: every question that
-        follows comes with its answer filled in, so you can change any of them, and after saving you can still edit,
-        add or drop rules in the pipeline.</p>
+        detections, single-night objects and low Rubin reliability. Its rules are then left out of the questions;
+        after saving you can tweak their values, or drop them, under "Pipeline".</p>
       <div class="wiz-summary">${CFG.default_pipeline.map(stepChip).join("")}</div>
       <div class="wiz-choices">
         <button class="choice ${wiz.base === true ? "on" : ""}" data-base="1"><span class="c-label">Yes, start from the basic cut</span>
           <span class="impact" data-base-impact>…</span></button>
         <button class="choice ${wiz.base === false ? "on" : ""}" data-base="0"><span class="c-label">No, start from scratch</span>
-          <span class="impact">every question starts unanswered</span></button></div>`;
-  } else if (wiz.at < 0) {
-    body = `<div class="wiz-ask">What do you want the filter to keep?</div>
-      <p class="hint">Objects labeled with any of these classes count as targets. Every later answer shows how many targets and others it would throw away. This is the same as "Keep" in the header.</p>
-      <div class="chips wiz-targets">${targetList().map((t) => `<button data-k="${t.key}" class="${state.target.includes(t.key) ? "on" : ""}">${esc(t.label)}</button>`).join("")}</div>
-      <p><button class="primary" data-act="next">Next →</button></p>`;
+          <span class="impact">asks about every rule</span></button></div>`;
   } else if (wiz.at < n) {
     const q = questionFor(wiz.questions[wiz.at]);
     const rule = CFG.rules.find((r) => r.name === wiz.questions[wiz.at]);
@@ -942,12 +937,11 @@ function renderWizard() {
   el.querySelector("[data-act=back]")?.addEventListener("click", () => { wiz.at--; renderWizard(); });
   el.querySelectorAll("[data-base]").forEach((b) => (b.onclick = () => {
     const base = b.dataset.base === "1";
-    if (base !== wiz.base) wiz.answers = base ? basicAnswers() : [];
-    wiz.base = base;
-    wiz.at = -1;
+    if (base !== wiz.base) Object.assign(wiz, { base, answers: [], questions: wizQuestions(base) });
+    wiz.at = 0;
     renderWizard();
   }));
-  el.querySelector("[data-act=next]")?.addEventListener("click", () => { wiz.at = 0; renderWizard(); });
+  el.querySelector("[data-act=next]")?.addEventListener("click", () => { wiz.at = -1; renderWizard(); });
   el.querySelector("[data-act=finish]")?.addEventListener("click", () => {
     // leave out every rule not yet answered (each question's "no" is its param-less choice)
     for (let i = wiz.answers.length; i < wiz.questions.length; i++) wiz.answers[i] = questionFor(wiz.questions[i]).choices.findIndex((c) => !c.params);
@@ -963,7 +957,7 @@ function renderWizard() {
     b.classList.toggle("on");
   }));
   el.querySelectorAll(".choice[data-c]").forEach((b) => (b.onclick = () => {
-    // later answers stay (from the basic cut, or before going back): each question stands on its own
+    // answers given before going back stay: each question stands on its own
     wiz.answers = Object.assign([...wiz.answers], { [wiz.at]: +b.dataset.c });
     wiz.at++;
     renderWizard();
@@ -979,11 +973,11 @@ function renderWizard() {
   }));
 
   // live tree of the answers so far, and what each choice would throw away after them
-  const sofar = wizPipeline(Math.max(0, Math.min(wiz.at, n)));
+  const sofar = wiz.at < 0 ? [] : wizPipeline(Math.min(wiz.at, n));
   api("/api/rejection/evaluate", evalReq(sofar)).then((base) => {
     if (token !== wizToken) return;
     renderTree(el.querySelector(".wiz-tree"), base, "Your filter so far");
-    if (wiz.at === -2) {
+    if (wiz.at === -1) {
       api("/api/rejection/evaluate", evalReq(CFG.default_pipeline)).then((r) => {
         if (token !== wizToken) return;
         const lost = r.objects.filter((o) => !o.kept);
