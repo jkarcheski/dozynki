@@ -59,6 +59,16 @@ button:disabled { opacity: .45; cursor: default; }
 main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
 @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
 .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* the vetter: the object's stamps and offsets beside its field in the left column, so the crossmatch and opinions
+   start at the top of the right one */
+#main { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+@media (max-width: 1000px) { #main { grid-template-columns: 1fr; } }
+.top-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; min-width: 0; }
+.top-row .obj-card { flex: 0 1 auto; min-width: 0; }
+.top-row .field-card { flex: 1 1 380px; min-width: 0; }
+.top-row .cutouts img { width: 120px; height: 120px; }
+.top-row .triplet { max-width: 376px; } /* three stamps; the point's details wrap under them */
+.top-row .field-wrap .panel { flex-basis: 160px; max-width: 220px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 h2 { font-size: 14px; margin: 0; }
@@ -101,11 +111,10 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: u
 #aladin-survey { padding: 2px 6px; font-size: 12px; }
 .triplet-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
 .triplet { flex: 0 1 auto; min-width: 0; }
-.astro-box { flex: 1 1 210px; min-width: 210px; max-width: 250px; }
+.astro-box { flex: 0 0 180px; }
 .astro-box .panel-head { height: auto; flex-wrap: wrap; }
-.astro-box .panel-head .muted { font-weight: 400; }
-#astro { width: 100%; height: 160px; }
-#astro-summary { margin-top: 2px; }
+.astro-box .info-body { font-weight: 400; }
+#astro { width: 100%; height: 170px; }
 #field svg { position: absolute; inset: 0; }
 #field svg { cursor: crosshair; }
 #field svg .rank { font: 600 11px system-ui, sans-serif; paint-order: stroke; stroke: #000; stroke-width: 3px; fill: #fff; pointer-events: none; }

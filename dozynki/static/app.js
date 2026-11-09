@@ -648,7 +648,7 @@ async function skip() {
 
 let loadToken = 0;
 
-const clearPanels = () => ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-summary"]
+const clearPanels = () => ["#cutouts", "#point-detail", "#xmatch", "#opinions", "#obj-links", "#field", "#field-legend", "#astro", "#astro-info", "#astro-flag"]
   .forEach((s) => ($(s).innerHTML = ""));
 
 async function loadObject(oid, alias = "") {
@@ -1097,12 +1097,12 @@ function renderAstrometry(ev) {
       marker: {
         size: 6, symbol: s === "lsst" ? "circle" : "square",
         color: o.map((x) => x.p.mjd), cmin: tmin, cmax: tmax === tmin ? tmin + 1 : tmax, colorscale: "Viridis",
-        showscale: s === "lsst", colorbar: { title: { text: "MJD", side: "right" }, thickness: 6, len: 0.9, tickformat: ".1f", x: 1.1 },
+        showscale: false,
       },
     };
   }).filter((t) => t.r.length);
   Plotly.newPlot("astro", traces, {
-    margin: { l: 24, r: 56, t: 14, b: 14 }, showlegend: false,
+    margin: { l: 24, r: 24, t: 14, b: 14 }, showlegend: false,
     paper_bgcolor: "rgba(0,0,0,0)", font: { color: ink, size: 9 },
     polar: {
       bgcolor: "rgba(0,0,0,0)",
@@ -1115,8 +1115,12 @@ function renderAstrometry(ev) {
     const p = cur.evidence.points.find((q) => q.alert_id === d.points[0].customdata);
     if (p) selectPoint(p);
   });
-  $("#astro-meta").textContent = `${dets.length} detections, relative to mean ${ref === dets ? "" : "LSST "}position`;
-  $("#astro-summary").innerHTML = astrometrySummary(off, ref.length);
+  // the plot stands alone; what its colors and offsets mean is behind the "i", and only a mover warning shows
+  const summary = astrometrySummary(off, ref.length);
+  $("#astro-info").innerHTML = `${dets.length} detections, offset from the mean ${ref === dets ? "" : "LSST "}position (north up, east left).
+    Color is time: dark purple is the first detection (MJD ${fmt(tmin, 1)}), yellow the latest (MJD ${fmt(tmax, 1)}).
+    Circles are LSST, squares ZTF. Click a point to see its cutouts.<br><br>${summary}`;
+  $("#astro-flag").innerHTML = summary.includes("pill warn") ? `<span class="pill warn">consistent with a mover</span>` : "";
 }
 
 function astrometrySummary(off, nRef) {

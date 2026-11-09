@@ -92,21 +92,53 @@
 
 <main id="main">
   <section class="col">
-    <div class="card">
-      <div class="card-head"><h2 id="obj-title">—</h2><span id="cut-meta" class="muted"></span></div>
-      <div id="obj-links" class="links"></div>
-      <div id="obj-tns" class="tns-banner" hidden></div>
-      <div id="obj-pending" class="pending-note" hidden></div>
-      <div class="triplet-row">
-        <div class="triplet">
-          <div id="cutouts" class="cutouts"></div>
-          <div id="point-detail" class="detail"></div>
+    <div class="top-row">
+      <div class="card obj-card">
+        <div class="card-head"><h2 id="obj-title">—</h2><span id="cut-meta" class="muted"></span></div>
+        <div id="obj-links" class="links"></div>
+        <div id="obj-tns" class="tns-banner" hidden></div>
+        <div id="obj-pending" class="pending-note" hidden></div>
+        <div class="triplet-row">
+          <div class="triplet">
+            <div id="cutouts" class="cutouts"></div>
+            <div id="point-detail" class="detail"></div>
+          </div>
+          <div class="astro-box">
+            <div class="panel-head">Detection offsets <details class="info"><summary title="What the colors mean">i</summary><div class="info-body" id="astro-info"></div></details> <span id="astro-flag"></span></div>
+            <div id="astro"></div>
+          </div>
         </div>
-        <div class="astro-box">
-          <div class="panel-head">Detection offsets <span id="astro-meta" class="muted"></span></div>
-          <div id="astro"></div>
-          <div id="astro-summary" class="detail"></div>
+      </div>
+      <div class="card field-card">
+        <div class="card-head">
+          <h2>Field <details class="info"><summary title="More info">i</summary><div class="info-body">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on either image to zoom it.</div></details></h2>
+          <span class="zoom">
+            <button id="zoom-in" class="small" title="Zoom both panels in (+)">+</button>
+            <span id="fov" class="muted"></span>
+            <button id="zoom-out" class="small" title="Zoom both panels out (-)">−</button>
+          </span>
         </div>
+        <div class="field-wrap">
+          <div class="panel">
+            <div class="panel-head">Legacy Survey DR10 <span class="muted">· click to pick host</span></div>
+            <div id="field"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">Aladin
+              <select id="aladin-survey" title="Aladin image survey">
+                <option value="P/PanSTARRS/DR1/color-z-zg-g" selected>Pan-STARRS DR1</option>
+                <option value="P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10</option>
+                <option value="P/DSS2/color">DSS2</option>
+                <option value="P/unWISE/color-W2-W1W2-W1">unWISE</option>
+                <option value="P/2MASS/color">2MASS</option>
+                <option value="P/GALEXGR6_7/color">GALEX</option>
+              </select>
+            </div>
+            <div id="aladin"></div>
+          </div>
+        </div>
+        <div id="field-legend" class="legend legend-row"></div>
+        <div id="field-hover" class="detail">&nbsp;</div>
       </div>
     </div>
     <div class="card">
@@ -124,37 +156,6 @@
   </section>
 
   <section class="col">
-    <div class="card">
-      <div class="card-head">
-        <h2>Field <details class="info"><summary title="More info">i</summary><div class="info-body">Click anywhere near a source to pick the closest one as host (numbers = DLR rank). Scroll on either image to zoom it.</div></details></h2>
-        <span class="zoom">
-          <button id="zoom-in" class="small" title="Zoom both panels in (+)">+</button>
-          <span id="fov" class="muted"></span>
-          <button id="zoom-out" class="small" title="Zoom both panels out (-)">−</button>
-        </span>
-      </div>
-      <div class="field-wrap">
-        <div class="panel">
-          <div class="panel-head">Legacy Survey DR10 <span class="muted">· click to pick host</span></div>
-          <div id="field"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head">Aladin
-            <select id="aladin-survey" title="Aladin image survey">
-              <option value="P/PanSTARRS/DR1/color-z-zg-g" selected>Pan-STARRS DR1</option>
-              <option value="P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10</option>
-              <option value="P/DSS2/color">DSS2</option>
-              <option value="P/unWISE/color-W2-W1W2-W1">unWISE</option>
-              <option value="P/2MASS/color">2MASS</option>
-              <option value="P/GALEXGR6_7/color">GALEX</option>
-            </select>
-          </div>
-          <div id="aladin"></div>
-        </div>
-      </div>
-      <div id="field-legend" class="legend legend-row"></div>
-      <div id="field-hover" class="detail">&nbsp;</div>
-    </div>
     <div class="card">
       <div class="card-head">
         <h2>Independent crossmatch</h2>
