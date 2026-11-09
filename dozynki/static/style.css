@@ -79,6 +79,10 @@ h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: u
 .pending-note { margin-top: 6px; padding: 4px 8px; font-size: 12px; border-left: 3px solid var(--warn);
   background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .pending-note.err { color: var(--warn); }
+.tns-banner { margin-top: 6px; padding: 6px 10px; font-size: 13px; border-left: 4px solid var(--accent); border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.tns-banner b { color: var(--accent); margin-right: 4px; }
+.tns-banner a { color: inherit; font-weight: 600; text-decoration: underline; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; padding: 3px 10px; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }

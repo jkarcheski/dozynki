@@ -1379,8 +1379,25 @@ function probBars(probs) {
     .join("");
 }
 
+// Under the object's title once opinions are revealed: its TNS matches (a known object), or that ANTARES lists
+// one it couldn't read. Hidden in the blind pass, like the rest of the opinions (a TNS type is a classification).
+function renderTnsBanner() {
+  const el = $("#obj-tns");
+  const op = cur.revealed && cur.opinions;
+  const listed = op && (op.antares?.catalogs || []).includes("tns_public_objects");
+  el.hidden = !(op?.tns?.length || listed);
+  if (el.hidden) return;
+  if (!op.tns?.length) { el.innerHTML = `<b>Known TNS object</b> <span class="muted">(ANTARES lists a match; couldn't read it)</span>`; return; }
+  el.innerHTML = `<b>Known TNS object</b> ` + op.tns.map((m) => {
+    const url = `https://www.wis-tns.org/object/${encodeURIComponent(m.name.split(" ").pop())}`;
+    return `<a target="_blank" href="${url}">${esc(m.name)}</a> ${m.type ? `<span class="pill">${esc(m.type)}</span>` : `<span class="muted">unclassified</span>`}`
+      + `<span class="muted">${m.sep != null ? ` ${fmt(m.sep, 1)}″` : ""}${m.discovered ? ` · discovered ${esc(String(m.discovered).slice(0, 10))}` : ""}${m.reporting_group ? ` · ${esc(m.reporting_group)}` : ""}</span>`;
+  }).join(" · ");
+}
+
 function renderOpinions() {
   const el = $("#opinions");
+  renderTnsBanner();
   if (!cur.revealed || !cur.opinions) {
     $("#op-state").textContent = "hidden";
     el.innerHTML = `<div class="hidden-note">Hidden until you commit a blind label. <details class="info"><summary title="More info">i</summary><div class="info-body">How its nearest labeled objects were labeled, ALeRCE probabilities, Fink classifier scores, Lasair's Sherlock context, LSST reliability / ZTF drb, ANTARES tags and catalog matches, Babamul flags and associations, YSE PZ status and classification.</div></details></div>`;

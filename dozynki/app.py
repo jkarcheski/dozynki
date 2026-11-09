@@ -684,8 +684,12 @@ def reveal(object_id: str, request: Request):
 
 
 def _opinions(object_id, raw):
-    """The brokers' opinions, and how the object's nearest labeled objects were labeled (neighborhood.py)."""
-    return {**assemble.opinions(raw), "neighborhood": neighborhood.explain(object_id)}
+    """The brokers' opinions, its TNS matches, and how the object's nearest labeled objects were labeled (neighborhood.py)."""
+    try:
+        tns_matches = assemble.tns_matches(object_id, raw["antares"]["data"])
+    except Exception:
+        tns_matches = None  # ANTARES didn't answer; the ANTARES catalogs still say whether there's a match
+    return {**assemble.opinions(raw), "tns": tns_matches, "neighborhood": neighborhood.explain(object_id)}
 
 
 class Label(BaseModel):

@@ -108,16 +108,19 @@ def _archival_failed(object_id):
     return age.total_seconds() > archival.DOWN_SECONDS
 
 
-def _tns_names(object_id, ant):
-    """The object's TNS names, nearest first: its cached TNS match, fetched (and cached, as
+def tns_matches(object_id, ant):
+    """The object's TNS matches, nearest first: its cached TNS match, fetched (and cached, as
     achievements.tns_for does) when ANTARES lists one that isn't cached yet."""
     from .tns import listed  # tns imports this module
     hit = db.cache_get(object_id, "tns")
     if hit is None and listed(ant):
         db.cache_put(object_id, "tns", antares.tns_matches(ant["locus_id"]))
         hit = db.cache_get(object_id, "tns")
-    matches = sorted(hit["data"] if hit else [], key=lambda m: m["sep"] if m.get("sep") is not None else 99)
-    return [m["name"] for m in matches]
+    return sorted(hit["data"] if hit else [], key=lambda m: m["sep"] if m.get("sep") is not None else 99)
+
+
+def _tns_names(object_id, ant):
+    return [m["name"] for m in tns_matches(object_id, ant)]
 
 
 def with_yse(object_id, raw, labeler, refresh=False):
