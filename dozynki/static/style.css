@@ -48,6 +48,7 @@ header > a.who.on { color: var(--accent); background: var(--chip); font-weight: 
 .stats b { color: var(--ink); }
 .stats a { color: var(--accent); }
 .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+header.tools-hidden .controls, header.tools-hidden .filterbar { display: none; }
 .group { display: inline-flex; gap: 4px; }
 input[type=number] { width: 60px; }
 input, button { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
@@ -66,9 +67,12 @@ main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); ga
 .top-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; min-width: 0; }
 .top-row .obj-card { flex: 0 1 auto; min-width: 0; }
 .top-row .field-card { flex: 1 1 380px; min-width: 0; }
-.top-row .cutouts img { width: 120px; height: 120px; }
-.top-row .triplet { max-width: 376px; } /* three stamps; the point's details wrap under them */
+.top-row .cutouts img { width: 140px; height: 140px; }
+.top-row .triplet { max-width: 436px; } /* three stamps; the point's details wrap under them */
 .top-row .field-wrap .panel { flex-basis: 160px; max-width: 220px; }
+.top-row .field-card .card-head { max-width: 450px; } /* the zoom ends over the Aladin panel, not at the card's edge */
+.xm-more { margin: 2px 0 4px; }
+.tablewrap.collapsed tr.extra:not(.chosen) { display: none; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 h2 { font-size: 14px; margin: 0; }

@@ -68,6 +68,9 @@ async function init() {
   $("#list-submit").onclick = loadList;
   $("#list-file").onchange = readListFile;
   $("#tns-build").onclick = buildTnsList;
+  $("#tools-hide").onclick = () => setToolbar(true);
+  $("#tools-show").onclick = () => setToolbar(false);
+  try { setToolbar(localStorage.getItem(TOOLBAR_KEY) === "hidden"); } catch {}
   $("#list-delete").onclick = deleteList;
   $("#list-name").onkeydown = (e) => { if (e.key === "Enter") e.preventDefault(); };  // not the dialog's submit
   $("#watch-recheck").onclick = recheckWatchlist;
@@ -211,6 +214,14 @@ async function refreshStats() {
 // ---------- mode: random, filtered (samples screened with a saved filter first), or one object list ----------
 
 const MODE_KEY = "dozynki.mode";
+const TOOLBAR_KEY = "dozynki.toolbar";
+
+// The sampling toolbar and filter bar can be folded away (remembered in this browser); vetting carries on as set.
+function setToolbar(hidden) {
+  document.querySelector("header").classList.toggle("tools-hidden", hidden);
+  $("#tools-show").hidden = !hidden;
+  try { localStorage.setItem(TOOLBAR_KEY, hidden ? "hidden" : "shown"); } catch {}
+}
 let mode = { mode: "random", filter: "", list: "" };
 let LISTS = [];
 
@@ -885,7 +896,6 @@ async function selectPoint(p) {
     p.sgscore1 !== undefined && p.sgscore1 !== null ? `PS1 sgscore ${fmt(p.sgscore1)} @ ${fmt(p.distpsnr1, 1)}″` : "",
   ].filter(Boolean);
   $("#point-detail").innerHTML = d.join(" · ");
-  $("#cut-meta").textContent = p.alert_id || "";
   if (!p.alert_id) { $("#cutouts").innerHTML = `<span class="muted">No cutouts for forced photometry.</span>`; return; }
   let th = cur.evidence.thumbs[p.alert_id];
   if (!th) {
@@ -1064,10 +1074,10 @@ function renderField(ev) {
   attachHostPicker(xm);
   $("#field-legend").innerHTML = `
     <div><i style="border-color:#0f0"></i>alert position</div>
+    <div><i style="border-color:#ffd200;background:rgba(255,210,0,.3)"></i>your host</div>
     ${Object.values(SRC_CLASSES).map((k) => `<div><i style="border-color:${k.color}"></i>${k.label}</div>`).join("")}
     <div><i style="border-color:var(--muted);border-style:dashed"></i>dashed = uncertain</div>
-    <div>○ LS (ellipse = half-light) · ◇ SIMBAD/NED/Milliquas · + Gaia (bold = sig. plx/pm)</div>
-    <div><i style="border-color:#ffd200;background:rgba(255,210,0,.3)"></i>your host</div>`;
+    <div>○ LS (ellipse = half-light) · ◇ SIMBAD/NED/Milliquas · + Gaia (bold = sig. plx/pm)</div>`;
 }
 
 // ---------- detection offsets (ANTARES-style polar plot) ----------
@@ -1251,14 +1261,21 @@ function hostFrom(s) {
   return { catalog: "ls_dr10", ls_id: String(s.ls_id), ra: s.ra, dec: s.dec, sep: s.sep, d_dlr: s.d_dlr, z_phot_median: s.z_phot_median, z_spec: s.z_spec, type: s.type };
 }
 
+// Crossmatch tables show their first (nearest) XM_SHOWN rows; "show more" opens one for the object on screen,
+// and it stays open as the crossmatch re-renders (picking a host). A chosen host row always shows.
+const XM_SHOWN = 3;
+let xmOpen = { object: null, ids: new Set() };
+
 function table(rows, cols, opts = {}) {
   if (!rows || !rows.length) return `<div class="muted" style="font-size:12px">none within radius</div>`;
   const head = cols.map((c) => `<th>${c[0]}</th>`).join("");
   const body = rows.map((r, i) => {
-    const cls = opts.rowClass ? opts.rowClass(r) : "";
+    const cls = (opts.rowClass ? opts.rowClass(r) : "") + (i >= XM_SHOWN ? " extra" : "");
     return `<tr class="${cls}" data-i="${i}">${cols.map((c) => `<td>${typeof c[1] === "function" ? c[1](r) : esc(fmt(r[c[1]], c[2] ?? 2))}</td>`).join("")}</tr>`;
   }).join("");
-  return `<div class="tablewrap"><table data-t="${opts.id || ""}"><tr>${head}</tr>${body}</table></div>`;
+  const more = rows.length - XM_SHOWN, open = xmOpen.ids.has(opts.id);
+  return `<div class="tablewrap ${more > 0 && !open ? "collapsed" : ""}"><table data-t="${opts.id || ""}"><tr>${head}</tr>${body}</table></div>`
+    + (more > 0 ? `<button class="small xm-more" data-t="${opts.id}">${open ? "show fewer" : `show ${more} more`}</button>` : "");
 }
 
 // YSE PZ's record of archival imaging at the position: green = has data, ✗ = checked and none, ? = not checked.
@@ -1277,6 +1294,7 @@ function yseArchivesLine(archives) {
 function renderXmatch(ev) {
   const xm = ev.xmatch;
   if (!xm) { $("#xmatch").innerHTML = `<div class="muted">${cur?.pending?.includes("crossmatch") ? "loading…" : "no crossmatch"}</div>`; return; }
+  if (xmOpen.object !== ev.object_id) xmOpen = { object: ev.object_id, ids: new Set() };
   const ctx = xm.context || {};
   const sso = ev.sso_associations || {};
   const ssoBits = [
@@ -1301,7 +1319,7 @@ function renderXmatch(ev) {
     ], { id: "hosts", rowClass: (r) => "clickable" + (String(r.ls_id) === String(chosen) ? " chosen" : "") });
   html += `<h3>Gaia DR3</h3>` + table(xm.gaia, [
     clsCol("gaia"), ["sep″", "sep", 1], ["G", "Gmag", 2], ["BP-RP", "BP-RP", 2], ["plx S/N", "plx_snr", 1], ["pm S/N", "pm_snr", 1], ["RUWE", "RUWE", 2],
-  ]);
+  ], { id: "gaia" });
   html += `<h3>ZTF objects (ALeRCE position search, ≤30″)</h3>`;
   if (xm.ztf === undefined) {
     html += `<div class="muted" style="font-size:12px">not searched for this object yet — click Search above</div>`;
@@ -1314,17 +1332,21 @@ function renderXmatch(ev) {
       ["sep″", "sep", 1], ["oid", (r) => `<a target="_blank" href="https://alerce.online/object/${esc(r.oid)}">${esc(r.oid)}</a>`],
       ["ndet", "ndet", 0], ["ndethist", "ndethist", 0], ["first", "firstmjd", 1], ["last", "lastmjd", 1],
       ["", (r) => (r.oid === antZ ? `<span class="pill">ANTARES assoc</span>` : "")],
-    ]);
+    ], { id: "ztf" });
   }
-  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [clsCol("milliquas"), ["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]]);
-  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [clsCol("simbad"), ["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]]);
-  html += `<h3>NED</h3>` + table(xm.ned, [clsCol("ned"), ["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]]);
-  html += `<h3>PS1</h3>` + table(xm.ps1, [["sep″", "sep", 1], ["g", "gmag"], ["r", "rmag"], ["i", "imag"], ["z", "zmag"]]);
+  html += `<h3>Milliquas</h3>` + table(xm.milliquas, [clsCol("milliquas"), ["sep″", "sep", 1], ["name", "Name"], ["type", "Type"], ["z", "z", 3], ["Qpct", "Qpct", 0]], { id: "milliquas" });
+  html += `<h3>SIMBAD</h3>` + table(xm.simbad, [clsCol("simbad"), ["sep″", "sep", 1], ["id", "main_id"], ["otype", "otype"], ["z", "rvz_redshift", 4]], { id: "simbad" });
+  html += `<h3>NED</h3>` + table(xm.ned, [clsCol("ned"), ["sep″", "sep", 1], ["name", "name"], ["type", "type"], ["z", "z", 4]], { id: "ned" });
+  html += `<h3>PS1</h3>` + table(xm.ps1, [["sep″", "sep", 1], ["g", "gmag"], ["r", "rmag"], ["i", "imag"], ["z", "zmag"]], { id: "ps1" });
   const errs = Object.entries(xm.errors || {});
   if (errs.length) html += `<div class="err">${errs.map(([k, v]) => `${k}: ${esc(v)}`).join("<br>")}</div>`;
   $("#xmatch").innerHTML = html;
   $("#xmatch").querySelectorAll('table[data-t="hosts"] tr[data-i]').forEach((tr) => (tr.onclick = () => {
     setHost(hostFrom(xm.host_candidates[+tr.dataset.i]));
+    renderXmatch(ev);
+  }));
+  $("#xmatch").querySelectorAll("button.xm-more").forEach((b) => (b.onclick = () => {
+    xmOpen.ids[xmOpen.ids.has(b.dataset.t) ? "delete" : "add"](b.dataset.t);
     renderXmatch(ev);
   }));
 }

@@ -38,6 +38,7 @@
     <button id="watch-recheck" title="Re-poll ANTARES for watched objects; ones with new alerts return to the queue">Recheck watchlist</button>
     <button id="xmatch-fill" title="Retry catalogs that failed or timed out in cached crossmatches of objects not yet labeled">Retry failed catalogs</button>
     <button id="export">Export</button>
+    <button id="tools-hide" class="small" title="Hide the toolbar; the mode, filter and list stay as they are">Hide toolbar ▴</button>
   </div>
   <div class="filterbar" title="Filtered mode only: applied when sampling from ANTARES and when choosing which queued object comes up next">
     <span class="muted">Only objects with</span>
@@ -60,6 +61,7 @@
     </select>
     <span id="f-matching" class="muted"></span>
   </div>
+  <button id="tools-show" class="small" hidden>Show toolbar ▾</button>
 </header>
 
 <dialog id="list-dialog" class="list-dialog" aria-labelledby="list-dialog-title">
@@ -94,7 +96,7 @@
   <section class="col">
     <div class="top-row">
       <div class="card obj-card">
-        <div class="card-head"><h2 id="obj-title">—</h2><span id="cut-meta" class="muted"></span></div>
+        <div class="card-head"><h2 id="obj-title">—</h2></div>
         <div id="obj-links" class="links"></div>
         <div id="obj-tns" class="tns-banner" hidden></div>
         <div id="obj-pending" class="pending-note" hidden></div>
@@ -104,7 +106,7 @@
             <div id="point-detail" class="detail"></div>
           </div>
           <div class="astro-box">
-            <div class="panel-head">Detection offsets <details class="info"><summary title="What the colors mean">i</summary><div class="info-body" id="astro-info"></div></details> <span id="astro-flag"></span></div>
+            <div class="panel-head"><details class="info"><summary title="Detection offsets: what the plot and its colors mean">i</summary><div class="info-body" id="astro-info"></div></details> <span id="astro-flag"></span></div>
             <div id="astro"></div>
           </div>
         </div>
