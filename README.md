@@ -28,7 +28,7 @@ cp .env.example .env    # add Babamul token (optional) and your labeler name
 ```
 ## Vetter: identify transients and create labels
 
-![The vetter on AT 2026udg, a transient on a galaxy, after its blind label](docs/images/vetter-transient.png)
+![The vetter on a rising LSST source next to a faint galaxy, labeled transient, with the broker opinions and its labeled neighbors revealed](docs/images/vetter.webp)
 
 1. **Sample** - "Sample random LSST" draws a uniform random set of ANTARES loci
    that have an LSST diaObject The seed and query are saved with every queued object.
