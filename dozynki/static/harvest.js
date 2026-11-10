@@ -166,13 +166,15 @@ const Harvest = (() => {
   }
 
   function strawSign(rand = rng(1410)) {
-    let x = 0, out = "";
+    // Every stroke's outline goes under all the bundles, so it rims each letter without crossing its joins.
+    let x = 0, edges = "", out = "";
     for (const c of SIGN.word) {
       const L = LETTERS[c];
+      edges += `<g transform="translate(${x} 0)">${L.strokes.map((s) => `<path d="${fmt(s)}"/>`).join("")}</g>`;
       out += `<g transform="translate(${x} 0)">${L.strokes.map((s) => bundle(s, rand)).join("")}</g>`;
       x += L.w + SIGN.gap;
     }
-    return `<title>DOZYNKI</title>${out}`;
+    return `<title>DOZYNKI</title><g class="shadow">${edges}</g><g class="edge">${edges}</g>${out}`;
   }
 
   // ---------- landing page ----------

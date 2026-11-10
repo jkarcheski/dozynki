@@ -4,7 +4,7 @@
   --soil: #9b7a4c; --tractor: #c0392b; --tire: #2b2b2e; --sun: #f2c35a; --needle: #9aa3ad;
   --barn: #b23a2c; --wood: #7a5532; --stone: #a3a29c; --leafy: #5d8a3a; --poppy: #d6362b; --white: #f7f4ec;
   --hide: #8b5a34; --dark: #2b2b2e; --line-ink: #3a3a3e;
-  --sky-top: #5b9fd8; --sky-low: #cfe6f6; --mountain-far: #8fa6bf; --mountain-near: #6d8a6a; --snow: #f7f9fb;
+  --sky-top: #5b9fd8; --sky-low: #cfe6f6; --mountain-far: #8fa6bf; --mountain-near: #4f6e4c; --snow: #f7f9fb;
   --skin: #e6b48c; --hair: #5b3a1e; --shirt: #7c8a4a; --trousers: #6b4f36; --denim: #3f5f8f; --navy: #1f2a4f;
 }
 @media (prefers-color-scheme: dark) {
@@ -133,6 +133,8 @@
 
 /* DOZYNKI in straw (harvest.js strawSign) */
 .straw-sign path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.straw-sign .shadow { stroke: #000; stroke-width: 9; opacity: .3; transform: translate(1.5px, 1.5px); }
+.straw-sign .edge { stroke: var(--hide); stroke-width: 9.5; }
 .straw-sign .body { stroke: var(--hay); stroke-width: 7; }
 .straw-sign .strand { stroke: var(--hay-line); stroke-width: .7; opacity: .85; }
 .straw-sign .strand.light { stroke: var(--wheat); stroke-width: 1; opacity: 1; }
