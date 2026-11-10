@@ -134,6 +134,9 @@
 .farm-item.barn .hazard { fill: none; stroke: var(--dark); stroke-width: 2.4; stroke-linecap: butt; }
 
 /* DOZYNKI in straw (harvest.js strawSign) */
+.straw-sign { transform: translate(var(--x), 121px) scale(var(--s)) translateX(var(--half)); }
+/* About 340 of the field shows on a phone. (The page sets --s inline, so this names its own scale.) */
+@media (max-width: 700px) { .straw-sign { transform: translate(var(--x), 121px) scale(1.4) translateX(var(--half)); } }
 .straw-sign path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .straw-sign .shadow { stroke: #000; stroke-width: 9; opacity: .3; transform: translate(1.5px, 1.5px); }
 .straw-sign .edge { stroke: var(--hide); stroke-width: 9.5; }

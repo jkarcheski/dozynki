@@ -129,7 +129,9 @@ const Harvest = (() => {
     K: { w: 24, strokes: [[[0, 0], [0, -40]], [[24, -40], [3, -20], [24, 0]]] },
     I: { w: 4, strokes: [[[2, 0], [2, -40]]] },
   };
-  const SIGN = { word: "DOZYNKI", x: 391, gap: 10 }; // x: left edge in the 1000-wide field
+  // cx: its center in the 1000-wide field. At scale 2.4 it stands 96 high, over the barn and the tallest wheat;
+  // harvest.css shrinks it on narrow screens so the whole word still shows.
+  const SIGN = { word: "DOZYNKI", cx: 500, scale: 2.4, gap: 10 };
   const signWidth = () => [...SIGN.word].reduce((a, c) => a + LETTERS[c].w, 0) + SIGN.gap * (SIGN.word.length - 1);
 
   const fmt = (pts) => pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
@@ -182,7 +184,7 @@ const Harvest = (() => {
   function field(el, pending = 0) {
     const rand = rng(1913);
     const sway = (x, r) => -(x / 180) - r() * 0.6; // a wave of wind from left to right
-    const clears = [[BARN[0] - BARN[1] / 2, BARN[0] + BARN[1] / 2], [SIGN.x - 8, SIGN.x + signWidth() + 8]];
+    const clears = [[BARN[0] - BARN[1] / 2, BARN[0] + BARN[1] / 2], [SIGN.cx - signWidth() * SIGN.scale / 2 - 8, SIGN.cx + signWidth() * SIGN.scale / 2 + 8]];
     const back = stalks(rand, 0, 1000, 118, 90, 46, 62, sway);
     // Front stalks in the barn's and the sign's spots are left out.
     const front = stalks(rand, 0, pending ? 800 : 1000, 126, pending ? 60 : 75, 58, 82, sway)
@@ -199,7 +201,7 @@ const Harvest = (() => {
       <path class="ground" d="M0 120 Q500 108 1000 120 V130 H0 Z"/>
       <g class="wheat back">${back}</g>
       <g transform="translate(${BARN[0]} 123)"><g class="farm-item barn">${barn()}</g></g>
-      <g class="straw-sign" transform="translate(${SIGN.x} 121)">${strawSign()}</g>
+      <g class="straw-sign" style="--x:${SIGN.cx}px;--s:${SIGN.scale};--half:${-signWidth() / 2}px">${strawSign()}</g>
       <g class="wheat">${front}</g>
       ${pending ? `<g class="field-stack" transform="translate(905 124) scale(${(0.55 + 0.45 * Math.min(1, pending / 200)).toFixed(2)})">`
         + `<title>${pending} objects waiting in the haystack</title>${haystack()}</g>` : ""}
