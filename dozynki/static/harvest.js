@@ -1,4 +1,4 @@
-// Harvest-festival decorations: the wheat field on the landing page with its sky, mountains and barn, the haystack
+// Harvest-festival decorations: the wheat field on the landing page with its sky, mountains, barn and DOZYNKI in straw, the haystack
 // in the vetter header (pending objects of the latest batch), the harvest played when
 // a batch is sampled, and the needle when a commit lands on a known transient.
 // Plain SVG + CSS (harvest.css); everything lives in this closure so it can sit next
@@ -113,18 +113,80 @@ const Harvest = (() => {
       + `<path class="hazard" d="M-70 -40 l-4 6 M-62 -40 l-9.3 14 M-54 -40 l-9.3 14 M-50 -34 l-5.3 8"/>`;
   }
 
+  // ---------- straw letters ----------
+
+  // DOZYNKI spelled in bundles of straw tied with twine, standing in the field. Each letter is its
+  // strokes as polylines, 40 high with the baseline at y 0; w is its width.
+  const LETTERS = {
+    D: { w: 26, strokes: [[[0, 0], [0, -40]], [[0, -40], [12, -40], [22, -34], [26, -20], [22, -6], [12, 0], [0, 0]]] },
+    O: { w: 28, strokes: [Array.from({ length: 15 }, (_, i) => {
+      const a = (i / 14) * 2 * Math.PI;
+      return [14 + 13 * Math.sin(a), -20 - 19 * Math.cos(a)];
+    })] },
+    Z: { w: 24, strokes: [[[0, -40], [24, -40], [0, 0], [24, 0]]] },
+    Y: { w: 26, strokes: [[[0, -40], [13, -20]], [[26, -40], [13, -20], [13, 0]]] },
+    N: { w: 26, strokes: [[[0, 0], [0, -40], [26, 0], [26, -40]]] },
+    K: { w: 24, strokes: [[[0, 0], [0, -40]], [[24, -40], [3, -20], [24, 0]]] },
+    I: { w: 4, strokes: [[[2, 0], [2, -40]]] },
+  };
+  const SIGN = { word: "DOZYNKI", x: 391, gap: 10 }; // x: left edge in the 1000-wide field
+  const signWidth = () => [...SIGN.word].reduce((a, c) => a + LETTERS[c].w, 0) + SIGN.gap * (SIGN.word.length - 1);
+
+  const fmt = (pts) => pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+
+  // A bundle along one stroke: a body of hay, loose straws following it with frayed ends, and a tie.
+  function bundle(pts, rand) {
+    const closed = Math.hypot(pts[0][0] - pts.at(-1)[0], pts[0][1] - pts.at(-1)[1]) < 0.5;
+    let straws = "";
+    for (let k = 0; k < 7; k++) {
+      const ox = (rand() - 0.5) * 4.4, oy = (rand() - 0.5) * 4.4;
+      const p = pts.map(([x, y]) => [x + ox + (rand() - 0.5) * 0.8, y + oy + (rand() - 0.5) * 0.8]);
+      if (!closed) { // straws poke out past both ends by different amounts
+        const out = (a, b) => {
+          const len = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, e = 1 + rand() * 3.5;
+          return [a[0] + (a[0] - b[0]) / len * e, a[1] + (a[1] - b[1]) / len * e];
+        };
+        p.unshift(out(p[0], p[1]));
+        p.push(out(p.at(-1), p.at(-2)));
+      }
+      straws += `<path class="${k % 3 ? "strand" : "strand light"}" d="${fmt(p)}"/>`;
+    }
+    // Twine around the middle of the stroke's longest segment.
+    let best = 0;
+    pts.slice(1).forEach((q, i) => {
+      if (Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]) > Math.hypot(pts[best + 1][0] - pts[best][0], pts[best + 1][1] - pts[best][1])) best = i;
+    });
+    const [a, b] = [pts[best], pts[best + 1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const [nx, ny] = [-(b[1] - a[1]) / len * 4.2, (b[0] - a[0]) / len * 4.2];
+    const ties = [0.45, 0.55].map((t) => {
+      const cx = a[0] + (b[0] - a[0]) * t, cy = a[1] + (b[1] - a[1]) * t;
+      return `M${(cx - nx).toFixed(1)} ${(cy - ny).toFixed(1)} L${(cx + nx).toFixed(1)} ${(cy + ny).toFixed(1)}`;
+    }).join(" ");
+    return `<path class="body" d="${fmt(pts)}"/>${straws}<path class="tie" d="${ties}"/>`;
+  }
+
+  function strawSign(rand = rng(1410)) {
+    let x = 0, out = "";
+    for (const c of SIGN.word) {
+      const L = LETTERS[c];
+      out += `<g transform="translate(${x} 0)">${L.strokes.map((s) => bundle(s, rand)).join("")}</g>`;
+      x += L.w + SIGN.gap;
+    }
+    return `<title>DOZYNKI</title>${out}`;
+  }
+
   // ---------- landing page ----------
 
   function field(el, pending = 0) {
     const rand = rng(1913);
     const sway = (x, r) => -(x / 180) - r() * 0.6; // a wave of wind from left to right
-    const clear = [BARN[0] - BARN[1] / 2, BARN[0] + BARN[1] / 2];
+    const clears = [[BARN[0] - BARN[1] / 2, BARN[0] + BARN[1] / 2], [SIGN.x - 8, SIGN.x + signWidth() + 8]];
     const back = stalks(rand, 0, 1000, 118, 90, 46, 62, sway);
-    // Front stalks in the barn's spot are left out.
+    // Front stalks in the barn's and the sign's spots are left out.
     const front = stalks(rand, 0, pending ? 800 : 1000, 126, pending ? 60 : 75, 58, 82, sway)
       .split(/(?=<g transform="translate\()/).filter((g) => {
         const x = +g.match(/translate\(([\d.]+)/)?.[1];
-        return !(x >= clear[0] && x <= clear[1]);
+        return !clears.some(([a, b]) => x >= a && x <= b);
       }).join("");
     el.innerHTML = `<svg class="harvest-field" viewBox="0 0 1000 130" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
       <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop class="sky-top" offset="0"/><stop class="sky-low" offset="1"/></linearGradient></defs>
@@ -133,6 +195,7 @@ const Harvest = (() => {
       <path class="ground" d="M0 120 Q500 108 1000 120 V130 H0 Z"/>
       <g class="wheat back">${back}</g>
       <g transform="translate(${BARN[0]} 123)"><g class="farm-item barn">${barn()}</g></g>
+      <g class="straw-sign" transform="translate(${SIGN.x} 121)">${strawSign()}</g>
       <g class="wheat">${front}</g>
       ${pending ? `<g class="field-stack" transform="translate(905 124) scale(${(0.55 + 0.45 * Math.min(1, pending / 200)).toFixed(2)})">`
         + `<title>${pending} objects waiting in the haystack</title>${haystack()}</g>` : ""}

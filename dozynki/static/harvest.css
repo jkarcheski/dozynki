@@ -130,3 +130,10 @@
 .farm-item.barn .ladder { stroke-width: 1.6; }
 .farm-item.barn .sign { fill: var(--sun); stroke: var(--dark); stroke-width: 1; }
 .farm-item.barn .hazard { fill: none; stroke: var(--dark); stroke-width: 2.4; stroke-linecap: butt; }
+
+/* DOZYNKI in straw (harvest.js strawSign) */
+.straw-sign path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.straw-sign .body { stroke: var(--hay); stroke-width: 7; }
+.straw-sign .strand { stroke: var(--hay-line); stroke-width: .7; opacity: .85; }
+.straw-sign .strand.light { stroke: var(--wheat); stroke-width: 1; opacity: 1; }
+.straw-sign .tie { stroke: var(--wood); stroke-width: 1.6; stroke-linecap: butt; }
