@@ -47,8 +47,10 @@
 .haystack svg { width: 44px; height: 34px; overflow: visible; }
 .haystack .stack-scale { transform-box: fill-box; transform-origin: 50% 100%; transform: scale(var(--s, 1));
   transition: transform .6s cubic-bezier(.3, 1.5, .5, 1); }
-.haystack .stubble { stroke: var(--hay-line); stroke-width: 3; stroke-dasharray: 2 4; opacity: 0; }
-.haystack.empty .stubble { opacity: .8; }
+.haystack .trough { fill: var(--wood); stroke: var(--hide); stroke-width: 1.5; stroke-linejoin: round; }
+.haystack .trough-back { fill: var(--wood); opacity: .55; }
+.haystack .trough-plank { stroke: var(--hide); stroke-width: 1.2; }
+.haystack .trough-leg { stroke: var(--wood); stroke-width: 6; }
 .haystack .stack-n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1ch; }
 .haystack.bump svg { animation: pop .5s; }
 @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } }

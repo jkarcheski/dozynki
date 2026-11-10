@@ -159,10 +159,15 @@ const Harvest = (() => {
     stackName = name || "";
   }
 
+  // The stack sits in a trough that keeps its size, so the hay above the rim shows how much is left.
   function mountStack(el) {
     stackEl = el;
-    el.innerHTML = `<svg viewBox="-56 -84 112 88" aria-hidden="true"><path class="stubble" d="M-46 0 H46"/>`
-      + `<g class="stack-scale">${haystack()}</g></svg><span class="stack-n"></span>`;
+    el.innerHTML = `<svg viewBox="-58 -98 116 100" aria-hidden="true">`
+      + `<path class="trough-back" d="M-50 -26 H50 L44 -6 H-44 Z"/>`
+      + `<g transform="translate(0 -14)"><g class="stack-scale">${haystack()}</g></g>`
+      + `<path class="trough-leg" d="M-38 -4 V1 M38 -4 V1"/>`
+      + `<path class="trough" d="M-55 -22 H55 L47 -4 H-47 Z"/><path class="trough-plank" d="M-51 -13 H51"/>`
+      + `</svg><span class="stack-n"></span>`;
   }
 
   // Size follows pending / pending-right-after-the-latest-batch, so vetting shrinks it.
