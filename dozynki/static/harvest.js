@@ -1,4 +1,4 @@
-// Harvest-festival decorations: the wheat field on the landing page with its sky, mountains, barn and DOZYNKI in straw, the haystack
+// Harvest-festival decorations: the wheat field on the landing page with its sunrise sky, mountains, barn and DOZYNKI in straw, the haystack
 // in the vetter header (pending objects of the latest batch), the harvest played when
 // a batch is sampled, and the needle when a commit lands on a known transient.
 // Plain SVG + CSS (harvest.css); everything lives in this closure so it can sit next
@@ -191,8 +191,10 @@ const Harvest = (() => {
         return !clears.some(([a, b]) => x >= a && x <= b);
       }).join("");
     el.innerHTML = `<svg class="harvest-field" viewBox="0 0 1000 130" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop class="sky-top" offset="0"/><stop class="sky-low" offset="1"/></linearGradient></defs>
+      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop class="sky-top" offset="0"/><stop class="sky-mid" offset=".3"/><stop class="sky-low" offset=".58"/></linearGradient>
+        <radialGradient id="dawn" cx=".5" cy=".62" r=".5"><stop class="dawn" offset="0"/><stop class="dawn" offset="1" stop-opacity="0"/></radialGradient></defs>
       <rect class="sky" width="1000" height="122" fill="url(#sky)"/>
+      <rect width="1000" height="122" fill="url(#dawn)"/>
       <g class="mountains">${range("far", FAR, 120, 56)}${range("near", NEAR, 120)}</g>
       <path class="ground" d="M0 120 Q500 108 1000 120 V130 H0 Z"/>
       <g class="wheat back">${back}</g>

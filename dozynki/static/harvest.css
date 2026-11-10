@@ -4,7 +4,7 @@
   --soil: #9b7a4c; --tractor: #c0392b; --tire: #2b2b2e; --sun: #f2c35a; --needle: #9aa3ad;
   --barn: #b23a2c; --wood: #7a5532; --stone: #a3a29c; --leafy: #5d8a3a; --poppy: #d6362b; --white: #f7f4ec;
   --hide: #8b5a34; --dark: #2b2b2e; --line-ink: #3a3a3e;
-  --sky-top: #5b9fd8; --sky-low: #cfe6f6; --mountain-far: #8fa6bf; --mountain-near: #4f6e4c; --snow: #f7f9fb;
+  --sky-top: #6c8fd0; --sky-mid: #f2a98f; --sky-low: #ffd789; --dawn: #fff0c2; --mountain-far: #9a8db4; --mountain-near: #4f6e4c; --snow: #fbeee8;
   --skin: #e6b48c; --hair: #5b3a1e; --shirt: #7c8a4a; --trousers: #6b4f36; --denim: #3f5f8f; --navy: #1f2a4f;
 }
 @media (prefers-color-scheme: dark) {
@@ -13,7 +13,7 @@
     --soil: #6b5434; --tractor: #e0574a; --tire: #111113; --sun: #e9b949; --needle: #c4ccd5;
     --barn: #c9493a; --wood: #9a7048; --stone: #8b8a85; --leafy: #6fa047; --poppy: #ec4b3f; --white: #e8e4da;
     --hide: #a06a3e; --dark: #0f0f11; --line-ink: #cfcfd4;
-    --sky-top: #1c3a66; --sky-low: #4f7fae; --mountain-far: #3d5270; --mountain-near: #34503a; --snow: #c9d4e0;
+    --sky-top: #1f2a55; --sky-mid: #7a4f7c; --sky-low: #d77f55; --dawn: #f0a860; --mountain-far: #4a4466; --mountain-near: #34503a; --snow: #d9c4c4;
     --skin: #e0ab82; --hair: #6e4826; --shirt: #8d9c56; --trousers: #7d5d40; --denim: #5476ad; --navy: #33427a;
   }
 }
@@ -34,7 +34,9 @@
 /* Landing field */
 .harvest-field { display: block; width: 100%; height: 130px; margin: -14px 0 4px; }
 .harvest-field .sky-top { stop-color: var(--sky-top); }
+.harvest-field .sky-mid { stop-color: var(--sky-mid); }
 .harvest-field .sky-low { stop-color: var(--sky-low); }
+.harvest-field .dawn { stop-color: var(--dawn); }
 .harvest-field .mountains .far { fill: var(--mountain-far); }
 .harvest-field .mountains .near { fill: var(--mountain-near); }
 .harvest-field .mountains .snow { fill: var(--snow); }
