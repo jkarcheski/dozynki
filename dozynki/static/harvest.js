@@ -129,9 +129,9 @@ const Harvest = (() => {
     K: { w: 24, strokes: [[[0, 0], [0, -40]], [[24, -40], [3, -20], [24, 0]]] },
     I: { w: 4, strokes: [[[2, 0], [2, -40]]] },
   };
-  // cx: its center in the 1000-wide field. At scale 2.4 it stands 96 high, over the barn and the tallest wheat;
+  // cx: its center in the 1000-wide field. At scale 2.1 it stands 84 high, over the barn, the haystack and the back wheat;
   // harvest.css shrinks it on narrow screens so the whole word still shows.
-  const SIGN = { word: "DOZYNKI", cx: 500, scale: 2.4, gap: 10 };
+  const SIGN = { word: "DOZYNKI", cx: 500, scale: 2.1, gap: 10 };
   const signWidth = () => [...SIGN.word].reduce((a, c) => a + LETTERS[c].w, 0) + SIGN.gap * (SIGN.word.length - 1);
 
   const fmt = (pts) => pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
